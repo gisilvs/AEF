@@ -118,12 +118,12 @@ class NormalizingAutoEncoder(nn.Module):
         self.mask = mask
 
     def partition(self, x):
-        core = x[:, :, mask == 1].view(x.shape[0], -1)
-        shell = x * (1 - mask)
+        core = x[:, :, self.mask == 1].view(x.shape[0], -1)
+        shell = x * (1 - self.mask)
         return core, shell
 
     def inverse_partition(self, core, shell):
-        shell[:, :, mask == 1] = core.reshape(shell.shape[0], -1,
+        shell[:, :, self.mask == 1] = core.reshape(shell.shape[0], -1,
                                               self.core_size)
         return shell
 
@@ -134,8 +134,8 @@ class NormalizingAutoEncoder(nn.Module):
         log_j_z = torch.sum(-torch.log(sigma_z + self.eps), dim=[1])
         mu_d, sigma_d = self.decoder(z)
         deviations = (shell - mu_d) / (sigma_d + self.eps)
-        log_j_d = torch.sum(-torch.log(sigma_d + self.eps),
-                            dim=[1, 2, 3])  # why was [1,2,3]
+        log_j_d = torch.sum(-torch.log(sigma_d[:, :, self.mask == 0] + self.eps),
+                            dim=[1, 2])
         return z, deviations, log_j_core + log_j_z + log_j_d
 
     def neg_log_likelihood(self, x):
@@ -144,15 +144,16 @@ class NormalizingAutoEncoder(nn.Module):
         loss_z = torch.sum(
             Normal(loc=torch.zeros_like(z), scale=torch.ones_like(z)).log_prob(
                 z), dim=1)
-        loss_d = torch.sum(Normal(loc=torch.zeros_like(deviations),
-                                  scale=torch.ones_like(deviations)).log_prob(
-            deviations), dim=[1, 2, 3])
+        loss_d = torch.sum(Normal(loc=torch.zeros_like(deviations[:, :, self.mask == 0]),
+                                  scale=torch.ones_like(deviations[:, :, self.mask == 0])).log_prob(
+            deviations[:, :, self.mask == 0]), dim=[1, 2])
         return -(loss_z + loss_d + log_j)
 
     def sample(self, num_samples=1, sample_deviations=False):
         z = torch.normal(torch.zeros(num_samples, self.core_size),
                          torch.ones(num_samples, self.core_size)).to(device)
         shell, _ = self.decoder(z)
+        shell = shell * (1 - self.mask)
         mu_z, sigma_z = self.encoder(shell)
         core = z * (sigma_z + self.eps) + mu_z
         core = self.core_flow.forward(core)
@@ -329,22 +330,18 @@ from torch.utils.data import DataLoader
 from torchvision.datasets import MNIST
 
 img_transform = transforms.Compose([
-    transforms.
     transforms.ToTensor()
 ])
 
 train_dataset = MNIST(root='./data/MNIST', download=True, train=True, transform=img_transform)
 train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
-test_dataset = MNIST(root='./data/MNIST', download=True, train=False, transform=None)
+test_dataset = MNIST(root='./data/MNIST', download=True, train=False, transform=img_transform)
 test_dataloader = DataLoader(test_dataset, batch_size=max(10000, batch_size), shuffle=True)
 
 core_flow = RealNVP(input_dim=4, num_flows=6, hidden_units=256)
-core_flow = core_flow.to(device)
 encoder = Encoder(64,4)
-encoder = encoder.to(device)
 decoder = Decoder(64, 4, [1,28,28])
-decoder.to(device)
 mask = torch.zeros(28,28)
 mask[13:15,13:15] = 1
 mask = mask.to(device)
@@ -369,7 +366,6 @@ for epoch in tqdm_bar:
         image_batch = image_batch.to(device)
 
         loss = torch.mean(nae.neg_log_likelihood(image_batch))
-
         # backpropagation
         optimizer.zero_grad()
         loss.backward()
@@ -384,5 +380,13 @@ for epoch in tqdm_bar:
 
     train_loss_avg.append(train_loss_averager(None))
 
-df_log = df_log.set_index(['index'])
 plot_loss(train_loss_avg)
+plt.show()
+samples = nae.sample(16).cpu().detach().numpy()
+_, axs = plt.subplots(4, 4, )
+axs = axs.flatten()
+for img, ax in zip(samples, axs):
+  ax.axis('off')
+  ax.imshow(img.reshape(28,28), cmap='gray')
+
+plt.show()
