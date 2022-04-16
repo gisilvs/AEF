@@ -14,6 +14,10 @@ import plotly.express as px
 import matplotlib.pyplot as plt
 import torchvision
 from torchvision import datasets, models, transforms
+import torchvision.transforms as transforms
+from torch.utils.data import DataLoader
+from torchvision.datasets import MNIST
+
 
 import os
 import pickle
@@ -152,17 +156,33 @@ class NormalizingAutoEncoder(nn.Module):
     def sample(self, num_samples=1, sample_deviations=False):
         z = torch.normal(torch.zeros(num_samples, self.core_size),
                          torch.ones(num_samples, self.core_size)).to(device)
-        shell, _ = self.decoder(z)
+
+        if sample_deviations:
+            deviations = torch.normal(torch.zeros_like(self.mask),
+                                      torch.ones_like(self.mask)).to(device)
+            core, shell = self.forward(z, deviations)
+        else:
+            shell, _ = self.decoder(z)
+            shell = shell * (1 - self.mask)
+            mu_z, sigma_z = self.encoder(shell)
+            core = z * (sigma_z + self.eps) + mu_z
+            core = self.core_flow.forward(core)
+        y = self.inverse_partition(core, shell)
+        return y
+
+    def forward(self, z, deviations):
+        mu_d, sigma_d = self.decoder(z)
+        shell = deviations * (sigma_d + self.eps) + mu_d
         shell = shell * (1 - self.mask)
         mu_z, sigma_z = self.encoder(shell)
         core = z * (sigma_z + self.eps) + mu_z
         core = self.core_flow.forward(core)
-        y = self.inverse_partition(core, shell)
-        return y
+        return core, shell
+
 
 
 class Encoder(nn.Module):
-    def __init__(self, hidden_channels: int, latent_dim: int):
+    def __init__(self, hidden_channels: int, latent_dim: int, input_channels: int = 1):
         """
         Simple encoder module
 
@@ -172,7 +192,7 @@ class Encoder(nn.Module):
         https://stats.stackexchange.com/a/353222/284141
         """
         super().__init__()
-        self.conv1 = nn.Conv2d(in_channels=1,
+        self.conv1 = nn.Conv2d(in_channels=input_channels,
                                out_channels=hidden_channels,
                                kernel_size=3,
                                stride=2,
@@ -230,7 +250,7 @@ class Decoder(nn.Module):
                                         stride=2,
                                         padding=1)
         self.conv1 = nn.ConvTranspose2d(in_channels=hidden_channels,
-                                        out_channels=1,
+                                        out_channels=output_shape[0],
                                         kernel_size=4,
                                         stride=2,
                                         padding=1)
@@ -271,6 +291,7 @@ class RealNVP(nn.Module):
             [np.random.choice([0, 1], size=(input_dim,)) for _ in
              range(num_flows)]).astype(np.float32))
         prior = MultivariateNormal(torch.zeros(input_dim), torch.eye(input_dim))
+        self.input_dim = input_dim
         self.prior = prior
         self.mask = nn.Parameter(masks, requires_grad=False)
         self.t = torch.nn.ModuleList([nett() for _ in range(num_flows)])
@@ -313,80 +334,81 @@ class RealNVP(nn.Module):
         x = self.g(z)
         return x
 
-# 2-d latent space, parameter count in same order of magnitude
-# as in the original VAE paper (VAE paper has about 3x as many)
-latent_dims = 4
-num_epochs = 40
-batch_size = 128
-capacity = 64
-learning_rate = 1e-3
-variational_beta = 1
-use_gpu = True
 
-device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
 
-import torchvision.transforms as transforms
-from torch.utils.data import DataLoader
-from torchvision.datasets import MNIST
 
-img_transform = transforms.Compose([
-    transforms.ToTensor()
-])
+if __name__ == "__main__":
+    # 2-d latent space, parameter count in same order of magnitude
+    # as in the original VAE paper (VAE paper has about 3x as many)
+    latent_dims = 4
+    num_epochs = 40
+    batch_size = 128
+    capacity = 64
+    learning_rate = 1e-3
+    variational_beta = 1
+    use_gpu = True
 
-train_dataset = MNIST(root='./data/MNIST', download=True, train=True, transform=img_transform)
-train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
 
-test_dataset = MNIST(root='./data/MNIST', download=True, train=False, transform=img_transform)
-test_dataloader = DataLoader(test_dataset, batch_size=max(10000, batch_size), shuffle=True)
 
-core_flow = RealNVP(input_dim=4, num_flows=6, hidden_units=256)
-encoder = Encoder(64,4)
-decoder = Decoder(64, 4, [1,28,28])
-mask = torch.zeros(28,28)
-mask[13:15,13:15] = 1
-mask = mask.to(device)
-nae = NormalizingAutoEncoder(core_flow, encoder, decoder, mask)
-optimizer = torch.optim.Adam(params=nae.parameters(), lr=1e-3)#, weight_decay=1e-5)
-nae = nae.to(device)
+    img_transform = transforms.Compose([
+        transforms.ToTensor()
+    ])
 
-df_log = pd.DataFrame()
-test_batch_x, test_batch_y = iter(test_dataloader).next()
+    train_dataset = MNIST(root='./data/MNIST', download=True, train=True, transform=img_transform)
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
-train_loss_avg = []
+    test_dataset = MNIST(root='./data/MNIST', download=True, train=False, transform=img_transform)
+    test_dataloader = DataLoader(test_dataset, batch_size=max(10000, batch_size), shuffle=True)
 
-print('Training ...')
+    core_flow = RealNVP(input_dim=4, num_flows=6, hidden_units=256)
+    encoder = Encoder(64,4)
+    decoder = Decoder(64, 4, [1,28,28])
+    mask = torch.zeros(28,28)
+    mask[13:15,13:15] = 1
+    mask = mask.to(device)
+    nae = NormalizingAutoEncoder(core_flow, encoder, decoder, mask)
+    optimizer = torch.optim.Adam(params=nae.parameters(), lr=1e-3)#, weight_decay=1e-5)
+    nae = nae.to(device)
 
-tqdm_bar = tqdm(range(1, num_epochs + 1), desc="epoch [loss: ...]")
-for epoch in tqdm_bar:
-    train_loss_averager = make_averager()
+    df_log = pd.DataFrame()
+    test_batch_x, test_batch_y = iter(test_dataloader).next()
 
-    batch_bar = tqdm(train_dataloader, leave=False, desc='batch',
-                     total=len(train_dataloader))
-    for image_batch, _ in batch_bar:
-        image_batch = image_batch.to(device)
+    train_loss_avg = []
 
-        loss = torch.mean(nae.neg_log_likelihood(image_batch))
-        # backpropagation
-        optimizer.zero_grad()
-        loss.backward()
+    print('Training ...')
 
-        # one step of the optmizer
-        optimizer.step()
+    tqdm_bar = tqdm(range(1, num_epochs + 1), desc="epoch [loss: ...]")
+    for epoch in tqdm_bar:
+        train_loss_averager = make_averager()
 
-        refresh_bar(batch_bar,
-                    f"train batch [loss: {train_loss_averager(loss.item()):.3f}]")
+        batch_bar = tqdm(train_dataloader, leave=False, desc='batch',
+                         total=len(train_dataloader))
+        for image_batch, _ in batch_bar:
+            image_batch = image_batch.to(device)
 
-    refresh_bar(tqdm_bar, f"epoch [loss: {train_loss_averager(None):.3f}]")
+            loss = torch.mean(nae.neg_log_likelihood(image_batch))
+            # backpropagation
+            optimizer.zero_grad()
+            loss.backward()
 
-    train_loss_avg.append(train_loss_averager(None))
+            # one step of the optmizer
+            optimizer.step()
 
-plot_loss(train_loss_avg)
-plt.show()
-samples = nae.sample(16).cpu().detach().numpy()
-_, axs = plt.subplots(4, 4, )
-axs = axs.flatten()
-for img, ax in zip(samples, axs):
-  ax.axis('off')
-  ax.imshow(img.reshape(28,28), cmap='gray')
+            refresh_bar(batch_bar,
+                        f"train batch [loss: {train_loss_averager(loss.item()):.3f}]")
 
-plt.show()
+        refresh_bar(tqdm_bar, f"epoch [loss: {train_loss_averager(None):.3f}]")
+
+        train_loss_avg.append(train_loss_averager(None))
+
+    plot_loss(train_loss_avg)
+    plt.show()
+    samples = nae.sample(16).cpu().detach().numpy()
+    _, axs = plt.subplots(4, 4, )
+    axs = axs.flatten()
+    for img, ax in zip(samples, axs):
+      ax.axis('off')
+      ax.imshow(img.reshape(28,28), cmap='gray')
+
+    plt.show()
