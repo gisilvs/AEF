@@ -15,6 +15,10 @@ import matplotlib.pyplot as plt
 import torchvision
 from torchvision import datasets, models, transforms
 
+import torchvision.transforms as transforms
+from torch.utils.data import DataLoader
+from torchvision.datasets import MNIST
+
 import os
 import pickle
 from tqdm import tqdm
@@ -105,6 +109,19 @@ def refresh_bar(bar, desc):
     bar.set_description(desc)
     bar.refresh()
 
+
+def dequantize(batch):
+    noise = torch.rand(*batch.shape)
+    batch = (batch * 255. + noise) / 256.
+    return batch
+
+def to_logit(batch, alpha):
+    logit_batch = alpha + (1-2*alpha)*batch
+    return torch.log(logit_batch) - torch.log(1 - logit_batch)
+
+def from_logit(logit_batch, alpha):
+    logit_batch = torch.sigmoid(logit_batch)
+    return (logit_batch - alpha)/(1-2*alpha)
 
 class NormalizingAutoEncoder(nn.Module):
     def __init__(self, core_flow, encoder, decoder, mask):
@@ -325,9 +342,9 @@ use_gpu = True
 
 device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
 
-import torchvision.transforms as transforms
-from torch.utils.data import DataLoader
-from torchvision.datasets import MNIST
+do_dequantize = True
+do_logit_transform = False
+
 
 img_transform = transforms.Compose([
     transforms.ToTensor()
@@ -338,6 +355,8 @@ train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True
 
 test_dataset = MNIST(root='./data/MNIST', download=True, train=False, transform=img_transform)
 test_dataloader = DataLoader(test_dataset, batch_size=max(10000, batch_size), shuffle=True)
+
+alpha = 1.0e-6  # For conversion to logit space (MNIST) see https://arxiv.org/pdf/1705.07057.pdf
 
 core_flow = RealNVP(input_dim=4, num_flows=6, hidden_units=256)
 encoder = Encoder(64,4)
@@ -363,6 +382,10 @@ for epoch in tqdm_bar:
     batch_bar = tqdm(train_dataloader, leave=False, desc='batch',
                      total=len(train_dataloader))
     for image_batch, _ in batch_bar:
+        if do_dequantize:
+            image_batch = dequantize(image_batch)
+        if do_logit_transform:
+            image_batch = to_logit(image_batch, alpha)
         image_batch = image_batch.to(device)
 
         loss = torch.mean(nae.neg_log_likelihood(image_batch))
@@ -382,7 +405,10 @@ for epoch in tqdm_bar:
 
 plot_loss(train_loss_avg)
 plt.show()
-samples = nae.sample(16).cpu().detach().numpy()
+samples = nae.sample(16)
+if do_logit_transform:
+    samples = from_logit(samples, alpha)
+samples = samples.cpu().detach().numpy()
 _, axs = plt.subplots(4, 4, )
 axs = axs.flatten()
 for img, ax in zip(samples, axs):
