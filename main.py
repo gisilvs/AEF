@@ -342,6 +342,8 @@ use_gpu = True
 
 device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
 
+do_dequantize = True
+do_logit_transform = False
 
 
 img_transform = transforms.Compose([
@@ -380,8 +382,10 @@ for epoch in tqdm_bar:
     batch_bar = tqdm(train_dataloader, leave=False, desc='batch',
                      total=len(train_dataloader))
     for image_batch, _ in batch_bar:
-        image_batch = dequantize(image_batch)
-        image_batch = to_logit(image_batch, alpha)
+        if do_dequantize:
+            image_batch = dequantize(image_batch)
+        if do_logit_transform:
+            image_batch = to_logit(image_batch, alpha)
         image_batch = image_batch.to(device)
 
         loss = torch.mean(nae.neg_log_likelihood(image_batch))
@@ -402,7 +406,8 @@ for epoch in tqdm_bar:
 plot_loss(train_loss_avg)
 plt.show()
 samples = nae.sample(16)
-samples = from_logit(samples, alpha)
+if do_logit_transform:
+    samples = from_logit(samples, alpha)
 samples = samples.cpu().detach().numpy()
 _, axs = plt.subplots(4, 4, )
 axs = axs.flatten()
