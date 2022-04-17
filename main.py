@@ -173,23 +173,21 @@ class NormalizingAutoEncoder(nn.Module):
     def sample(self, num_samples=1, sample_deviations=False):
         z = torch.normal(torch.zeros(num_samples, self.core_size),
                          torch.ones(num_samples, self.core_size)).to(device)
-
         if sample_deviations:
             deviations = torch.normal(torch.zeros_like(self.mask),
-                                      torch.ones_like(self.mask)).to(device)
-            core, shell = self.forward(z, deviations)
+                                      torch.ones_like(self.mask)).to(device) # TODO: change when refactoring
         else:
-            shell, _ = self.decoder(z)
-            shell = shell * (1 - self.mask)
-            mu_z, sigma_z = self.encoder(shell)
-            core = z * (sigma_z + self.eps) + mu_z
-            core = self.core_flow.forward(core)
+            deviations = None
+        core, shell = self.forward(z, deviations)
         y = self.inverse_partition(core, shell)
         return y
 
-    def forward(self, z, deviations):
+    def forward(self, z, deviations=None):
         mu_d, sigma_d = self.decoder(z)
-        shell = deviations * (sigma_d + self.eps) + mu_d
+        if deviations is None:
+            shell = mu_d
+        else:
+            shell = deviations * (sigma_d + self.eps) + mu_d
         shell = shell * (1 - self.mask)
         mu_z, sigma_z = self.encoder(shell)
         core = z * (sigma_z + self.eps) + mu_z
@@ -351,10 +349,11 @@ class RealNVP(nn.Module):
         x = self.g(z)
         return x
 
-do_dequantize = True
-do_logit_transform = False
+def main():
+  
+    do_dequantize = True
+    do_logit_transform = False
 
-if __name__ == "__main__":
     # 2-d latent space, parameter count in same order of magnitude
     # as in the original VAE paper (VAE paper has about 3x as many)
     latent_dims = 4
@@ -368,7 +367,6 @@ if __name__ == "__main__":
 
     device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
 
-
     img_transform = transforms.Compose([
         transforms.ToTensor()
     ])
@@ -380,13 +378,13 @@ if __name__ == "__main__":
     test_dataloader = DataLoader(test_dataset, batch_size=max(10000, batch_size), shuffle=True)
 
     core_flow = RealNVP(input_dim=4, num_flows=6, hidden_units=256)
-    encoder = Encoder(64,4)
-    decoder = Decoder(64, 4, [1,28,28])
-    mask = torch.zeros(28,28)
-    mask[13:15,13:15] = 1
+    encoder = Encoder(64, 4)
+    decoder = Decoder(64, 4, [1, 28, 28])
+    mask = torch.zeros(28, 28)
+    mask[13:15, 13:15] = 1
     mask = mask.to(device)
     nae = NormalizingAutoEncoder(core_flow, encoder, decoder, mask)
-    optimizer = torch.optim.Adam(params=nae.parameters(), lr=1e-3)#, weight_decay=1e-5)
+    optimizer = torch.optim.Adam(params=nae.parameters(), lr=1e-3)  # , weight_decay=1e-5)
     nae = nae.to(device)
 
     df_log = pd.DataFrame()
@@ -432,7 +430,11 @@ if __name__ == "__main__":
     _, axs = plt.subplots(4, 4, )
     axs = axs.flatten()
     for img, ax in zip(samples, axs):
-      ax.axis('off')
-      ax.imshow(img.reshape(28,28), cmap='gray')
+        ax.axis('off')
+        ax.imshow(img.reshape(28, 28), cmap='gray')
 
     plt.show()
+
+
+if __name__ == "__main__":
+    main()
