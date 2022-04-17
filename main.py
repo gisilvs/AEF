@@ -19,6 +19,10 @@ from torch.utils.data import DataLoader
 from torchvision.datasets import MNIST
 
 
+import torchvision.transforms as transforms
+from torch.utils.data import DataLoader
+from torchvision.datasets import MNIST
+
 import os
 import pickle
 from tqdm import tqdm
@@ -109,6 +113,19 @@ def refresh_bar(bar, desc):
     bar.set_description(desc)
     bar.refresh()
 
+
+def dequantize(batch):
+    noise = torch.rand(*batch.shape)
+    batch = (batch * 255. + noise) / 256.
+    return batch
+
+def to_logit(batch, alpha):
+    logit_batch = alpha + (1-2*alpha)*batch
+    return torch.log(logit_batch) - torch.log(1 - logit_batch)
+
+def from_logit(logit_batch, alpha):
+    logit_batch = torch.sigmoid(logit_batch)
+    return (logit_batch - alpha)/(1-2*alpha)
 
 class NormalizingAutoEncoder(nn.Module):
     def __init__(self, core_flow, encoder, decoder, mask):
@@ -333,6 +350,10 @@ class RealNVP(nn.Module):
         return x
 
 def main():
+  
+    do_dequantize = True
+    do_logit_transform = False
+
     # 2-d latent space, parameter count in same order of magnitude
     # as in the original VAE paper (VAE paper has about 3x as many)
     latent_dims = 4
@@ -341,6 +362,7 @@ def main():
     capacity = 64
     learning_rate = 1e-3
     variational_beta = 1
+    alpha = 1e-6
     use_gpu = True
 
     device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
@@ -376,29 +398,35 @@ def main():
     for epoch in tqdm_bar:
         train_loss_averager = make_averager()
 
-        batch_bar = tqdm(train_dataloader, leave=False, desc='batch',
-                         total=len(train_dataloader))
-        for image_batch, _ in batch_bar:
-            image_batch = image_batch.to(device)
+    batch_bar = tqdm(train_dataloader, leave=False, desc='batch',
+                     total=len(train_dataloader))
+    for image_batch, _ in batch_bar:
+        if do_dequantize:
+            image_batch = dequantize(image_batch)
+        if do_logit_transform:
+            image_batch = to_logit(image_batch, alpha)
+        image_batch = image_batch.to(device)
 
-            loss = torch.mean(nae.neg_log_likelihood(image_batch))
-            # backpropagation
-            optimizer.zero_grad()
-            loss.backward()
+        loss = torch.mean(nae.neg_log_likelihood(image_batch))
+        # backpropagation
+        optimizer.zero_grad()
+        loss.backward()
 
-            # one step of the optmizer
-            optimizer.step()
+        # one step of the optmizer
+        optimizer.step()
 
-            refresh_bar(batch_bar,
-                        f"train batch [loss: {train_loss_averager(loss.item()):.3f}]")
+        refresh_bar(batch_bar,
+                    f"train batch [loss: {train_loss_averager(loss.item()):.3f}]")
 
-        refresh_bar(tqdm_bar, f"epoch [loss: {train_loss_averager(None):.3f}]")
+    refresh_bar(tqdm_bar, f"epoch [loss: {train_loss_averager(None):.3f}]")
 
-        train_loss_avg.append(train_loss_averager(None))
-
+    train_loss_avg.append(train_loss_averager(None))
     plot_loss(train_loss_avg)
     plt.show()
-    samples = nae.sample(16).cpu().detach().numpy()
+    samples = nae.sample(16)
+    if do_logit_transform:
+        samples = from_logit(samples, alpha)
+    samples = samples.cpu().detach().numpy()
     _, axs = plt.subplots(4, 4, )
     axs = axs.flatten()
     for img, ax in zip(samples, axs):
