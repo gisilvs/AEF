@@ -18,7 +18,6 @@ import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 from torchvision.datasets import MNIST
 
-
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 from torchvision.datasets import MNIST
@@ -36,7 +35,6 @@ from typing import Callable, Optional
 
 def make_averager() -> Callable[[Optional[float]], float]:
     """ Returns a function that maintains a running average
-
     :returns: running average function
     """
     count = 0
@@ -44,7 +42,6 @@ def make_averager() -> Callable[[Optional[float]], float]:
 
     def averager(new_value: Optional[float]) -> float:
         """ Running averager
-
         :param new_value: number to add to the running average,
                           if None returns the current average
         :returns: the current average
@@ -87,26 +84,15 @@ def run_on_testbatch(df_log, vae, epoch, x, y):
     return save_in_dataframe(df_log, y, mus, stddevs, epoch)
 
 
-def plot_loss(losses):
-    fig = go.Figure()
-
-    fig.add_trace(go.Scatter(
-        x=list(range(len(losses))),
-        y=losses,
-        # name="Name of Trace 1"       # this sets its legend entry
-    ))
-
-    fig.update_layout(
-        title="Train loss",
-        xaxis_title="Epoch",
-        yaxis_title="Loss",
-        font=dict(
-            family="Courier New, monospace",
-            size=18,
-            color="#7f7f7f"
-        )
-    )
-    return fig
+def plot_loss(train_loss, val_loss=None):
+    plt.figure()
+    plt.plot(np.arange(len(train_loss)), train_loss, color='tab:blue')
+    if val_loss is not None:
+        plt.plot(np.arange(len(val_loss)), val_loss, color='tab:orange')
+    plt.legend(["Training loss"] if val_loss is None else ["Training loss", "Validation loss"])
+    plt.xlabel("Epoch")
+    plt.ylabel("Negative log likelihood")
+    plt.show()
 
 
 def refresh_bar(bar, desc):
@@ -119,13 +105,16 @@ def dequantize(batch):
     batch = (batch * 255. + noise) / 256.
     return batch
 
+
 def to_logit(batch, alpha):
-    logit_batch = alpha + (1-2*alpha)*batch
+    logit_batch = alpha + (1 - 2 * alpha) * batch
     return torch.log(logit_batch) - torch.log(1 - logit_batch)
+
 
 def from_logit(logit_batch, alpha):
     logit_batch = torch.sigmoid(logit_batch)
-    return (logit_batch - alpha)/(1-2*alpha)
+    return (logit_batch - alpha) / (1 - 2 * alpha)
+
 
 class NormalizingAutoEncoder(nn.Module):
     def __init__(self, core_flow, encoder, decoder, mask):
@@ -145,7 +134,7 @@ class NormalizingAutoEncoder(nn.Module):
 
     def inverse_partition(self, core, shell):
         shell[:, :, self.mask == 1] = core.reshape(shell.shape[0], -1,
-                                              self.core_size)
+                                                   self.core_size)
         return shell
 
     def embedding(self, core, shell):
@@ -173,23 +162,21 @@ class NormalizingAutoEncoder(nn.Module):
     def sample(self, num_samples=1, sample_deviations=False):
         z = torch.normal(torch.zeros(num_samples, self.core_size),
                          torch.ones(num_samples, self.core_size)).to(device)
-
         if sample_deviations:
             deviations = torch.normal(torch.zeros_like(self.mask),
-                                      torch.ones_like(self.mask)).to(device)
-            core, shell = self.forward(z, deviations)
+                                      torch.ones_like(self.mask)).to(device)  # TODO: change when refactoring
         else:
-            shell, _ = self.decoder(z)
-            shell = shell * (1 - self.mask)
-            mu_z, sigma_z = self.encoder(shell)
-            core = z * (sigma_z + self.eps) + mu_z
-            core = self.core_flow.forward(core)
+            deviations = None
+        core, shell = self.forward(z, deviations)
         y = self.inverse_partition(core, shell)
         return y
 
-    def forward(self, z, deviations):
+    def forward(self, z, deviations=None):
         mu_d, sigma_d = self.decoder(z)
-        shell = deviations * (sigma_d + self.eps) + mu_d
+        if deviations is None:
+            shell = mu_d
+        else:
+            shell = deviations * (sigma_d + self.eps) + mu_d
         shell = shell * (1 - self.mask)
         mu_z, sigma_z = self.encoder(shell)
         core = z * (sigma_z + self.eps) + mu_z
@@ -197,14 +184,11 @@ class NormalizingAutoEncoder(nn.Module):
         return core, shell
 
 
-
 class Encoder(nn.Module):
     def __init__(self, hidden_channels: int, latent_dim: int, input_channels: int = 1):
         """
         Simple encoder module
-
         It predicts the `mean` and `log(variance)` parameters.
-
         The choice to use the `log(variance)` is for stability reasons:
         https://stats.stackexchange.com/a/353222/284141
         """
@@ -285,7 +269,7 @@ class Decoder(nn.Module):
         x = self.activation(self.conv2(x))
         x = torch.sigmoid(self.conv1(
             x))  # last layer before output is sigmoid, since we are using BCE as reconstruction loss
-        return x, F.softplus(self.pre_sigma).unsqueeze(0).repeat(x.shape[0],1,1,1)
+        return x, F.softplus(self.pre_sigma).unsqueeze(0).repeat(x.shape[0], 1, 1, 1)
 
 
 class RealNVP(nn.Module):
@@ -351,14 +335,15 @@ class RealNVP(nn.Module):
         x = self.g(z)
         return x
 
-do_dequantize = True
-do_logit_transform = False
 
-if __name__ == "__main__":
+def main():
+    do_dequantize = True
+    do_logit_transform = False
+
     # 2-d latent space, parameter count in same order of magnitude
     # as in the original VAE paper (VAE paper has about 3x as many)
     latent_dims = 4
-    num_epochs = 40
+    num_epochs = 2
     batch_size = 128
     capacity = 64
     learning_rate = 1e-3
@@ -368,7 +353,6 @@ if __name__ == "__main__":
 
     device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
 
-
     img_transform = transforms.Compose([
         transforms.ToTensor()
     ])
@@ -376,23 +360,21 @@ if __name__ == "__main__":
     train_dataset = MNIST(root='./data/MNIST', download=True, train=True, transform=img_transform)
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
-    test_dataset = MNIST(root='./data/MNIST', download=True, train=False, transform=img_transform)
-    test_dataloader = DataLoader(test_dataset, batch_size=max(10000, batch_size), shuffle=True)
+    validation_dataset = MNIST(root='./data/MNIST', download=True, train=False, transform=img_transform)
+    validation_dataloader = DataLoader(validation_dataset, batch_size=batch_size, shuffle=True)
 
     core_flow = RealNVP(input_dim=4, num_flows=6, hidden_units=256)
-    encoder = Encoder(64,4)
-    decoder = Decoder(64, 4, [1,28,28])
-    mask = torch.zeros(28,28)
-    mask[13:15,13:15] = 1
+    encoder = Encoder(64, 4)
+    decoder = Decoder(64, 4, [1, 28, 28])
+    mask = torch.zeros(28, 28)
+    mask[13:15, 13:15] = 1
     mask = mask.to(device)
     nae = NormalizingAutoEncoder(core_flow, encoder, decoder, mask)
-    optimizer = torch.optim.Adam(params=nae.parameters(), lr=1e-3)#, weight_decay=1e-5)
+    optimizer = torch.optim.Adam(params=nae.parameters(), lr=1e-3)  # , weight_decay=1e-5)
     nae = nae.to(device)
 
-    df_log = pd.DataFrame()
-    test_batch_x, test_batch_y = iter(test_dataloader).next()
-
     train_loss_avg = []
+    val_loss_avg = []
 
     print('Training ...')
 
@@ -400,31 +382,46 @@ if __name__ == "__main__":
     for epoch in tqdm_bar:
         train_loss_averager = make_averager()
 
-    batch_bar = tqdm(train_dataloader, leave=False, desc='batch',
-                     total=len(train_dataloader))
-    for image_batch, _ in batch_bar:
-        if do_dequantize:
-            image_batch = dequantize(image_batch)
-        if do_logit_transform:
-            image_batch = to_logit(image_batch, alpha)
-        image_batch = image_batch.to(device)
+        train_batch_bar = tqdm(train_dataloader, leave=False, desc='train batch',
+                         total=len(train_dataloader))
+        val_batch_bar = tqdm(validation_dataloader, leave=False, desc='validation batch',
+                       total=len(validation_dataloader))
+        for image_batch, _ in train_batch_bar:
+            if do_dequantize:
+                image_batch = dequantize(image_batch)
+            if do_logit_transform:
+                image_batch = to_logit(image_batch, alpha)
+            image_batch = image_batch.to(device)
 
-        loss = torch.mean(nae.neg_log_likelihood(image_batch))
-        # backpropagation
-        optimizer.zero_grad()
-        loss.backward()
+            loss = torch.mean(nae.neg_log_likelihood(image_batch))
+            # backpropagation
+            optimizer.zero_grad()
+            loss.backward()
 
-        # one step of the optmizer
-        optimizer.step()
+            # one step of the optmizer
+            optimizer.step()
 
-        refresh_bar(batch_bar,
-                    f"train batch [loss: {train_loss_averager(loss.item()):.3f}]")
+            refresh_bar(train_batch_bar,
+                        f"train batch [loss: {train_loss_averager(loss.item()):.3f}]")
+        val_loss_averager = make_averager()
+        with torch.no_grad():
+            for validation_batch, _ in val_batch_bar:
+                if do_dequantize:
+                    validation_batch = dequantize(validation_batch)
+                if do_logit_transform:
+                    validation_batch = to_logit(validation_batch, alpha)
+                validation_batch = validation_batch.to(device)
+                loss = torch.mean(nae.neg_log_likelihood(validation_batch))
 
-    refresh_bar(tqdm_bar, f"epoch [loss: {train_loss_averager(None):.3f}]")
+                refresh_bar(val_batch_bar,
+                            f"validation batch [loss: {val_loss_averager(loss.item()):.3f}]")
+            val_loss_avg.append(val_loss_averager(None))
 
-    train_loss_avg.append(train_loss_averager(None))
-    plot_loss(train_loss_avg)
-    plt.show()
+        refresh_bar(tqdm_bar, f"epoch [loss: {train_loss_averager(None):.3f}]")
+
+        train_loss_avg.append(train_loss_averager(None))
+    plot_loss(train_loss_avg, val_loss_avg)
+
     samples = nae.sample(16)
     if do_logit_transform:
         samples = from_logit(samples, alpha)
@@ -432,7 +429,11 @@ if __name__ == "__main__":
     _, axs = plt.subplots(4, 4, )
     axs = axs.flatten()
     for img, ax in zip(samples, axs):
-      ax.axis('off')
-      ax.imshow(img.reshape(28,28), cmap='gray')
+        ax.axis('off')
+        ax.imshow(img.reshape(28, 28), cmap='gray')
 
     plt.show()
+
+
+if __name__ == "__main__":
+    main()
