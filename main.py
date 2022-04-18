@@ -337,6 +337,9 @@ class RealNVP(nn.Module):
 
 
 def main():
+
+    torch_generator = torch.Generator().manual_seed(3)
+
     do_dequantize = True
     do_logit_transform = False
 
@@ -350,6 +353,7 @@ def main():
     variational_beta = 1
     alpha = 1e-6
     use_gpu = True
+    validate_every_n_epochs = 5
 
     device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
 
@@ -358,10 +362,18 @@ def main():
     ])
 
     train_dataset = MNIST(root='./data/MNIST', download=True, train=True, transform=img_transform)
-    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
-    validation_dataset = MNIST(root='./data/MNIST', download=True, train=False, transform=img_transform)
-    validation_dataloader = DataLoader(validation_dataset, batch_size=batch_size, shuffle=True)
+    p_validation = 0.05
+    size_validation = round(p_validation * len(train_dataset))
+    size_train = len(train_dataset) - size_validation
+
+    train_subset, val_subset = torch.utils.data.random_split(train_dataset, [size_train, size_validation],
+                                                             generator=torch_generator)
+    train_dataloader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
+    validation_dataloader = DataLoader(val_subset, batch_size=batch_size, shuffle=False)
+
+    test_dataset = MNIST(root='./data/MNIST', download=True, train=False, transform=img_transform)
+    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
     core_flow = RealNVP(input_dim=4, num_flows=6, hidden_units=256)
     encoder = Encoder(64, 4)
@@ -384,8 +396,7 @@ def main():
 
         train_batch_bar = tqdm(train_dataloader, leave=False, desc='train batch',
                          total=len(train_dataloader))
-        val_batch_bar = tqdm(validation_dataloader, leave=False, desc='validation batch',
-                       total=len(validation_dataloader))
+
         for image_batch, _ in train_batch_bar:
             if do_dequantize:
                 image_batch = dequantize(image_batch)
@@ -403,19 +414,22 @@ def main():
 
             refresh_bar(train_batch_bar,
                         f"train batch [loss: {train_loss_averager(loss.item()):.3f}]")
-        val_loss_averager = make_averager()
-        with torch.no_grad():
-            for validation_batch, _ in val_batch_bar:
-                if do_dequantize:
-                    validation_batch = dequantize(validation_batch)
-                if do_logit_transform:
-                    validation_batch = to_logit(validation_batch, alpha)
-                validation_batch = validation_batch.to(device)
-                loss = torch.mean(nae.neg_log_likelihood(validation_batch))
+        if epoch % validate_every_n_epochs == 0:
+            val_batch_bar = tqdm(validation_dataloader, leave=False, desc='validation batch',
+                                 total=len(validation_dataloader))
+            val_loss_averager = make_averager()
+            with torch.no_grad():
+                for validation_batch, _ in val_batch_bar:
+                    if do_dequantize:
+                        validation_batch = dequantize(validation_batch)
+                    if do_logit_transform:
+                        validation_batch = to_logit(validation_batch, alpha)
+                    validation_batch = validation_batch.to(device)
+                    loss = torch.mean(nae.neg_log_likelihood(validation_batch))
 
-                refresh_bar(val_batch_bar,
-                            f"validation batch [loss: {val_loss_averager(loss.item()):.3f}]")
-            val_loss_avg.append(val_loss_averager(None))
+                    refresh_bar(val_batch_bar,
+                                f"validation batch [loss: {val_loss_averager(loss.item()):.3f}]")
+                val_loss_avg.append(val_loss_averager(None))
 
         refresh_bar(tqdm_bar, f"epoch [loss: {train_loss_averager(None):.3f}]")
 
