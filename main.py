@@ -18,6 +18,7 @@ import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 from torchvision.datasets import MNIST
 
+import normflow as nf
 
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
@@ -287,6 +288,46 @@ class Decoder(nn.Module):
             x))  # last layer before output is sigmoid, since we are using BCE as reconstruction loss
         return x, F.softplus(self.pre_sigma).unsqueeze(0).repeat(x.shape[0],1,1,1)
 
+class RealNVP2(nn.Module):
+    def __init__(self, input_dim: int, num_flows: int, hidden_units: int = None, randomize_mask=False):
+        super().__init__()
+
+        self.input_dim = input_dim
+        self.num_flows = num_flows
+        if hidden_units is None:
+            hidden_units = 2 * input_dim
+
+        if randomize_mask:
+            masks = torch.from_numpy(np.random.choice([0, 1], size=(num_flows, input_dim)))
+        else:
+            masks = torch.zeros(num_flows, input_dim)
+            masks[::2, ::2] = 1
+            masks[1::2, 1::2] = 1
+        self.register_buffer('masks', masks)
+
+        flows = []
+        for i in range(num_flows):
+            s = nf.nets.MLP([input_dim, hidden_units, input_dim], init_zeros=True)
+            t = nf.nets.MLP([input_dim, hidden_units, input_dim], init_zeros=True)
+            flows += [nf.flows.MaskedAffineFlow(masks[i, :], t, s)]
+            flows += [nf.flows.ActNorm(input_dim)]
+        self.flows = nn.ModuleList(flows)
+
+    def forward(self, z):
+        log_det = torch.zeros(z.shape[0], device=z.device)
+        for flow in self.flows:
+            z, log_det_z = flow(z)
+            log_det += log_det_z
+        x = z
+        return x#, log_det
+
+    def inverse(self, x):
+        log_det = torch.zeros(x.shape[0], device=x.device)
+        z = x
+        for i in range(len(self.flows) - 1, -1, -1):
+            z, log_det_z = self.flows[i].inverse(z)
+            log_det += log_det_z
+        return z, log_det
 
 class RealNVP(nn.Module):
     def __init__(self, input_dim, num_flows, hidden_units):
@@ -351,8 +392,6 @@ class RealNVP(nn.Module):
         x = self.g(z)
         return x
 
-do_dequantize = True
-do_logit_transform = False
 
 if __name__ == "__main__":
     # 2-d latent space, parameter count in same order of magnitude
@@ -368,6 +407,8 @@ if __name__ == "__main__":
 
     device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
 
+    do_dequantize = True
+    do_logit_transform = False
 
     img_transform = transforms.Compose([
         transforms.ToTensor()
@@ -379,7 +420,7 @@ if __name__ == "__main__":
     test_dataset = MNIST(root='./data/MNIST', download=True, train=False, transform=img_transform)
     test_dataloader = DataLoader(test_dataset, batch_size=max(10000, batch_size), shuffle=True)
 
-    core_flow = RealNVP(input_dim=4, num_flows=6, hidden_units=256)
+    core_flow = RealNVP2(input_dim=4, num_flows=64, hidden_units=None)
     encoder = Encoder(64,4)
     decoder = Decoder(64, 4, [1,28,28])
     mask = torch.zeros(28,28)
