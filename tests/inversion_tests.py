@@ -1,5 +1,7 @@
-from main import NormalizingAutoEncoder, RealNVP, Encoder, Decoder
 import torch
+from flows.realnvp import RealNVP
+from models.autoencoder import Encoder, Decoder
+from models.normalizing_autoencoder import NormalizingAutoEncoder
 
 def test_inverse_nae(nae: NormalizingAutoEncoder, num_channels=3, eps=1e-6):
     input = torch.rand(4, num_channels, 28, 28)
