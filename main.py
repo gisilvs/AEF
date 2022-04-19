@@ -14,7 +14,7 @@ from tqdm import tqdm
 
 from util import make_averager, refresh_bar, plot_loss, dequantize
 
-if __name__ == "__main__":
+def main():
     # 2-d latent space, parameter count in same order of magnitude
     # as in the original VAE paper (VAE paper has about 3x as many)
     latent_dims = 4
@@ -91,3 +91,6 @@ if __name__ == "__main__":
       ax.imshow(img.reshape(28,28), cmap='gray')
 
     plt.show()
+
+if __name__ == "__main__":
+    main()
