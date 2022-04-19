@@ -17,6 +17,7 @@ from torchvision import datasets, models, transforms
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 from torchvision.datasets import MNIST
+from util import get_avg_loss_over_iterations
 
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
@@ -31,6 +32,8 @@ import pandas as pd
 import numpy as np
 
 from typing import Callable, Optional
+
+import util
 
 
 def make_averager() -> Callable[[Optional[float]], float]:
@@ -160,6 +163,7 @@ class NormalizingAutoEncoder(nn.Module):
         return -(loss_z + loss_d + log_j)
 
     def sample(self, num_samples=1, sample_deviations=False):
+        device = next(self.parameters()).device
         z = torch.normal(torch.zeros(num_samples, self.core_size),
                          torch.ones(num_samples, self.core_size)).to(device)
         if sample_deviations:
@@ -346,14 +350,14 @@ def main():
     # 2-d latent space, parameter count in same order of magnitude
     # as in the original VAE paper (VAE paper has about 3x as many)
     latent_dims = 4
-    num_epochs = 2
+    n_iterations = 1000
     batch_size = 128
     capacity = 64
     learning_rate = 1e-3
     variational_beta = 1
     alpha = 1e-6
     use_gpu = True
-    validate_every_n_epochs = 5
+    validate_every_n_iterations = 200
 
     device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
 
@@ -363,7 +367,7 @@ def main():
 
     train_dataset = MNIST(root='./data/MNIST', download=True, train=True, transform=img_transform)
 
-    p_validation = 0.05
+    p_validation = 0.1
     size_validation = round(p_validation * len(train_dataset))
     size_train = len(train_dataset) - size_validation
 
@@ -385,56 +389,62 @@ def main():
     optimizer = torch.optim.Adam(params=nae.parameters(), lr=1e-3)  # , weight_decay=1e-5)
     nae = nae.to(device)
 
-    train_loss_avg = []
-    val_loss_avg = []
+
+
 
     print('Training ...')
 
-    tqdm_bar = tqdm(range(1, num_epochs + 1), desc="epoch [loss: ...]")
-    for epoch in tqdm_bar:
-        train_loss_averager = make_averager()
+    stop = False
+    n_iterations_done = 0
+    iteration_losses = np.zeros((n_iterations, ))
+    val_loss_avg = []
+    averaging_window_size = 100
 
-        train_batch_bar = tqdm(train_dataloader, leave=False, desc='train batch',
-                         total=len(train_dataloader))
+    with tqdm(total=n_iterations, desc="iteration [loss: ...]") as iterations_bar:
+        while not stop:
+            for image_batch, _ in train_dataloader:
+                if do_dequantize:
+                    image_batch = dequantize(image_batch)
+                if do_logit_transform:
+                    image_batch = to_logit(image_batch, alpha)
+                image_batch = image_batch.to(device)
 
-        for image_batch, _ in train_batch_bar:
-            if do_dequantize:
-                image_batch = dequantize(image_batch)
-            if do_logit_transform:
-                image_batch = to_logit(image_batch, alpha)
-            image_batch = image_batch.to(device)
+                loss = torch.mean(nae.neg_log_likelihood(image_batch))
+                iteration_losses[n_iterations_done] = loss.item()
 
-            loss = torch.mean(nae.neg_log_likelihood(image_batch))
-            # backpropagation
-            optimizer.zero_grad()
-            loss.backward()
+                # backpropagation
+                optimizer.zero_grad()
+                loss.backward()
 
-            # one step of the optmizer
-            optimizer.step()
+                # one step of the optmizer
+                optimizer.step()
 
-            refresh_bar(train_batch_bar,
-                        f"train batch [loss: {train_loss_averager(loss.item()):.3f}]")
-        if epoch % validate_every_n_epochs == 0:
-            val_batch_bar = tqdm(validation_dataloader, leave=False, desc='validation batch',
-                                 total=len(validation_dataloader))
-            val_loss_averager = make_averager()
-            with torch.no_grad():
-                for validation_batch, _ in val_batch_bar:
-                    if do_dequantize:
-                        validation_batch = dequantize(validation_batch)
-                    if do_logit_transform:
-                        validation_batch = to_logit(validation_batch, alpha)
-                    validation_batch = validation_batch.to(device)
-                    loss = torch.mean(nae.neg_log_likelihood(validation_batch))
+                refresh_bar(iterations_bar,
+                            f"iteration [loss: "
+                            f"{get_avg_loss_over_iterations(iteration_losses, averaging_window_size, n_iterations_done):.3f}]")
 
-                    refresh_bar(val_batch_bar,
-                                f"validation batch [loss: {val_loss_averager(loss.item()):.3f}]")
-                val_loss_avg.append(val_loss_averager(None))
+                if n_iterations_done % validate_every_n_iterations == 0:
+                    val_batch_bar = tqdm(validation_dataloader, leave=False, desc='validation batch',
+                                         total=len(validation_dataloader))
+                    val_loss_averager = make_averager()
+                    with torch.no_grad():
+                        for validation_batch, _ in val_batch_bar:
+                            if do_dequantize:
+                                validation_batch = dequantize(validation_batch)
+                            if do_logit_transform:
+                                validation_batch = to_logit(validation_batch, alpha)
+                            validation_batch = validation_batch.to(device)
+                            loss = torch.mean(nae.neg_log_likelihood(validation_batch))
 
-        refresh_bar(tqdm_bar, f"epoch [loss: {train_loss_averager(None):.3f}]")
+                            refresh_bar(val_batch_bar,
+                                        f"validation batch [loss: {val_loss_averager(loss.item()):.3f}]")
+                        val_loss_avg.append(val_loss_averager(None))
 
-        train_loss_avg.append(train_loss_averager(None))
-    plot_loss(train_loss_avg, val_loss_avg)
+                n_iterations_done += 1
+                iterations_bar.update(1)
+                if n_iterations_done >= n_iterations:
+                    stop = True
+                    break
 
     samples = nae.sample(16)
     if do_logit_transform:
