@@ -17,7 +17,7 @@ from torchvision import datasets, models, transforms
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 from torchvision.datasets import MNIST
-from util import get_avg_loss_over_iterations
+from util import get_avg_loss_over_iterations, plot_loss_over_iterations
 
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
@@ -87,15 +87,7 @@ def run_on_testbatch(df_log, vae, epoch, x, y):
     return save_in_dataframe(df_log, y, mus, stddevs, epoch)
 
 
-def plot_loss(train_loss, val_loss=None):
-    plt.figure()
-    plt.plot(np.arange(len(train_loss)), train_loss, color='tab:blue')
-    if val_loss is not None:
-        plt.plot(np.arange(len(val_loss)), val_loss, color='tab:orange')
-    plt.legend(["Training loss"] if val_loss is None else ["Training loss", "Validation loss"])
-    plt.xlabel("Epoch")
-    plt.ylabel("Negative log likelihood")
-    plt.show()
+
 
 
 def refresh_bar(bar, desc):
@@ -396,17 +388,16 @@ def main():
 
     stop = False
     n_iterations_done = 0
+    n_times_validated = 0
     iteration_losses = np.zeros((n_iterations, ))
-    val_loss_avg = []
-    averaging_window_size = 100
+    validation_losses = np.zeros(((n_iterations // validate_every_n_iterations) + 1, ))
+    averaging_window_size = 10
 
     with tqdm(total=n_iterations, desc="iteration [loss: ...]") as iterations_bar:
         while not stop:
             for image_batch, _ in train_dataloader:
                 if do_dequantize:
                     image_batch = dequantize(image_batch)
-                if do_logit_transform:
-                    image_batch = to_logit(image_batch, alpha)
                 image_batch = image_batch.to(device)
 
                 loss = torch.mean(nae.neg_log_likelihood(image_batch))
@@ -423,7 +414,8 @@ def main():
                             f"iteration [loss: "
                             f"{get_avg_loss_over_iterations(iteration_losses, averaging_window_size, n_iterations_done):.3f}]")
 
-                if n_iterations_done % validate_every_n_iterations == 0:
+                # We validate first epoch
+                if (n_iterations_done % validate_every_n_iterations) == 0 or (n_iterations_done == n_iterations - 1):
                     val_batch_bar = tqdm(validation_dataloader, leave=False, desc='validation batch',
                                          total=len(validation_dataloader))
                     val_loss_averager = make_averager()
@@ -431,20 +423,23 @@ def main():
                         for validation_batch, _ in val_batch_bar:
                             if do_dequantize:
                                 validation_batch = dequantize(validation_batch)
-                            if do_logit_transform:
-                                validation_batch = to_logit(validation_batch, alpha)
                             validation_batch = validation_batch.to(device)
                             loss = torch.mean(nae.neg_log_likelihood(validation_batch))
 
                             refresh_bar(val_batch_bar,
                                         f"validation batch [loss: {val_loss_averager(loss.item()):.3f}]")
-                        val_loss_avg.append(val_loss_averager(None))
+                        validation_losses[n_times_validated] = val_loss_averager(None)
+                        n_times_validated += 1
 
                 n_iterations_done += 1
                 iterations_bar.update(1)
                 if n_iterations_done >= n_iterations:
                     stop = True
                     break
+
+
+    plot_loss_over_iterations(iteration_losses, validation_losses, np.arange(n_times_validated) * validate_every_n_iterations)
+
 
     samples = nae.sample(16)
     if do_logit_transform:
