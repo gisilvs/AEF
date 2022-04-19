@@ -5,8 +5,7 @@ from models.normalizing_autoencoder import NormalizingAutoEncoder
 
 def test_inverse_nae(nae: NormalizingAutoEncoder, num_channels=3, eps=1e-6):
     input = torch.rand(4, num_channels, 28, 28)
-    core, shell = nae.partition(input)
-    z, deviations, _ = nae.embedding(core, shell)
+    z, deviations, _ = nae.embedding(input)
     returned_core, returned_shell = nae.forward(z, deviations)
     returned_input = nae.inverse_partition(returned_core, returned_shell)
     return torch.sum(torch.abs(input - returned_input) >= eps) == 0
@@ -15,7 +14,8 @@ def test_forward_nae(nae: NormalizingAutoEncoder, num_channels=3, eps=1e-6):
     input = torch.rand(4, num_channels, 28, 28)
     z, deviations = nae.partition(input)
     core, shell = nae.forward(z, deviations)
-    returned_z, returned_deviations, _ = nae.embedding(core, shell)
+    output = nae.inverse_partition(core, shell)
+    returned_z, returned_deviations, _ = nae.embedding(output)
     returned_input = nae.inverse_partition(returned_z, returned_deviations)
     return torch.sum(torch.abs(input - returned_input) >= eps) == 0
 
