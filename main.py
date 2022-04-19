@@ -1,10 +1,10 @@
 import matplotlib.pyplot as plt
 
-import torchvision
 from util import get_avg_loss_over_iterations, plot_loss_over_iterations
 import normflow as nf
 import torch
 
+import numpy as np
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 from torchvision.datasets import MNIST
@@ -15,8 +15,11 @@ from models.normalizing_autoencoder import NormalizingAutoEncoder
 from util import make_averager, refresh_bar, plot_loss, dequantize
 
 def main():
+    torch_generator = torch.Generator().manual_seed(3)
+
     # 2-d latent space, parameter count in same order of magnitude
     # as in the original VAE paper (VAE paper has about 3x as many)
+    n_iterations=1000
     latent_dims = 4
     num_epochs = 2
     batch_size = 128
