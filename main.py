@@ -1,18 +1,16 @@
-import torch
 import matplotlib.pyplot as plt
 import normflow as nf
-
+import torch
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 from torchvision.datasets import MNIST
+from tqdm import tqdm
 
 from flows.realnvp import RealNVP
 from models.autoencoder import Encoder, Decoder
 from models.normalizing_autoencoder import NormalizingAutoEncoder
-
-from tqdm import tqdm
-
 from util import make_averager, refresh_bar, plot_loss, dequantize
+
 
 def main():
     # 2-d latent space, parameter count in same order of magnitude
@@ -49,6 +47,7 @@ def main():
     preprocessing_layers = [nf.transforms.Logit(alpha), nf.flows.ActNorm([1,28,28])]
     nae = NormalizingAutoEncoder(core_flow, encoder, decoder, mask, preprocessing_layers)
     optimizer = torch.optim.Adam(params=nae.parameters(), lr=1e-3)#, weight_decay=1e-5)
+
     nae = nae.to(device)
 
     train_loss_avg = []
@@ -87,8 +86,8 @@ def main():
     _, axs = plt.subplots(4, 4, )
     axs = axs.flatten()
     for img, ax in zip(samples, axs):
-      ax.axis('off')
-      ax.imshow(img.reshape(28,28), cmap='gray')
+        ax.axis('off')
+        ax.imshow(img.reshape(28, 28), cmap='gray')
 
     plt.show()
 
