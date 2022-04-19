@@ -68,3 +68,8 @@ def plot_loss(train_loss, val_loss=None):
 def refresh_bar(bar, desc):
     bar.set_description(desc)
     bar.refresh()
+
+def dequantize(batch): # TODO: move somewhere else
+    noise = torch.rand(*batch.shape)
+    batch = (batch * 255. + noise) / 256.
+    return batch

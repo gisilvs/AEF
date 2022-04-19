@@ -1,4 +1,3 @@
-
 import torch
 import matplotlib.pyplot as plt
 import normflow as nf
@@ -7,13 +6,13 @@ import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 from torchvision.datasets import MNIST
 
-from autoencoders import NormalizingAutoEncoder, Encoder, Decoder
-from data_util import dequantize
-from flows import RealNVP
+from flows.realnvp import RealNVP
+from models.autoencoder import Encoder, Decoder
+from models.normalizing_autoencoder import NormalizingAutoEncoder
 
 from tqdm import tqdm
 
-from util import make_averager, refresh_bar, plot_loss
+from util import make_averager, refresh_bar, plot_loss, dequantize
 
 if __name__ == "__main__":
     # 2-d latent space, parameter count in same order of magnitude

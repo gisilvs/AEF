@@ -16,7 +16,7 @@ class RealNVP(nn.Module):
         masks = torch.zeros(num_flows, input_dim)
         masks[::2, ::2] = 1
         masks[1::2, 1::2] = 1
-        self.register_buffer('masks', masks)
+        self.register_buffer('masks', masks)  # Ensure masks are transferred to device
 
         flows = []
         for i in range(num_flows):
@@ -32,7 +32,7 @@ class RealNVP(nn.Module):
             z, log_det_z = flow(z)
             log_det += log_det_z
         x = z
-        return x#, log_det
+        return x#, log_det # TODO: decide whether we want to return the log_determinant in the forward direction
 
     def inverse(self, x):
         log_det = torch.zeros(x.shape[0], device=x.device)
