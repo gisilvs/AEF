@@ -19,7 +19,7 @@ def main():
 
     # 2-d latent space, parameter count in same order of magnitude
     # as in the original VAE paper (VAE paper has about 3x as many)
-    n_iterations=1000
+    n_iterations = 2000
     latent_dims = 4
     num_epochs = 2
     batch_size = 128
@@ -28,7 +28,7 @@ def main():
     variational_beta = 1
     alpha = 1e-6
     use_gpu = True
-    validate_every_n_iterations = 200
+    validate_every_n_iterations = 1000
 
     device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
 
@@ -63,17 +63,6 @@ def main():
     optimizer = torch.optim.Adam(params=nae.parameters(), lr=1e-3)#, weight_decay=1e-5)
 
     nae = nae.to(device)
-
-    train_loss_avg = []
-
-    print('Training ...')
-
-    batch_bar = tqdm(train_dataloader, leave=False, desc='batch',
-                     total=len(train_dataloader))
-    for image_batch, _ in batch_bar:
-        if do_dequantize:
-            image_batch = dequantize(image_batch)
-        image_batch = image_batch.to(device)
 
     print('Training ...')
 
@@ -128,8 +117,8 @@ def main():
                     stop = True
                     break
 
-
-    plot_loss_over_iterations(iteration_losses, validation_losses, np.arange(n_times_validated) * validate_every_n_iterations)
+    plot_loss_over_iterations(iteration_losses, validation_losses,
+                              np.arange(n_times_validated) * validate_every_n_iterations)
 
     for i in range(4):
         samples = nae.sample(16)
