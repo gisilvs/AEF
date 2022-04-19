@@ -131,16 +131,16 @@ def main():
 
     plot_loss_over_iterations(iteration_losses, validation_losses, np.arange(n_times_validated) * validate_every_n_iterations)
 
+    for i in range(4):
+        samples = nae.sample(16)
+        samples = samples.cpu().detach().numpy()
+        _, axs = plt.subplots(4, 4, )
+        axs = axs.flatten()
+        for img, ax in zip(samples, axs):
+            ax.axis('off')
+            ax.imshow(img.reshape(28, 28), cmap='gray')
 
-    samples = nae.sample(16)
-    samples = samples.cpu().detach().numpy()
-    _, axs = plt.subplots(4, 4, )
-    axs = axs.flatten()
-    for img, ax in zip(samples, axs):
-        ax.axis('off')
-        ax.imshow(img.reshape(28, 28), cmap='gray')
-
-    plt.show()
+        plt.show()
 
 if __name__ == "__main__":
     main()
