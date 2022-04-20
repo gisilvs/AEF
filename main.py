@@ -13,9 +13,9 @@ from flows.realnvp import RealNVP
 from models.autoencoder import Encoder, Decoder
 from models.normalizing_autoencoder import NormalizingAutoEncoder
 from util import make_averager, refresh_bar, plot_loss, dequantize
+from datasets import get_train_val_dataloaders
 
 def main():
-    torch_generator = torch.Generator().manual_seed(3)
 
     # 2-d latent space, parameter count in same order of magnitude
     # as in the original VAE paper (VAE paper has about 3x as many)
@@ -33,25 +33,9 @@ def main():
     device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
 
     do_dequantize = True
-    
-    img_transform = transforms.Compose([
-        transforms.ToTensor()
-    ])
-
-    train_dataset = MNIST(root='./data/MNIST', download=True, train=True, transform=img_transform)
 
     p_validation = 0.1
-    size_validation = round(p_validation * len(train_dataset))
-    size_train = len(train_dataset) - size_validation
-
-    image_dim = [1, 28, 28] # todo: this shuold be returned together with the dataset
-    train_subset, val_subset = torch.utils.data.random_split(train_dataset, [size_train, size_validation],
-                                                             generator=torch_generator)
-    train_dataloader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
-    validation_dataloader = DataLoader(val_subset, batch_size=batch_size, shuffle=False)
-
-    test_dataset = MNIST(root='./data/MNIST', download=True, train=False, transform=img_transform)
-    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    train_dataloader, validation_dataloader, image_dim = get_train_val_dataloaders('mnist', batch_size, p_validation)
 
     core_flow = RealNVP(input_dim=4, num_flows=6, hidden_units=256)
     encoder = Encoder(64,4, image_dim)
