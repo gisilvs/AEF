@@ -19,7 +19,7 @@ def main():
 
     # 2-d latent space, parameter count in same order of magnitude
     # as in the original VAE paper (VAE paper has about 3x as many)
-    n_iterations = 2000
+    n_iterations = 200
     latent_dims = 4
     num_epochs = 2
     batch_size = 128
@@ -28,7 +28,7 @@ def main():
     variational_beta = 1
     alpha = 1e-6
     use_gpu = True
-    validate_every_n_iterations = 1000
+    validate_every_n_iterations = 50
 
     device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
 
@@ -71,7 +71,8 @@ def main():
     n_iterations_done = 0
     n_times_validated = 0
     iteration_losses = np.zeros((n_iterations, ))
-    validation_losses = np.zeros(((n_iterations // validate_every_n_iterations) + 1, ))
+    validation_losses = []
+    validation_iterations = []
     averaging_window_size = 10
 
     with tqdm(total=n_iterations, desc="iteration [loss: ...]") as iterations_bar:
@@ -109,7 +110,8 @@ def main():
 
                             refresh_bar(val_batch_bar,
                                         f"validation batch [loss: {val_loss_averager(loss.item()):.3f}]")
-                        validation_losses[n_times_validated] = val_loss_averager(None)
+                        validation_losses.append(val_loss_averager(None))
+                        validation_iterations.append(n_iterations_done)
                         n_times_validated += 1
 
                 n_iterations_done += 1
@@ -119,7 +121,7 @@ def main():
                     break
 
     plot_loss_over_iterations(iteration_losses, validation_losses,
-                              np.arange(n_times_validated) * validate_every_n_iterations)
+                              validation_iterations)
 
     for i in range(4):
         samples = nae.sample(16)
