@@ -20,7 +20,7 @@ import wandb
 def main():
 
     run = wandb.init(project="test-project", entity="nae", name=None) #todo: name should be defined with command line arguments
-                                                                            #todo: example {model}_{dataset}_{latent_space_dim}_{run_number}
+                                                                      #todo: example {model}_{dataset}_{latent_space_dim}_{run_number}
     # 2-d latent space, parameter count in same order of magnitude
     # as in the original VAE paper (VAE paper has about 3x as many)
     model_name = 'test'
@@ -28,9 +28,7 @@ def main():
     dataset = 'mnist'
     latent_dims = 4
     batch_size = 128
-    capacity = 64
     learning_rate = 1e-3
-    variational_beta = 1
     use_gpu = True
     validate_every_n_iterations = 50
 
@@ -41,8 +39,6 @@ def main():
         "dataset": dataset,
         "latent_dims": latent_dims
     }
-    if dataset == 'mnist':
-        alpha = 1e-6
 
     device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
 
@@ -59,7 +55,7 @@ def main():
     mask = mask.to(device)
     preprocessing_layers = [nf.transforms.Logit(alpha), nf.flows.ActNorm(image_dim)]
     model = NormalizingAutoEncoder(core_flow, encoder, decoder, mask, preprocessing_layers)
-    optimizer = torch.optim.Adam(params=model.parameters(), lr=learning_rate)#, weight_decay=1e-5)
+    optimizer = torch.optim.Adam(params=model.parameters(), lr=learning_rate)
 
     model = model.to(device)
 
@@ -92,8 +88,6 @@ def main():
 
                 # one step of the optmizer
                 optimizer.step()
-
-                wandb.watch(model)
 
                 refresh_bar(iterations_bar,
                             f"iteration [loss: "
@@ -130,8 +124,8 @@ def main():
                             'model_state_dict': model.state_dict(),
                             'optimizer_state_dict': optimizer.state_dict(),
                             'iteration_losses': iteration_losses,
-                            'validation_losses': validation_losses
-                                    },
+                            'validation_losses': validation_losses,
+                            'best_loss': best_loss},
                         f'checkpoints/{model_name}_latest.pt')
                         n_times_validated += 1
 
@@ -154,7 +148,7 @@ def main():
     artifact_latest = wandb.Artifact('model_latest', type='model')
     artifact_latest.add_file(f'checkpoints/{model_name}_latest.pt')
     run.log_artifact(artifact_latest)
-    run.finish()
+
 
     for i in range(4):
         samples = model.sample(16)
@@ -167,5 +161,6 @@ def main():
 
         plt.show()
 
+    run.finish()
 if __name__ == "__main__":
     main()
