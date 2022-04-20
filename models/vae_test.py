@@ -10,7 +10,6 @@ from torch.utils.data import DataLoader
 from torchvision.datasets import MNIST
 from tqdm import tqdm
 from flows.realnvp import RealNVP
-from models.autoencoder import Encoder, Decoder
 from models.normalizing_autoencoder import NormalizingAutoEncoder
 from util import make_averager, refresh_bar, plot_loss, dequantize
 from datasets import get_train_val_dataloaders
@@ -27,14 +26,14 @@ learning_rate = 1e-3
 variational_beta = 1
 alpha = 1e-6
 use_gpu = True
-validate_every_n_iterations = 500
+validate_every_n_iterations = 200
 
 device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
 
 do_dequantize = True
 
 p_validation = 0.1
-train_dataloader, validation_dataloader, image_dim = get_train_val_dataloaders('mnist', batch_size, p_validation)
+train_dataloader, validation_dataloader, image_dim, alpha = get_train_val_dataloaders('mnist', batch_size, p_validation)
 
 # encoder = Encoder(64,4, image_dim)
 # decoder = Decoder(64, 4, image_dim)
