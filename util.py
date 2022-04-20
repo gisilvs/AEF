@@ -104,12 +104,14 @@ def vae_log_prob(vae, images, n_samples):
     Implementation of importance sampling marginal likelihood for VAEs
     :return:
     '''
-    repeated_images = torch.repeat_interleave(images, n_samples, dim=0)
+    #repeated_images = torch.repeat_interleave(images, n_samples, dim=0)
+    # repeated_images = images.repeat(n_samples, 1,1,1)
     batch_size = images.shape[0]
     mu_z, sigma_z = vae.encode(images)
     samples = Normal(mu_z, sigma_z).sample([n_samples])
     mu_x, sigma_x = vae.decode(samples.view(n_samples*batch_size, -1))
-    p_x_z = Normal(mu_x, sigma_x).log_prob(repeated_images).sum([1,2,3])
+    mu_x, sigma_x = mu_x.view(n_samples, batch_size, -1), sigma_x.view(n_samples, batch_size, -1)
+    p_x_z = Normal(mu_x, sigma_x).log_prob(images).sum([1,2,3])
     p_latent = Normal(0,1).log_prob(samples).sum([-1]).view(-1)
     q_latent = Normal(mu_z, sigma_z).log_prob(samples).sum([-1]).view(-1)
 

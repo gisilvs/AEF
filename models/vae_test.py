@@ -14,6 +14,7 @@ from models.normalizing_autoencoder import NormalizingAutoEncoder
 from util import make_averager, refresh_bar, plot_loss, dequantize
 from datasets import get_train_val_dataloaders
 from models.vae import VAE
+from util import vae_log_prob
 
 # 2-d latent space, parameter count in same order of magnitude
 # as in the original VAE paper (VAE paper has about 3x as many)
@@ -26,7 +27,7 @@ learning_rate = 1e-3
 variational_beta = 1
 alpha = 1e-6
 use_gpu = True
-validate_every_n_iterations = 200
+validate_every_n_iterations = 1000
 
 device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
 
@@ -87,16 +88,19 @@ with tqdm(total=n_iterations, desc="iteration [loss: ...]") as iterations_bar:
                 val_batch_bar = tqdm(validation_dataloader, leave=False, desc='validation batch',
                                      total=len(validation_dataloader))
                 val_loss_averager = make_averager()
+                val_log_prob_averager = make_averager()
                 with torch.no_grad():
                     for validation_batch, _ in val_batch_bar:
                         if do_dequantize:
                             validation_batch = dequantize(validation_batch)
                         validation_batch = validation_batch.to(device)
                         loss = torch.mean(vae.loss_function(validation_batch))
-
+                        log_prob = vae_log_prob(vae, validation_batch, 128)
+                        val_log_prob_averager(log_prob.item())
                         refresh_bar(val_batch_bar,
                                     f"validation batch [loss: {val_loss_averager(loss.item()):.3f}]")
                     validation_losses.append(val_loss_averager(None))
+                    print(-val_log_prob_averager(None))
                     validation_iterations.append(n_iterations_done)
                     n_times_validated += 1
 
