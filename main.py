@@ -44,6 +44,7 @@ def main():
     size_validation = round(p_validation * len(train_dataset))
     size_train = len(train_dataset) - size_validation
 
+    image_dim = [1, 28, 28] # todo: this shuold be returned together with the dataset
     train_subset, val_subset = torch.utils.data.random_split(train_dataset, [size_train, size_validation],
                                                              generator=torch_generator)
     train_dataloader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
@@ -53,8 +54,8 @@ def main():
     test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
     core_flow = RealNVP(input_dim=4, num_flows=6, hidden_units=256)
-    encoder = Encoder(64,4)
-    decoder = Decoder(64, 4, [1,28,28])
+    encoder = Encoder(64,4, image_dim)
+    decoder = Decoder(64, 4, image_dim)
     mask = torch.zeros(28,28)
     mask[13:15, 13:15] = 1
     mask = mask.to(device)
