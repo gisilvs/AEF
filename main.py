@@ -98,6 +98,14 @@ def main():
                     val_batch_bar = tqdm(validation_dataloader, leave=False, desc='validation batch',
                                          total=len(validation_dataloader))
                     val_loss_averager = make_averager()
+                    samples = model.sample(16)
+                    samples = samples.cpu().detach().numpy()
+                    _, axs = plt.subplots(4, 4, )
+                    axs = axs.flatten()
+                    for img, ax in zip(samples, axs):
+                        ax.axis('off')
+                        ax.imshow(img.reshape(28, 28), cmap='gray')
+                    run.log({'samples': plt})
                     with torch.no_grad():
                         for validation_batch, _ in val_batch_bar:
                             if do_dequantize:
@@ -138,28 +146,15 @@ def main():
                     stop = True
                     break
 
-    plot_loss_over_iterations(iteration_losses, validation_losses,
-                              validation_iterations)
-    wandb.summary['best_iteration'] = best_it
-    wandb.summary['best_val_loss'] = best_loss
     artifact_best = wandb.Artifact('model_best', type='model')
     artifact_best.add_file(f'checkpoints/{model_name}_best.pt')
     run.log_artifact(artifact_best)
     artifact_latest = wandb.Artifact('model_latest', type='model')
     artifact_latest.add_file(f'checkpoints/{model_name}_latest.pt')
     run.log_artifact(artifact_latest)
-
-
-    for i in range(4):
-        samples = model.sample(16)
-        samples = samples.cpu().detach().numpy()
-        _, axs = plt.subplots(4, 4, )
-        axs = axs.flatten()
-        for img, ax in zip(samples, axs):
-            ax.axis('off')
-            ax.imshow(img.reshape(28, 28), cmap='gray')
-
-        plt.show()
+    final_metrics = {'best_iteration': best_it,
+                     'best_val_loss': best_loss}
+    run.log(final_metrics)
 
     run.finish()
 if __name__ == "__main__":
