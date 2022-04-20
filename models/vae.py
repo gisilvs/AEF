@@ -2,6 +2,7 @@ import torch
 from torch import Tensor, distributions, nn
 from autoencoder_base import AutoEncoder
 from models.autoencoder import Encoder, Decoder
+import torch.nn.functional as F
 
 
 class VAE(AutoEncoder):
@@ -34,25 +35,19 @@ class VAE(AutoEncoder):
     def forward(self, x: Tensor):
         z_mu, z_sigma = self.encode(x)
         z = distributions.normal.Normal(z_mu, z_sigma).rsample().to(self.get_device())
-        x_reconstructed = self.decode(z)
-        return x_reconstructed, z_mu, z_sigma
+        x_mu, x_sigma = self.decoder(z)
+        return x_mu, x_sigma, z_mu, z_sigma
 
     def loss_function(self, x: Tensor):
-        x_reconstructed, z_mu, z_sigma = self.forward(x)
-        reconstruction_loss_func = nn.MSELoss()
-        reconstruction_loss = reconstruction_loss_func(x, x_reconstructed)
+        x_mu, x_sigma, z_mu, z_sigma = self.forward(x)
+        reconstruction_loss = -torch.distributions.normal.Normal(x_mu,torch.ones_like(x_sigma)).log_prob(x).sum([1,2,3])
 
+        q_z = distributions.normal.Normal(z_mu, z_sigma)
+        p_z = distributions.normal.Normal(torch.zeros(self.latent_dim).to(self.get_device()),
+                                          torch.ones(self.latent_dim).to(self.get_device()))
 
-        # q_z = distributions.normal.Normal(z_mu, torch.exp(z_sigma))
-        # p_z = distributions.normal.Normal(torch.zeros(self.latent_dim).to(self.get_device()),
-        #                                   torch.ones(self.latent_dim).to(self.get_device()))
-        #
-        # kl_div = distributions.kl.kl_divergence(p_z, q_z)
-        kl_div = torch.mean(z_sigma**2 + z_mu**2 - torch.log(z_sigma)**2 - 0.5)
-
-        return reconstruction_loss - kl_div
-
-
+        kl_div = distributions.kl.kl_divergence(q_z,p_z).sum(1)
+        return reconstruction_loss + kl_div
 
     def get_device(self):
         if self.device is None:

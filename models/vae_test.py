@@ -27,7 +27,7 @@ learning_rate = 1e-3
 variational_beta = 1
 alpha = 1e-6
 use_gpu = True
-validate_every_n_iterations = 1000
+validate_every_n_iterations = 200
 
 device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
 
@@ -38,7 +38,7 @@ train_dataloader, validation_dataloader, image_dim = get_train_val_dataloaders('
 
 # encoder = Encoder(64,4, image_dim)
 # decoder = Decoder(64, 4, image_dim)
-vae = VAE(64, 4, image_dim)
+vae = VAE(64, 2, image_dim)
 vae = vae.to(device)
 optimizer = torch.optim.Adam(params=vae.parameters(), lr=1e-3)#, weight_decay=1e-5)
 
@@ -75,6 +75,16 @@ with tqdm(total=n_iterations, desc="iteration [loss: ...]") as iterations_bar:
 
             # We validate first epoch
             if (n_iterations_done % validate_every_n_iterations) == 0 or (n_iterations_done == n_iterations - 1):
+
+                samples = vae.sample(16)
+                samples = samples.cpu().detach().numpy()
+                _, axs = plt.subplots(4, 4, )
+                axs = axs.flatten()
+                for img, ax in zip(samples, axs):
+                    ax.axis('off')
+                    ax.imshow(img.reshape(28, 28), cmap='gray')
+
+                plt.show()
                 val_batch_bar = tqdm(validation_dataloader, leave=False, desc='validation batch',
                                      total=len(validation_dataloader))
                 val_loss_averager = make_averager()
