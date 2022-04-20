@@ -35,7 +35,7 @@ def main():
     do_dequantize = True
 
     p_validation = 0.1
-    train_dataloader, validation_dataloader = get_train_val_dataloaders('mnist', batch_size, p_validation)
+    train_dataloader, validation_dataloader, image_dim = get_train_val_dataloaders('mnist', batch_size, p_validation)
 
     core_flow = RealNVP(input_dim=4, num_flows=6, hidden_units=256)
     encoder = Encoder(64,4, image_dim)

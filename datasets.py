@@ -10,14 +10,19 @@ def get_transform(dataset: str = 'mnist'):
     ])
     return img_transform
 
-def get_train_val_dataloaders(dataset: str = 'mnist', batch_size: int = 128, p_validation: float = 0.1, seed: int = 3):
+def get_train_val_dataloaders(dataset: str = 'mnist', batch_size: int = 128, p_validation: float = 0.1, seed: int = 3,
+                              return_img_dim: bool = True):
     '''
     Returns a train dataloader and a validation dataloader if p_validation > 0.
     :param dataset: dataset to retrieve. Either "mnist", "emnist" or "fashionmnist".
     :param batch_size: batch size for each dataloader.
     :param p_validation: percentage of original training set to take for validation
-    :param seed: manual seed for reproducability
-    :return: (train_dataloader, val_dataloader) if p_validation > 0 else train_dataloader
+    :param seed: manual seed for reproducibility
+    :param return_img_dim: whether to return the img dimensions
+    :return: if return_img_dim:
+                (train_dataloader, val_dataloader, img_dim) if p_validation > 0 else (train_dataloader, img_dim)
+            else:
+                (train_dataloader, val_dataloader) if p_validation > 0 else train_dataloader
     '''
 
     assert (p_validation >= 0) and (p_validation <= 1)
@@ -39,9 +44,18 @@ def get_train_val_dataloaders(dataset: str = 'mnist', batch_size: int = 128, p_v
                                                              generator=torch_rng)
         train_dataloader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
         validation_dataloader = DataLoader(val_subset, batch_size=batch_size, shuffle=False)
-        return train_dataloader, validation_dataloader
+
+        if return_img_dim:
+            img_dim = train_dataset[0][0].shape
+            return train_dataloader, validation_dataloader, img_dim
+        else:
+            return train_dataloader, validation_dataloader
     else:
-        return DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+        if return_img_dim:
+            img_dim = train_dataset[0].shape
+            return DataLoader(train_dataset, batch_size=batch_size, shuffle=True), img_dim
+        else:
+            return DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
 def get_test_dataloader(dataset: str = 'mnist', batch_size: int = 128):
 
