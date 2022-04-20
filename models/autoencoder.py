@@ -129,7 +129,7 @@ class IndependentVarianceDecoder(nn.Module):
         x = x.view(x.size(0), self.hidden_channels * 2, self.output_shape[1]//4, self.output_shape[2]//4)
         x = self.activation(self.conv2(x))
         x = self.conv1(x)
-        return x, F.softplus(self.pre_sigma)
+        return x, F.softplus(self.pre_sigma).unsqueeze(0).repeat(x.shape[0])
 
 
 
