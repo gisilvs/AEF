@@ -27,7 +27,7 @@ learning_rate = 1e-3
 variational_beta = 1
 alpha = 1e-6
 use_gpu = True
-validate_every_n_iterations = 200
+validate_every_n_iterations = 500
 
 device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
 
@@ -38,7 +38,7 @@ train_dataloader, validation_dataloader, image_dim = get_train_val_dataloaders('
 
 # encoder = Encoder(64,4, image_dim)
 # decoder = Decoder(64, 4, image_dim)
-vae = VAE(64, 2, image_dim)
+vae = VAE(64, 4, image_dim)
 vae = vae.to(device)
 optimizer = torch.optim.Adam(params=vae.parameters(), lr=1e-3)#, weight_decay=1e-5)
 
