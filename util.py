@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
+from torch.distributions.normal import Normal
 
 def get_avg_loss_over_iterations(iteration_losses: np.array, window_size: int, cur_iteration: int):
     low_window = max(0, cur_iteration - window_size)
@@ -97,3 +98,19 @@ def dequantize(batch): # TODO: move somewhere else
     noise = torch.rand(*batch.shape)
     batch = (batch * 255. + noise) / 256.
     return batch
+
+def vae_log_prob(vae, images, n_samples):
+    '''
+    Implementation of importance sampling marginal likelihood for VAEs
+    :return:
+    '''
+    repeated_images = images.repeat(n_samples,1,1,1)
+    batch_size = images.shape[0]
+    mu_z, sigma_z = vae.encode(images)
+    samples = Normal(mu_z, sigma_z).sample(n_samples)
+    mu_x, sigma_x = vae.decode(samples.view(n_samples*batch_size, -1))
+    p_x_z = Normal(mu_x, sigma_x).log_prob(repeated_images)
+    p_latent = Normal(0,1).log_prob(samples)
+    q_latent = Normal(mu_z, sigma_z).log_prob(samples)
+
+    return p_x_z*p_latent/q_latent
