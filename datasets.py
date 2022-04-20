@@ -48,15 +48,15 @@ def get_train_val_dataloaders(dataset: str = 'mnist', batch_size: int = 128, p_v
         train_dataloader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
         validation_dataloader = DataLoader(val_subset, batch_size=batch_size, shuffle=False)
 
-        return_tuple = (train_dataloader, validation_dataloader)
+        return_tuple = [train_dataloader, validation_dataloader]
     else:
-        return_tuple = (DataLoader(train_dataset, batch_size=batch_size, shuffle=True))
+        return_tuple = [DataLoader(train_dataset, batch_size=batch_size, shuffle=True)]
 
     if return_img_dim:
-        img_dim = train_dataset[0].shape
-        return_tuple += img_dim
+        img_dim = train_dataset[0][0].shape
+        return_tuple.append(img_dim)
     if return_alpha:
-        return_tuple += alpha
+        return_tuple.append(alpha)
 
     return return_tuple
 
