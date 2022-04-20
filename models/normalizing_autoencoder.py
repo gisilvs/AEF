@@ -56,25 +56,24 @@ class NormalizingAutoEncoder(nn.Module):
         device = next(self.parameters()).device
         z = torch.normal(torch.zeros(num_samples, self.core_size),
                          torch.ones(num_samples, self.core_size)).to(device)
-
         if sample_deviations:
             deviations = torch.normal(torch.zeros_like(self.mask),
                                       torch.ones_like(self.mask)).to(device)
-            core, shell = self.forward(z, deviations)
         else:
-            shell, _ = self.decoder(z)
-            shell = shell * (1 - self.mask)
-            mu_z, sigma_z = self.encoder(shell)
-            core = z * (sigma_z + self.eps) + mu_z
-            core = self.core_flow.forward(core)
+            deviations = None
+
+        core, shell = self.forward(z, deviations)
         y = self.inverse_partition(core, shell)
         for i in range(len(self.preprocessing_layers) - 1, -1, -1):
             y, _ = self.preprocessing_layers[i](y)
         return y
 
-    def forward(self, z, deviations):
+    def forward(self, z, deviations=None):
         mu_d, sigma_d = self.decoder(z)
-        shell = deviations * (sigma_d + self.eps) + mu_d
+        if deviations is None:
+            shell = mu_d
+        else:
+            shell = deviations * (sigma_d + self.eps) + mu_d
         shell = shell * (1 - self.mask)
         mu_z, sigma_z = self.encoder(shell)
         core = z * (sigma_z + self.eps) + mu_z

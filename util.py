@@ -1,4 +1,4 @@
-from typing import Mapping, Union, Optional, Callable
+from typing import Mapping, Union, Optional, Callable, List
 import pandas as pd
 import numpy as np
 import torch
@@ -9,8 +9,8 @@ def get_avg_loss_over_iterations(iteration_losses: np.array, window_size: int, c
     high_window = cur_iteration + 1
     return np.mean(iteration_losses[low_window:high_window])
 
-def plot_loss_over_iterations(iterations_losses: np.array, val_losses: np.array = None,
-                              val_iterations: np.array = None, window_size: int = 10):
+def plot_loss_over_iterations(iterations_losses: np.array, val_losses: List = None,
+                              val_iterations: List = None, window_size: int = 10):
     def moving_average(a, n=window_size):
         ret = np.cumsum(a, dtype=float)
         ret[n:] = (ret[n:] - ret[:-n])/n

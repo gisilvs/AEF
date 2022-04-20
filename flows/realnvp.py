@@ -4,14 +4,13 @@ import normflow as nf
 import numpy as np
 
 class RealNVP(nn.Module):
-    def __init__(self, input_dim: int, num_flows: int, hidden_units: int = None, randomize_mask=False):
+    def __init__(self, input_dim: int, num_flows: int, hidden_units: int = None):
         super().__init__()
 
         self.input_dim = input_dim
         self.num_flows = num_flows
         if hidden_units is None:
             hidden_units = 2 * input_dim
-
 
         masks = torch.zeros(num_flows, input_dim)
         masks[::2, ::2] = 1
