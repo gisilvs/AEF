@@ -36,14 +36,9 @@ class IWAE(AutoEncoder):
 
     def forward(self, x: Tensor):
         z_mu, z_sigma = self.encode(x)
-        z = distributions.normal.Normal(z_mu, z_sigma).rsample((self.num_samples,)).to(self.get_device())
-        z = z.permute(1, 0, 2)  # [batch_size, num_samples, latent_dim]
-        z = z.reshape(-1, z.shape[2]) # [batch_size * num_samples, latent_dim], reshape needed because of permute
+        z = distributions.normal.Normal(z_mu, z_sigma).rsample().to(self.get_device())
         x_mu, x_sigma = self.decode(z)
-        z = z.view(x.shape[0], self.num_samples, self.latent_dim)
-        x_mu = x_mu.view([x.shape[0], self.num_samples, x.shape[1], x.shape[2], x.shape[3]])  # [batch_size,num_samples,channels,height,width]
-        x_sigma = x_sigma.view([x.shape[0], self.num_samples, x.shape[1], x.shape[2], x.shape[3]])
-        return x_mu, x_sigma, z_mu, z_sigma, z
+        return x_mu, x_sigma, z_mu, z_sigma
 
     def loss_function(self, x: Tensor):
         batch_size = x.shape[0]
