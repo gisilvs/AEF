@@ -6,7 +6,7 @@ import torchvision.utils
 from tqdm import tqdm
 
 import wandb
-from datasets import get_train_val_dataloaders
+from datasets import get_train_val_dataloaders, get_test_dataloader
 from flows.realnvp import RealNVP
 from models.autoencoder import Encoder, LatentDependentDecoder
 from models.normalizing_autoencoder import NormalizingAutoEncoder
@@ -18,7 +18,7 @@ def main():
     # 2-d latent space, parameter count in same order of magnitude
     # as in the original VAE paper (VAE paper has about 3x as many)
     model_name = 'test'
-    n_iterations = 2000
+    n_iterations = 200
     dataset = 'mnist'
     latent_dims = 4
     batch_size = 128
@@ -44,6 +44,7 @@ def main():
     p_validation = 0.1
     train_dataloader, validation_dataloader, image_dim, alpha = get_train_val_dataloaders('mnist', batch_size,
                                                                                           p_validation)
+    test_dataloader = get_test_dataloader('mnist', batch_size)
 
     core_flow = RealNVP(input_dim=latent_dims, num_flows=6, hidden_units=256)
     encoder = Encoder(64, latent_dims, image_dim)
@@ -98,6 +99,8 @@ def main():
                     model.eval()
 
                     val_loss_averager = make_averager()
+
+                    # todo: move this to utils with plotting function
                     samples = model.sample(16)
                     samples = samples.cpu().detach().numpy()
                     _, axs = plt.subplots(4, 4, )
@@ -154,6 +157,29 @@ def main():
                     stop = True
                     break
 
+    model.load_state_dict(torch.load(f'checkpoints/{model_name}_best.pt'))
+    model.eval()
+    test_loss_averager = make_averager()
+    with torch.no_grad():
+        for test_batch, _ in test_dataloader:
+            if do_dequantize:
+                validation_batch = dequantize(validation_batch)
+            validation_batch = validation_batch.to(device)
+            loss = torch.mean(model.neg_log_likelihood(validation_batch))
+            val_loss_averager(loss.item())
+        test_loss = test_loss_averager(None)
+
+        for i in range(4):
+            samples = model.sample(16)
+            samples = samples.cpu().detach().numpy()
+            _, axs = plt.subplots(4, 4, )
+            axs = axs.flatten()
+            for img, ax in zip(samples, axs):
+                ax.axis('off')
+                ax.imshow(img.reshape(28, 28), cmap='gray')
+            image_dict = {'final_samples': plt}
+            run.log(image_dict)
+
     artifact_best = wandb.Artifact('model_best', type='model')
     artifact_best.add_file(f'checkpoints/{model_name}_best.pt')
     run.log_artifact(artifact_best)
@@ -161,7 +187,7 @@ def main():
     artifact_latest.add_file(f'checkpoints/{model_name}_latest.pt')
     run.log_artifact(artifact_latest)
     wandb.summary['best_iteration'] = best_it
-    wandb.summary['best_val_loss'] = best_loss
+    wandb.summary['test_loss'] = test_loss
 
     run.finish()
 
