@@ -2,16 +2,13 @@ import matplotlib.pyplot as plt
 import normflow as nf
 import numpy as np
 import torch
-import torchvision.utils
-from tqdm import tqdm
 
 import wandb
 from datasets import get_train_val_dataloaders, get_test_dataloader
 from flows.realnvp import RealNVP
 from models.autoencoder import Encoder, LatentDependentDecoder
 from models.normalizing_autoencoder import NormalizingAutoEncoder
-from util import get_avg_loss_over_iterations
-from util import make_averager, refresh_bar, dequantize
+from util import make_averager, dequantize
 
 
 def main():
@@ -66,7 +63,7 @@ def main():
     validation_iterations = []
     averaging_window_size = 10
 
-    with tqdm(total=n_iterations, desc="iteration [loss: ...]") as iterations_bar:
+    for it in range(n_iterations):
         while not stop:
             for image_batch, _ in train_dataloader:
                 image_batch = dequantize(image_batch)
@@ -85,14 +82,8 @@ def main():
                 # one step of the optmizer
                 optimizer.step()
 
-                refresh_bar(iterations_bar,
-                            f"iteration [loss: "
-                            f"{get_avg_loss_over_iterations(iteration_losses, averaging_window_size, n_iterations_done):.3f}]")
-
                 # We validate first epoch
                 if (n_iterations_done % validate_every_n_iterations) == 0 or (n_iterations_done == n_iterations - 1):
-                    val_batch_bar = tqdm(validation_dataloader, leave=False, desc='validation batch',
-                                         total=len(validation_dataloader))
                     model.eval()
 
                     val_loss_averager = make_averager()
@@ -108,12 +99,12 @@ def main():
                     image_dict ={'samples': plt}
 
                     with torch.no_grad():
-                        for validation_batch, _ in val_batch_bar:
+                        for validation_batch, _ in validation_dataloader:
                             validation_batch = dequantize(validation_batch)
                             validation_batch = validation_batch.to(device)
                             loss = torch.mean(model.neg_log_likelihood(validation_batch))
-                            refresh_bar(val_batch_bar,
-                                        f"validation batch [loss: {val_loss_averager(loss.item()):.3f}]")
+                            val_loss_averager(loss.item())
+
                         validation_losses.append(val_loss_averager(None))
                         val_metrics = {
                             'val/val_loss': validation_losses[-1]
@@ -148,7 +139,6 @@ def main():
 
                 n_iterations_done += 1
                 model.train()
-                iterations_bar.update(1)
                 if n_iterations_done >= n_iterations:
                     stop = True
                     break
