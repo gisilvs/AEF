@@ -1,6 +1,6 @@
 import torch
 from torch import Tensor, distributions, nn
-from autoencoder_base import AutoEncoder
+from models.autoencoder_base import AutoEncoder
 from models.autoencoder import Encoder, IndependentVarianceDecoder
 
 class VAE(AutoEncoder):
