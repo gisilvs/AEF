@@ -4,8 +4,7 @@ from torch.distributions import Normal
 
 from models.autoencoder_base import AutoEncoder
 from models.autoencoder import Encoder, IndependentVarianceDecoder
-import torch.nn.functional as F
-from models.vae import VAE
+
 
 class IWAE(AutoEncoder):
     def __init__(self, hidden_channels: int, latent_dim: int, input_dim: torch.Size, num_samples: int = 10):
