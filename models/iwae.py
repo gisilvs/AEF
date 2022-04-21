@@ -2,11 +2,10 @@ import torch
 from torch import Tensor, distributions, nn
 from torch.distributions import Normal
 
-from autoencoder_base import AutoEncoder
+from models.autoencoder_base import AutoEncoder
 from models.autoencoder import Encoder, IndependentVarianceDecoder
 import torch.nn.functional as F
 from models.vae import VAE
-
 
 class IWAE(AutoEncoder):
     def __init__(self, hidden_channels: int, latent_dim: int, input_dim: torch.Size, num_samples: int = 10):
@@ -51,8 +50,6 @@ class IWAE(AutoEncoder):
         q_latent = Normal(mu_z.unsqueeze(1), sigma_z.unsqueeze(1)).log_prob(samples).sum([-1])
 
         return -torch.mean(torch.logsumexp(p_x_z + p_latent - q_latent, [1]) - torch.log(torch.tensor(self.num_samples)))
-
-
 
     def get_device(self):
         if self.device is None:
