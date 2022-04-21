@@ -1,26 +1,19 @@
 import matplotlib.pyplot as plt
-
-from util import get_avg_loss_over_iterations, plot_loss_over_iterations
 import normflow as nf
-import torch
-
 import numpy as np
-import torchvision.transforms as transforms
-from torch.utils.data import DataLoader
-from torchvision.datasets import MNIST
+import torch
 from tqdm import tqdm
+
+import wandb
+from datasets import get_train_val_dataloaders
 from flows.realnvp import RealNVP
 from models.autoencoder import Encoder, LatentDependentDecoder
 from models.normalizing_autoencoder import NormalizingAutoEncoder
-from util import make_averager, refresh_bar, plot_loss, dequantize
-from datasets import get_train_val_dataloaders
+from util import get_avg_loss_over_iterations
+from util import make_averager, refresh_bar, dequantize
 
-import wandb
 
 def main():
-
-    run = wandb.init(project="test-project", entity="nae", name=None) #todo: name should be defined with command line arguments
-                                                                      #todo: example {model}_{dataset}_{latent_space_dim}_{run_number}
     # 2-d latent space, parameter count in same order of magnitude
     # as in the original VAE paper (VAE paper has about 3x as many)
     model_name = 'test'
@@ -32,25 +25,28 @@ def main():
     use_gpu = True
     validate_every_n_iterations = 50
 
-    wandb.config = {
+    config = {
         "learning_rate": learning_rate,
         "n_iterations": n_iterations,
         "batch_size": batch_size,
         "dataset": dataset,
         "latent_dims": latent_dims
     }
-
+    run = wandb.init(project="test-project", entity="nae",
+                     name=None, config=config)  # todo: name should be defined with command line arguments
+    # todo: example {model}_{dataset}_{latent_space_dim}_{run_number}
     device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
 
     do_dequantize = True
 
     p_validation = 0.1
-    train_dataloader, validation_dataloader, image_dim, alpha = get_train_val_dataloaders('mnist', batch_size, p_validation)
+    train_dataloader, validation_dataloader, image_dim, alpha = get_train_val_dataloaders('mnist', batch_size,
+                                                                                          p_validation)
 
     core_flow = RealNVP(input_dim=latent_dims, num_flows=6, hidden_units=256)
-    encoder = Encoder(64,latent_dims, image_dim)
+    encoder = Encoder(64, latent_dims, image_dim)
     decoder = LatentDependentDecoder(64, latent_dims, image_dim)
-    mask = torch.zeros(28,28)
+    mask = torch.zeros(28, 28)
     mask[13:15, 13:15] = 1
     mask = mask.to(device)
     preprocessing_layers = [nf.transforms.Logit(alpha), nf.flows.ActNorm(image_dim)]
@@ -64,7 +60,7 @@ def main():
     stop = False
     n_iterations_done = 0
     n_times_validated = 0
-    iteration_losses = np.zeros((n_iterations, ))
+    iteration_losses = np.zeros((n_iterations,))
     validation_losses = []
     validation_iterations = []
     averaging_window_size = 10
@@ -98,6 +94,7 @@ def main():
                     val_batch_bar = tqdm(validation_dataloader, leave=False, desc='validation batch',
                                          total=len(validation_dataloader))
                     val_loss_averager = make_averager()
+                    #todo: use makegrid torchx
                     samples = model.sample(16)
                     samples = samples.cpu().detach().numpy()
                     _, axs = plt.subplots(4, 4, )
@@ -134,7 +131,7 @@ def main():
                             'iteration_losses': iteration_losses,
                             'validation_losses': validation_losses,
                             'best_loss': best_loss},
-                        f'checkpoints/{model_name}_latest.pt')
+                            f'checkpoints/{model_name}_latest.pt')
                         n_times_validated += 1
 
                 else:
@@ -157,5 +154,7 @@ def main():
     run.log(final_metrics)
 
     run.finish()
+
+
 if __name__ == "__main__":
     main()
