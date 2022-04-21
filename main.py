@@ -39,8 +39,6 @@ def main():
 
     device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
 
-    do_dequantize = True
-
     p_validation = 0.1
     train_dataloader, validation_dataloader, image_dim, alpha = get_train_val_dataloaders('mnist', batch_size,
                                                                                           p_validation)
@@ -71,8 +69,7 @@ def main():
     with tqdm(total=n_iterations, desc="iteration [loss: ...]") as iterations_bar:
         while not stop:
             for image_batch, _ in train_dataloader:
-                if do_dequantize:
-                    image_batch = dequantize(image_batch)
+                image_batch = dequantize(image_batch)
                 image_batch = image_batch.to(device)
 
                 loss = torch.mean(model.neg_log_likelihood(image_batch))
@@ -112,8 +109,7 @@ def main():
 
                     with torch.no_grad():
                         for validation_batch, _ in val_batch_bar:
-                            if do_dequantize:
-                                validation_batch = dequantize(validation_batch)
+                            validation_batch = dequantize(validation_batch)
                             validation_batch = validation_batch.to(device)
                             loss = torch.mean(model.neg_log_likelihood(validation_batch))
                             refresh_bar(val_batch_bar,
@@ -162,10 +158,9 @@ def main():
     test_loss_averager = make_averager()
     with torch.no_grad():
         for test_batch, _ in test_dataloader:
-            if do_dequantize:
-                validation_batch = dequantize(validation_batch)
-            validation_batch = validation_batch.to(device)
-            loss = torch.mean(model.neg_log_likelihood(validation_batch))
+            test_batch = dequantize(test_batch)
+            test_batch = test_batch.to(device)
+            loss = torch.mean(model.neg_log_likelihood(test_batch))
             val_loss_averager(loss.item())
         test_loss = test_loss_averager(None)
 
