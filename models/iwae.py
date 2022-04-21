@@ -2,7 +2,7 @@ import torch
 from torch import Tensor, distributions, nn
 from torch.distributions import Normal
 
-from autoencoder_base import AutoEncoder
+from models.autoencoder_base import AutoEncoder
 from models.autoencoder import Encoder, IndependentVarianceDecoder
 import torch.nn.functional as F
 from models.vae import VAE
