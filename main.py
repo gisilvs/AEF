@@ -36,6 +36,7 @@ def main():
     run = wandb.init(project="test-project", entity="nae",
                      name=None, config=config)  # todo: name should be defined with command line arguments
     # todo: example {model}_{dataset}_{latent_space_dim}_{run_number}
+
     device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
 
     do_dequantize = True
@@ -116,7 +117,6 @@ def main():
                         val_metrics = {
                             'val/val_loss': validation_losses[-1]
                         }
-                        wandb.log({**metrics, **val_metrics, **image_dict})
                         if n_iterations_done == 0:
                             best_loss = validation_losses[-1]
                             best_it = n_iterations_done
@@ -134,6 +134,13 @@ def main():
                             'best_loss': best_loss},
                             f'checkpoints/{model_name}_latest.pt')
                         n_times_validated += 1
+                        histograms = {}
+                        for tag, value in model.named_parameters():
+                            tag = tag.replace('/', '.')
+                            histograms['Weights/' + tag] = wandb.Histogram(value.data.cpu())
+                            histograms['Gradients/' + tag] = wandb.Histogram(value.grad.data.cpu())
+
+                        wandb.log({**metrics, **val_metrics, **image_dict, **histograms})
 
                 else:
                     wandb.log(metrics)
