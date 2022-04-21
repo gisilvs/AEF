@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import normflow as nf
 import numpy as np
 import torch
+import torchvision.utils
 from tqdm import tqdm
 
 import wandb
@@ -17,7 +18,7 @@ def main():
     # 2-d latent space, parameter count in same order of magnitude
     # as in the original VAE paper (VAE paper has about 3x as many)
     model_name = 'test'
-    n_iterations = 200
+    n_iterations = 2000
     dataset = 'mnist'
     latent_dims = 4
     batch_size = 128
@@ -94,7 +95,6 @@ def main():
                     val_batch_bar = tqdm(validation_dataloader, leave=False, desc='validation batch',
                                          total=len(validation_dataloader))
                     val_loss_averager = make_averager()
-                    #todo: use makegrid torchx
                     samples = model.sample(16)
                     samples = samples.cpu().detach().numpy()
                     _, axs = plt.subplots(4, 4, )
@@ -102,7 +102,8 @@ def main():
                     for img, ax in zip(samples, axs):
                         ax.axis('off')
                         ax.imshow(img.reshape(28, 28), cmap='gray')
-                    run.log({'samples': plt})
+                    image_dict ={'samples': plt}
+
                     with torch.no_grad():
                         for validation_batch, _ in val_batch_bar:
                             if do_dequantize:
@@ -115,7 +116,7 @@ def main():
                         val_metrics = {
                             'val/val_loss': validation_losses[-1]
                         }
-                        wandb.log({**metrics, **val_metrics})
+                        wandb.log({**metrics, **val_metrics, **image_dict})
                         if n_iterations_done == 0:
                             best_loss = validation_losses[-1]
                             best_it = n_iterations_done
@@ -149,9 +150,8 @@ def main():
     artifact_latest = wandb.Artifact('model_latest', type='model')
     artifact_latest.add_file(f'checkpoints/{model_name}_latest.pt')
     run.log_artifact(artifact_latest)
-    final_metrics = {'best_iteration': best_it,
-                     'best_val_loss': best_loss}
-    run.log(final_metrics)
+    wandb.summary['best_iteration'] = best_it
+    wandb.summary['best_val_loss'] = best_loss
 
     run.finish()
 
