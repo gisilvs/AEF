@@ -95,6 +95,8 @@ def main():
                 if (n_iterations_done % validate_every_n_iterations) == 0 or (n_iterations_done == n_iterations - 1):
                     val_batch_bar = tqdm(validation_dataloader, leave=False, desc='validation batch',
                                          total=len(validation_dataloader))
+                    model.eval()
+
                     val_loss_averager = make_averager()
                     samples = model.sample(16)
                     samples = samples.cpu().detach().numpy()
@@ -146,6 +148,7 @@ def main():
                     wandb.log(metrics)
 
                 n_iterations_done += 1
+                model.train()
                 iterations_bar.update(1)
                 if n_iterations_done >= n_iterations:
                     stop = True
