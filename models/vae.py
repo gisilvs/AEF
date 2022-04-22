@@ -1,17 +1,20 @@
+from typing import List
+
 import torch
-from torch import Tensor, distributions, nn
+from torch import Tensor, distributions
+
 from models.autoencoder_base import AutoEncoder
-from models.autoencoder import Encoder, IndependentVarianceDecoder
+from models.autoencoder import ConvolutionalEncoder, IndependentVarianceDecoder
 
 class VAE(AutoEncoder):
-    def __init__(self, hidden_channels: int, latent_dim: int, input_dim: torch.Size):
+    def __init__(self, hidden_channels: int, latent_dim: int, input_dim: List):
         super().__init__()
         self.hidden_channels = hidden_channels
         self.latent_dim = latent_dim
         self.input_dim = input_dim
         self.eps = 1e-5
 
-        self.encoder = Encoder(hidden_channels, latent_dim, input_dim)
+        self.encoder = ConvolutionalEncoder(hidden_channels, latent_dim, input_dim)
         self.decoder = IndependentVarianceDecoder(hidden_channels, latent_dim, input_dim)
 
         self.prior = distributions.normal.Normal(torch.zeros(latent_dim), torch.ones(latent_dim))

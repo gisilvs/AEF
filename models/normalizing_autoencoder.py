@@ -4,7 +4,7 @@ from torch import Tensor
 from torch.distributions import Normal
 
 from flows.realnvp import get_realnvp_bijector
-from models.autoencoder import Encoder, LatentDependentDecoder
+from models.autoencoder import ConvolutionalEncoder, LatentDependentDecoder
 
 
 class NormalizingAutoEncoder(nn.Module):
@@ -24,7 +24,7 @@ class NormalizingAutoEncoder(nn.Module):
                                                    num_layers=4,
                                                    num_blocks_per_layer=2,
                                                    act_norm_between_layers=True)
-        self.encoder = Encoder(hidden_channels, core_size, image_shape)
+        self.encoder = ConvolutionalEncoder(hidden_channels, core_size, image_shape)
         self.decoder = LatentDependentDecoder(hidden_channels, core_size, image_shape)
         self.eps = 1e-5
 

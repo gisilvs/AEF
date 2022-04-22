@@ -1,6 +1,5 @@
 import torch
 
-from models.autoencoder_base import AutoEncoder
 from datasets import get_train_val_dataloaders, get_list_of_datasets, get_test_dataloader
 from models.vae import VAE
 

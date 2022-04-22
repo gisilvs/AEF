@@ -3,7 +3,7 @@ from torch import Tensor, distributions, nn
 from torch.distributions import Normal
 
 from models.autoencoder_base import AutoEncoder
-from models.autoencoder import Encoder, IndependentVarianceDecoder
+from models.autoencoder import IndependentVarianceDecoder, ConvolutionalEncoder
 
 
 class IWAE(AutoEncoder):
@@ -15,7 +15,7 @@ class IWAE(AutoEncoder):
         self.eps = 1e-5
         self.num_samples = num_samples
 
-        self.encoder = Encoder(hidden_channels, latent_dim, input_dim)
+        self.encoder = ConvolutionalEncoder(hidden_channels, latent_dim, input_dim)
         self.decoder = IndependentVarianceDecoder(hidden_channels, latent_dim, input_dim)
 
         self.prior = distributions.normal.Normal(torch.zeros(latent_dim), torch.ones(latent_dim))
