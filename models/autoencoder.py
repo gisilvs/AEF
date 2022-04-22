@@ -27,16 +27,30 @@ class GaussianCoder(Coder):
         raise NotImplementedError
 
 
-class ConvolutionalEncoder(GaussianCoder):
-    def __init__(self, hidden_channels: int, latent_dim: int, input_dim: List):
+class GaussianEncoder(GaussianCoder):
+    def __init__(self, input_shape: List, latent_dim: int):
+        super().__init__()
+        self.input_shape = input_shape
+        self.latent_dim = latent_dim
+
+
+class GaussianDecoder(GaussianCoder):
+    def __init__(self, output_shape: List, latent_dim: int):
+        super().__init__()
+        self.latent_dim = latent_dim
+        self.output_shape = output_shape
+
+
+class ConvolutionalEncoder(GaussianEncoder):
+    def __init__(self, hidden_channels: int, input_shape: List, latent_dim: int):
         '''
         Default convolutional encoder class.
         :param hidden_channels:
+        :param input_shape: [C,H,W]
         :param latent_dim:
-        :param input_dim:
         '''
-        super().__init__()
-        self.conv1 = nn.Conv2d(in_channels=input_dim[0],
+        super().__init__(input_shape=input_shape, latent_dim=latent_dim)
+        self.conv1 = nn.Conv2d(in_channels=input_shape[0],
                                out_channels=hidden_channels,
                                kernel_size=3,
                                stride=2,
@@ -48,10 +62,10 @@ class ConvolutionalEncoder(GaussianCoder):
                                stride=2,
                                padding=1)
 
-        self.fc_mu = nn.Linear(in_features=hidden_channels * 2 * input_dim[1] // 4 * input_dim[2] // 4,
+        self.fc_mu = nn.Linear(in_features=hidden_channels * 2 * input_shape[1] // 4 * input_shape[2] // 4,
                                out_features=latent_dim)
-        self.fc_sigma = nn.Linear(in_features=hidden_channels * 2 * input_dim[1] // 4 * input_dim[2] // 4,
-                                    out_features=latent_dim)
+        self.fc_sigma = nn.Linear(in_features=hidden_channels * 2 * input_shape[1] // 4 * input_shape[2] // 4,
+                                  out_features=latent_dim)
 
         self.activation = nn.ReLU()
 
@@ -74,16 +88,13 @@ class ConvolutionalEncoder(GaussianCoder):
         return z_mu, z_sigma
 
 
-class LatentDependentDecoder(GaussianCoder):
-    def __init__(self, hidden_channels: int, latent_dim: int, output_shape: List):
+class LatentDependentDecoder(GaussianDecoder):
+    def __init__(self, hidden_channels: int, output_shape: List, latent_dim: int):
         """
         Convolutional decoder where sigma is not dependent on z (but is learned).
         """
-        super().__init__()
-
-        self.output_shape = output_shape
+        super().__init__(latent_dim=latent_dim, output_shape=output_shape)
         self.hidden_channels = hidden_channels
-
         # out features will work for images of size 28x28. 32x32 and 64x64
         # would crash for sizes that are not divisible by 4
         self.fc = nn.Linear(in_features=latent_dim,
@@ -116,14 +127,10 @@ class LatentDependentDecoder(GaussianCoder):
         return x_mu, x_sigma
 
 
-class IndependentVarianceDecoder(GaussianCoder):
-    def __init__(self, hidden_channels, latent_dim, output_shape):
-        """
+class IndependentVarianceDecoder(GaussianDecoder):
+    def __init__(self, hidden_channels: int, output_shape: List, latent_dim: int):
+        super().__init__(latent_dim=latent_dim, output_shape=output_shape)
 
-        """
-        super().__init__()
-
-        self.output_shape = output_shape
         self.hidden_channels = hidden_channels
 
         # out features will work for images of size 28x28. 32x32 and 64x64

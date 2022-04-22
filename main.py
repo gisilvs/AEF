@@ -8,6 +8,7 @@ from nflows.transforms.standard import AffineTransform
 import wandb
 from datasets import get_train_val_dataloaders, get_test_dataloader
 from flows.actnorm import ActNorm
+from models.autoencoder import ConvolutionalEncoder, IndependentVarianceDecoder
 from models.normalizing_autoencoder import NormalizingAutoEncoder
 from util import make_averager, dequantize
 
@@ -35,15 +36,17 @@ def main():
                      name=None, config=config)  # todo: name should be defined with command line arguments
     # todo: example {model}_{dataset}_{latent_space_dim}_{run_number}
 
-    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
-
+    #device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+    device = torch.device("cpu")
     p_validation = 0.1
     train_dataloader, validation_dataloader, image_dim, alpha = get_train_val_dataloaders('mnist', batch_size,
                                                                                           p_validation)
     test_dataloader = get_test_dataloader('mnist', batch_size)
 
     preprocessing_layers = [InverseTransform(AffineTransform(alpha, 1 - 2 * alpha)), Sigmoid(), ActNorm(1)]
-    model = NormalizingAutoEncoder(hidden_channels=64, core_size=latent_dims, image_shape=image_dim,
+    encoder = ConvolutionalEncoder(hidden_channels=64, input_shape=image_dim, latent_dim=latent_dims)
+    decoder = IndependentVarianceDecoder(hidden_channels=64, output_shape=image_dim, latent_dim=latent_dims)
+    model = NormalizingAutoEncoder(encoder, decoder,
                                    preprocessing_layers=preprocessing_layers)
     optimizer = torch.optim.Adam(params=model.parameters(), lr=learning_rate)
 

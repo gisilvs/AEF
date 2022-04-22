@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 
+from models.autoencoder import ConvolutionalEncoder, IndependentVarianceDecoder
 from util import get_avg_loss_over_iterations, plot_loss_over_iterations
 import normflow as nf
 import torch
@@ -9,8 +10,6 @@ import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 from torchvision.datasets import MNIST
 from tqdm import tqdm
-from flows.realnvp import RealNVP
-from models.normalizing_autoencoder import NormalizingAutoEncoder
 from util import make_averager, refresh_bar, plot_loss, dequantize
 from datasets import get_train_val_dataloaders
 from models.vae import VAE
@@ -18,7 +17,7 @@ from util import vae_log_prob
 
 # 2-d latent space, parameter count in same order of magnitude
 # as in the original VAE paper (VAE paper has about 3x as many)
-n_iterations = 4000
+n_iterations = 400
 latent_dims = 4
 num_epochs = 2
 batch_size = 128
@@ -27,7 +26,7 @@ learning_rate = 1e-3
 variational_beta = 1
 alpha = 1e-6
 use_gpu = True
-validate_every_n_iterations = 1000
+validate_every_n_iterations = 200
 
 device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
 
@@ -38,7 +37,9 @@ train_dataloader, validation_dataloader, image_dim, alpha = get_train_val_datalo
 
 # encoder = Encoder(64,4, image_dim)
 # decoder = Decoder(64, 4, image_dim)
-vae = VAE(64, 4, image_dim)
+encoder = ConvolutionalEncoder(64, image_dim, 4)
+decoder = IndependentVarianceDecoder(64, image_dim, 4)
+vae = VAE(encoder, decoder)
 vae = vae.to(device)
 optimizer = torch.optim.Adam(params=vae.parameters(), lr=1e-3)#, weight_decay=1e-5)
 
@@ -124,3 +125,4 @@ for i in range(4):
 
     plt.show()
 
+exit()

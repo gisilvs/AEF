@@ -1,10 +1,9 @@
-import torch
 from torch import nn, Tensor
-from abc import abstractmethod
+
+from models.autoencoder import GaussianDecoder, GaussianEncoder
 
 
 class AutoEncoder(nn.Module):
-
     def __init__(self):
         super().__init__()
 
@@ -17,10 +16,17 @@ class AutoEncoder(nn.Module):
     def sample(self, n_samples: int):
         raise NotImplementedError
 
-    @abstractmethod
     def forward(self, x: Tensor):
-        pass
+        raise NotImplementedError
 
-    @abstractmethod
     def loss_function(self, x: Tensor):
-        pass
+        raise NotImplementedError
+
+
+class GaussianAutoEncoder(AutoEncoder):
+    def __init__(self, encoder: GaussianEncoder, decoder: GaussianDecoder):
+        super().__init__()
+        self.encoder = encoder
+        self.decoder = decoder
+
+        assert encoder.latent_dim == decoder.latent_dim
