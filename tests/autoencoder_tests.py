@@ -9,7 +9,7 @@ from models.iwae import IWAE
 from models.vae import VAE
 
 
-def test_autoencoder_loss_backward(autoencoder: AutoEncoder, input_dims: List, n_iterations=100, batch_size=4):
+def test_autoencoder_loss_backward(autoencoder: AutoEncoder, input_dims: List, n_iterations=10, batch_size=4):
     optimizer = torch.optim.SGD(params=autoencoder.parameters(), lr=1e-4)
     input_tensor = torch.rand(batch_size, *input_dims)
 
