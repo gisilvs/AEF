@@ -2,22 +2,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from nflows.transforms.base import InverseTransform
-# from nflows.transforms.normalization import ActNorm
 from nflows.transforms.nonlinearities import Sigmoid
 from nflows.transforms.standard import AffineTransform
-from tqdm import tqdm
 
 import wandb
 from datasets import get_train_val_dataloaders, get_test_dataloader
 from flows.actnorm import ActNorm
-from flows.realnvp import get_realnvp_bijector
-from models.autoencoder import Encoder, LatentDependentDecoder
 from models.normalizing_autoencoder import NormalizingAutoEncoder
 from util import make_averager, dequantize
 
 
 def main():
-
     # 2-d latent space, parameter count in same order of magnitude
     # as in the original VAE paper (VAE paper has about 3x as many)
     model_name = 'test'
@@ -25,7 +20,7 @@ def main():
     dataset = 'mnist'
     latent_dims = 4
     batch_size = 128
-    learning_rate = 1e-3
+    learning_rate = 1e-4
     use_gpu = True
     validate_every_n_iterations = 500
 
@@ -47,15 +42,9 @@ def main():
                                                                                           p_validation)
     test_dataloader = get_test_dataloader('mnist', batch_size)
 
-    core_flow = get_realnvp_bijector(features=latent_dims, hidden_features=256, num_layers=8, num_blocks_per_layer=2,
-                                 act_norm_between_layers=True)
-    encoder = Encoder(64, latent_dims, image_dim)
-    decoder = LatentDependentDecoder(64, latent_dims, image_dim)
-    mask = torch.zeros(28, 28)
-    mask[13:15, 13:15] = 1
-    mask = mask.to(device)
     preprocessing_layers = [InverseTransform(AffineTransform(alpha, 1 - 2 * alpha)), Sigmoid(), ActNorm(1)]
-    model = NormalizingAutoEncoder(core_flow, encoder, decoder, mask, preprocessing_layers)
+    model = NormalizingAutoEncoder(hidden_channels=64, core_size=latent_dims, image_shape=image_dim,
+                                   preprocessing_layers=preprocessing_layers)
     optimizer = torch.optim.Adam(params=model.parameters(), lr=learning_rate)
 
     model = model.to(device)
@@ -103,7 +92,7 @@ def main():
                     for img, ax in zip(samples, axs):
                         ax.axis('off')
                         ax.imshow(img.reshape(28, 28), cmap='gray')
-                    image_dict ={'samples': plt}
+                    image_dict = {'samples': plt}
 
                     with torch.no_grad():
                         for validation_batch, _ in validation_dataloader:
@@ -158,7 +147,7 @@ def main():
             test_batch = dequantize(test_batch)
             test_batch = test_batch.to(device)
             loss = torch.mean(model.neg_log_likelihood(test_batch))
-            val_loss_averager(loss.item())
+            test_loss_averager(loss.item())
         test_loss = test_loss_averager(None)
 
         for i in range(4):
