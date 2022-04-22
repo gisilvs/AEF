@@ -1,43 +1,57 @@
+
 import torch
-import torch.nn as nn
 import normflow as nf
-import numpy as np
+import torch.nn as nn
+from torch.nn import functional as F
+from nflows.nn import nets as nets
+from nflows.transforms.base import CompositeTransform
+from nflows.transforms.coupling import (
+    AdditiveCouplingTransform,
+    AffineCouplingTransform,
+)
+from flows.actnorm import ActNorm
 
-class RealNVP(nn.Module):
-    def __init__(self, input_dim: int, num_flows: int, hidden_units: int = None):
-        super().__init__()
+def get_realnvp_bijector(features, hidden_features, num_layers,
+        num_blocks_per_layer,
+        use_volume_preserving=False,
+        activation=F.relu,
+        dropout_probability=0.0,
+        batch_norm_within_layers=False,
+        act_norm_between_layers=False,):
+    
+    '''
+    returns realnvp bijective transformation, only for flat tensors
+    :return:
+    '''
+    
 
-        self.input_dim = input_dim
-        self.num_flows = num_flows
-        if hidden_units is None:
-            hidden_units = 2 * input_dim
+    if use_volume_preserving:
+        coupling_constructor = AdditiveCouplingTransform
+    else:
+        coupling_constructor = AffineCouplingTransform
 
-        masks = torch.zeros(num_flows, input_dim)
-        masks[::2, ::2] = 1
-        masks[1::2, 1::2] = 1
-        self.register_buffer('masks', masks)  # Ensure masks are transferred to device
+    mask = torch.ones(features)
+    mask[::2] = -1
 
-        flows = []
-        for i in range(num_flows):
-            s = nf.nets.MLP([input_dim, hidden_units, input_dim], init_zeros=True)
-            t = nf.nets.MLP([input_dim, hidden_units, input_dim], init_zeros=True)
-            flows += [nf.flows.MaskedAffineFlow(masks[i, :], t, s)]
-            #flows += [nf.flows.ActNorm(input_dim)]
-        self.flows = nn.ModuleList(flows)
+    def create_resnet(in_features, out_features):
+        return nets.ResidualNet(
+            in_features,
+            out_features,
+            hidden_features=hidden_features,
+            num_blocks=num_blocks_per_layer,
+            activation=activation,
+            dropout_probability=dropout_probability,
+            use_batch_norm=batch_norm_within_layers,
+        )
 
-    def forward(self, z):
-        log_det = torch.zeros(z.shape[0], device=z.device)
-        for flow in self.flows:
-            z, log_det_z = flow(z)
-            log_det += log_det_z
-        x = z
-        return x#, log_det # TODO: decide whether we want to return the log_determinant in the forward direction
+    layers = []
+    for _ in range(num_layers):
+        transform = coupling_constructor(
+            mask=mask, transform_net_create_fn=create_resnet
+        )
+        layers.append(transform)
+        mask *= -1
+        if act_norm_between_layers:
+            layers.append(ActNorm(features=features))
 
-    def inverse(self, x):
-        log_det = torch.zeros(x.shape[0], device=x.device)
-        z = x
-        for i in range(len(self.flows) - 1, -1, -1):
-            z, log_det_z = self.flows[i].inverse(z)
-            log_det += log_det_z
-        return z, log_det
-
+    return CompositeTransform(layers)
