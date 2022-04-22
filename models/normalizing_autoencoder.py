@@ -2,14 +2,13 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 from torch.distributions import Normal
-from models.autoencoder import Encoder, LatentDependentDecoder
-from flows.realnvp import get_realnvp_bijector
 
-from models.autoencoder_base import AutoEncoder
+from flows.realnvp import get_realnvp_bijector
+from models.autoencoder import Encoder, LatentDependentDecoder
 
 
 class NormalizingAutoEncoder(nn.Module):
-    def __init__(self, core_size, image_shape, preprocessing_layers=[]):
+    def __init__(self, hidden_channels, core_size, image_shape, preprocessing_layers=[], hardcoded_mask=True):
         super().__init__()
 
         self.core_size = core_size
@@ -21,19 +20,31 @@ class NormalizingAutoEncoder(nn.Module):
                                                   num_blocks_per_layer=2,
                                                   act_norm_between_layers=True)
         self.core_flow_post = get_realnvp_bijector(features=core_size,
-                                                  hidden_features=256,
-                                                  num_layers=4,
-                                                  num_blocks_per_layer=2,
-                                                  act_norm_between_layers=True)
-        self.encoder = Encoder(64, core_size, image_shape)
-        self.decoder = LatentDependentDecoder(64, core_size, image_shape)
+                                                   hidden_features=256,
+                                                   num_layers=4,
+                                                   num_blocks_per_layer=2,
+                                                   act_norm_between_layers=True)
+        self.encoder = Encoder(hidden_channels, core_size, image_shape)
+        self.decoder = LatentDependentDecoder(hidden_channels, core_size, image_shape)
         self.eps = 1e-5
-        self.mask = self._get_mask()
-        '''mask = torch.zeros(image_shape)
-        mask[:, 13:15, 13:15] = 1
-        self.mask = mask'''
-        self.preprocessing_layers = preprocessing_layers
 
+        if hardcoded_mask:
+            mask = torch.zeros(image_shape)
+            if core_size == 2:
+                mask[0, 13:15, 13] = 1
+            elif core_size == 4:
+                mask[0, 13:15, 13:15] = 1
+            elif core_size == 8:
+                mask[0, 12:16, 13:15] = 1
+            elif core_size == 16:
+                mask[0, 12:16, 12:16] = 1
+            else:
+                print('NOT IMPLEMENTED YET')
+                exit(1)
+            self.mask = mask
+        else:
+            self.mask = self._get_mask()
+        self.preprocessing_layers = preprocessing_layers
 
     def _get_mask(self):
         mask = torch.zeros(self.image_shape)
@@ -46,38 +57,38 @@ class NormalizingAutoEncoder(nn.Module):
         channel = 0
         base_number_cols = 0
         base_number_rows = 0
-        while(1):
+        while (1):
             mask[channel, row, column] = 1
-            counter +=1
-            if counter == self.core_size:
-                break
-            mask[channel, row, height-column-1] = 1
             counter += 1
             if counter == self.core_size:
                 break
-            mask[channel, width - row-1, column] = 1
+            mask[channel, row, height - column - 1] = 1
             counter += 1
             if counter == self.core_size:
                 break
-            mask[channel, width - row-1, height - column-1] = 1
+            mask[channel, width - row - 1, column] = 1
+            counter += 1
+            if counter == self.core_size:
+                break
+            mask[channel, width - row - 1, height - column - 1] = 1
             counter += 1
             if counter == self.core_size:
                 break
             channel += 1
             if channel == n_channels:
                 channel = 0
-                if row==column:
-                    row+=1
-                elif row>column:
+                if row == column:
+                    row += 1
+                elif row > column:
                     column = row
                     row = base_number_rows
-                    if column > height//2:
+                    if column > height // 2:
                         base_number_cols += 1
                         column = 0
-                elif column>row:
+                elif column > row:
                     row = column + 1
                     column = base_number_cols
-                    if row > width//2:
+                    if row > width // 2:
                         base_number_rows += 1
                         base_number_cols += 1
                         row = 0
