@@ -6,7 +6,7 @@ from torch.distributions import Normal
 from models.autoencoder_base import AutoEncoder
 
 
-class NormalizingAutoEncoder(AutoEncoder):
+class NormalizingAutoEncoder(nn.Module):
     def __init__(self, core_flow, encoder, decoder, mask, preprocessing_layers=[]):
         super().__init__()
 
@@ -89,7 +89,7 @@ class NormalizingAutoEncoder(AutoEncoder):
         shell = shell * (1 - self.mask)
         mu_z, sigma_z = self.encoder(shell)
         core = z * (sigma_z + self.eps) + mu_z
-        core = self.core_flow.forward(core) # TODO: decide if we want to also keep track of log_det_J in forward direction
+        core, _ = self.core_flow.forward(core)
         return core, shell
 
     def loss_function(self, x: Tensor):
