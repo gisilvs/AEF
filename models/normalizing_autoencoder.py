@@ -1,9 +1,12 @@
 import torch
 import torch.nn as nn
+from torch import Tensor
 from torch.distributions import Normal
 
+from models.autoencoder_base import AutoEncoder
 
-class NormalizingAutoEncoder(nn.Module):
+
+class NormalizingAutoEncoder(AutoEncoder):
     def __init__(self, core_flow, encoder, decoder, mask, preprocessing_layers=[]):
         super().__init__()
 
@@ -52,6 +55,15 @@ class NormalizingAutoEncoder(nn.Module):
             deviations[:, :, self.mask == 0]), dim=[1, 2])
         return -(loss_z + loss_d + log_j)
 
+    def encode(self, x: Tensor):
+        z, deviations, _ = self.embedding(x)
+        return z, deviations
+
+    def decode(self, z: Tensor, deviations: Tensor):
+        core, shell = self.forward(z, deviations)
+        x = self.inverse_partition(core, shell)
+        return x
+
     def sample(self, num_samples=1, sample_deviations=False):
         device = next(self.parameters()).device
         z = torch.normal(torch.zeros(num_samples, self.core_size),
@@ -77,5 +89,8 @@ class NormalizingAutoEncoder(nn.Module):
         shell = shell * (1 - self.mask)
         mu_z, sigma_z = self.encoder(shell)
         core = z * (sigma_z + self.eps) + mu_z
-        core = self.core_flow.forward(core)
+        core = self.core_flow.forward(core) # TODO: decide if we want to also keep track of log_det_J in forward direction
         return core, shell
+
+    def loss_function(self, x: Tensor):
+        return self.neg_log_likelihood(x)
