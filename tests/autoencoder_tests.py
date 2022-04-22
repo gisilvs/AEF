@@ -1,7 +1,6 @@
 import torch
-from models.autoencoder import IndependentVarianceDecoder, LatentDependentDecoder, Encoder
+from models.autoencoder import IndependentVarianceDecoder, LatentDependentDecoder
 
-from datasets import get_train_val_dataloaders
 from models.autoencoder_base import AutoEncoder
 from typing import List
 
@@ -33,18 +32,20 @@ def test_all_autoencoders(batch_size: int = 4, hidden_channels: int = 64):
     autoencoders = [VAE, IWAE]  # TODO: add NAE once it's refactored
     for input_dim in different_dims:
         for latent_dim in latent_dims:
-            #encoder = Encoder(hidden_channels, latent_dim, input_dim)
+            # encoder = Encoder(hidden_channels, latent_dim, input_dim)
             for decoder_class in decoders:
                 for autoencoder_class in autoencoders:
                     # Add all tests here
-                    #decoder = decoder_class(hidden_channels, latent_dim, input_dim)
+                    # decoder = decoder_class(hidden_channels, latent_dim, input_dim)
                     ae = autoencoder_class(hidden_channels, latent_dim, input_dim)
                     test_autoencoder_loss_backward(ae, input_dim, n_iterations=10, batch_size=batch_size)
                     test_autoencoder_sample(ae)
     return True
 
+
 def main():
     print(f"test_all_autoencoders: {'Success' if test_all_autoencoders() else 'Fail'}")
+
 
 if __name__ == "__main__":
     main()
