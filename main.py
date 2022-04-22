@@ -2,22 +2,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from nflows.transforms.base import InverseTransform
-# from nflows.transforms.normalization import ActNorm
 from nflows.transforms.nonlinearities import Sigmoid
 from nflows.transforms.standard import AffineTransform
-from tqdm import tqdm
 
 import wandb
 from datasets import get_train_val_dataloaders, get_test_dataloader
 from flows.actnorm import ActNorm
-from flows.realnvp import get_realnvp_bijector
-from models.autoencoder import Encoder, LatentDependentDecoder
 from models.normalizing_autoencoder import NormalizingAutoEncoder
 from util import make_averager, dequantize
 
 
 def main():
-
     # 2-d latent space, parameter count in same order of magnitude
     # as in the original VAE paper (VAE paper has about 3x as many)
     model_name = 'test'
@@ -48,7 +43,8 @@ def main():
     test_dataloader = get_test_dataloader('mnist', batch_size)
 
     preprocessing_layers = [InverseTransform(AffineTransform(alpha, 1 - 2 * alpha)), Sigmoid(), ActNorm(1)]
-    model = NormalizingAutoEncoder(core_size=latent_dims, image_shape=image_dim, preprocessing_layers=preprocessing_layers)
+    model = NormalizingAutoEncoder(hidden_channels=64, core_size=latent_dims, image_shape=image_dim,
+                                   preprocessing_layers=preprocessing_layers)
     optimizer = torch.optim.Adam(params=model.parameters(), lr=learning_rate)
 
     model = model.to(device)
@@ -96,7 +92,7 @@ def main():
                     for img, ax in zip(samples, axs):
                         ax.axis('off')
                         ax.imshow(img.reshape(28, 28), cmap='gray')
-                    image_dict ={'samples': plt}
+                    image_dict = {'samples': plt}
 
                     with torch.no_grad():
                         for validation_batch, _ in validation_dataloader:
