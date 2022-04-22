@@ -77,5 +77,5 @@ class NormalizingAutoEncoder(nn.Module):
         shell = shell * (1 - self.mask)
         mu_z, sigma_z = self.encoder(shell)
         core = z * (sigma_z + self.eps) + mu_z
-        core = self.core_flow.forward(core)
+        core, _ = self.core_flow.forward(core)
         return core, shell
