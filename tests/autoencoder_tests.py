@@ -6,10 +6,13 @@ from typing import List
 
 from models.iwae import IWAE
 from models.vae import VAE
+from models.normalizing_autoencoder import NormalizingAutoEncoder
+from flows.actnorm import ActNorm
+
 
 
 def test_autoencoder_loss_backward(autoencoder: AutoEncoder, input_dims: List, n_iterations=10, batch_size=4):
-    optimizer = torch.optim.SGD(params=autoencoder.parameters(), lr=1e-4)
+    optimizer = torch.optim.Adam(params=autoencoder.parameters(), lr=1e-4)
     input_tensor = torch.rand(batch_size, *input_dims)
 
     for i in range(n_iterations):
@@ -29,15 +32,22 @@ def test_all_autoencoders(batch_size: int = 4, hidden_channels: int = 64):
     different_dims = [[1, 28, 28], [3, 32, 32]]
     latent_dims = [2, 4, 8, 16]
     decoders = [IndependentVarianceDecoder, LatentDependentDecoder]
-    autoencoders = [VAE, IWAE]  # TODO: add NAE once it's refactored
+    autoencoders = {
+        'vae': VAE,
+        'iwae': IWAE,
+        'nae': NormalizingAutoEncoder
+    }  # TODO: add NAE once it's refactored
     for input_dim in different_dims:
         for latent_dim in latent_dims:
             # encoder = Encoder(hidden_channels, latent_dim, input_dim)
             for decoder_class in decoders:
-                for autoencoder_class in autoencoders:
+                for key, autoencoder_class in autoencoders.items():
                     # Add all tests here
                     # decoder = decoder_class(hidden_channels, latent_dim, input_dim)
-                    ae = autoencoder_class(hidden_channels, latent_dim, input_dim)
+                    if key == 'nae':
+                        ae = autoencoder_class(hidden_channels, latent_dim, input_dim, hardcoded_mask=False)
+                    else:
+                        ae = autoencoder_class(hidden_channels, latent_dim, input_dim)
                     test_autoencoder_loss_backward(ae, input_dim, n_iterations=10, batch_size=batch_size)
                     test_autoencoder_sample(ae)
     return True
