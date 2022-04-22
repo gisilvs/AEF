@@ -1,6 +1,9 @@
 import torch
 import torch.nn as nn
+from torch import Tensor
 from torch.distributions import Normal
+
+from models.autoencoder_base import AutoEncoder
 
 
 class NormalizingAutoEncoder(nn.Module):
@@ -52,6 +55,15 @@ class NormalizingAutoEncoder(nn.Module):
             deviations[:, :, self.mask == 0]), dim=[1, 2])
         return -(loss_z + loss_d + log_j)
 
+    def encode(self, x: Tensor):
+        z, deviations, _ = self.embedding(x)
+        return z, deviations
+
+    def decode(self, z: Tensor, deviations: Tensor):
+        core, shell = self.forward(z, deviations)
+        x = self.inverse_partition(core, shell)
+        return x
+
     def sample(self, num_samples=1, sample_deviations=False):
         device = next(self.parameters()).device
         z = torch.normal(torch.zeros(num_samples, self.core_size),
@@ -79,3 +91,6 @@ class NormalizingAutoEncoder(nn.Module):
         core = z * (sigma_z + self.eps) + mu_z
         core, _ = self.core_flow.forward(core)
         return core, shell
+
+    def loss_function(self, x: Tensor):
+        return self.neg_log_likelihood(x)

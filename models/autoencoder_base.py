@@ -14,7 +14,7 @@ class AutoEncoder(nn.Module):
     def decode(self, z: Tensor):
         raise NotImplementedError
 
-    def sample(self, num_samples: int):
+    def sample(self, n_samples: int):
         raise NotImplementedError
 
     @abstractmethod
