@@ -1,14 +1,12 @@
-import torch
-from models.autoencoder import IndependentVarianceDecoder, LatentDependentDecoder
-
-from models.autoencoder_base import AutoEncoder
 from typing import List
 
-from models.iwae import IWAE
-from models.vae import VAE
-from models.normalizing_autoencoder import NormalizingAutoEncoder
-from flows.actnorm import ActNorm
+import torch
 
+from models.autoencoder import IndependentVarianceDecoder, LatentDependentDecoder
+from models.autoencoder_base import AutoEncoder
+from models.iwae import IWAE
+from models.normalizing_autoencoder import NormalizingAutoEncoder
+from models.vae import VAE
 
 
 def test_autoencoder_loss_backward(autoencoder: AutoEncoder, input_dims: List, n_iterations=10, batch_size=4):
@@ -44,10 +42,7 @@ def test_all_autoencoders(batch_size: int = 4, hidden_channels: int = 64):
                 for key, autoencoder_class in autoencoders.items():
                     # Add all tests here
                     # decoder = decoder_class(hidden_channels, latent_dim, input_dim)
-                    if key == 'nae':
-                        ae = autoencoder_class(hidden_channels, latent_dim, input_dim, hardcoded_mask=False)
-                    else:
-                        ae = autoencoder_class(hidden_channels, latent_dim, input_dim)
+                    ae = autoencoder_class(hidden_channels, latent_dim, input_dim)
                     test_autoencoder_loss_backward(ae, input_dim, n_iterations=10, batch_size=batch_size)
                     test_autoencoder_sample(ae)
     return True
