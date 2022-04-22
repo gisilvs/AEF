@@ -47,6 +47,11 @@ class NormalizingAutoEncoder(nn.Module):
         self.preprocessing_layers = preprocessing_layers
 
     def _get_mask(self):
+        '''
+        simple procedure to fill up first each corner of each channel, and then proceeding along the sides.
+        plot the mask for a visual understanding
+        :return:
+        '''
         mask = torch.zeros(self.image_shape)
         width = self.image_shape[1]
         height = self.image_shape[2]
