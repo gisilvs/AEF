@@ -1,36 +1,36 @@
 import matplotlib.pyplot as plt
-
-from util import get_avg_loss_over_iterations, plot_loss_over_iterations
-import normflow as nf
-import torch
-
 import numpy as np
-import torchvision.transforms as transforms
-from torch.utils.data import DataLoader
-from torchvision.datasets import MNIST
+import torch
+from nflows.transforms.base import InverseTransform
+# from nflows.transforms.normalization import ActNorm
+from nflows.transforms.nonlinearities import Sigmoid
+from nflows.transforms.standard import AffineTransform
 from tqdm import tqdm
-from flows.realnvp import RealNVP
-from models.autoencoder import Encoder, LatentDependentDecoder
-from models.normalizing_autoencoder import NormalizingAutoEncoder
-from util import make_averager, refresh_bar, plot_loss, dequantize
-from datasets import get_train_val_dataloaders
 
 import wandb
+from datasets import get_train_val_dataloaders
+from flows.actnorm import ActNorm
+from flows.realnvp import get_realnvp_bijector
+from models.autoencoder import Encoder, LatentDependentDecoder
+from models.normalizing_autoencoder import NormalizingAutoEncoder
+from util import get_avg_loss_over_iterations
+from util import make_averager, refresh_bar, dequantize
+
 
 def main():
-
-    run = wandb.init(project="test-project", entity="nae", name=None) #todo: name should be defined with command line arguments
-                                                                      #todo: example {model}_{dataset}_{latent_space_dim}_{run_number}
+    run = wandb.init(project="test-project", entity="nae",
+                     name=None)  # todo: name should be defined with command line arguments
+    # todo: example {model}_{dataset}_{latent_space_dim}_{run_number}
     # 2-d latent space, parameter count in same order of magnitude
     # as in the original VAE paper (VAE paper has about 3x as many)
     model_name = 'test'
-    n_iterations = 200
+    n_iterations = 10000
     dataset = 'mnist'
     latent_dims = 4
     batch_size = 128
     learning_rate = 1e-3
     use_gpu = True
-    validate_every_n_iterations = 50
+    validate_every_n_iterations = 500
 
     wandb.config = {
         "learning_rate": learning_rate,
@@ -45,15 +45,17 @@ def main():
     do_dequantize = True
 
     p_validation = 0.1
-    train_dataloader, validation_dataloader, image_dim, alpha = get_train_val_dataloaders('mnist', batch_size, p_validation)
+    train_dataloader, validation_dataloader, image_dim, alpha = get_train_val_dataloaders('mnist', batch_size,
+                                                                                          p_validation)
 
-    core_flow = RealNVP(input_dim=latent_dims, num_flows=6, hidden_units=256)
-    encoder = Encoder(64,latent_dims, image_dim)
+    core_flow = get_realnvp_bijector(features=latent_dims, hidden_features=256, num_layers=8, num_blocks_per_layer=2,
+                                     act_norm_between_layers=True)
+    encoder = Encoder(64, latent_dims, image_dim)
     decoder = LatentDependentDecoder(64, latent_dims, image_dim)
-    mask = torch.zeros(28,28)
+    mask = torch.zeros(28, 28)
     mask[13:15, 13:15] = 1
     mask = mask.to(device)
-    preprocessing_layers = [nf.transforms.Logit(alpha), nf.flows.ActNorm(image_dim)]
+    preprocessing_layers = [InverseTransform(AffineTransform(alpha, 1 - 2 * alpha)), Sigmoid(), ActNorm(1)]
     model = NormalizingAutoEncoder(core_flow, encoder, decoder, mask, preprocessing_layers)
     optimizer = torch.optim.Adam(params=model.parameters(), lr=learning_rate)
 
@@ -64,7 +66,7 @@ def main():
     stop = False
     n_iterations_done = 0
     n_times_validated = 0
-    iteration_losses = np.zeros((n_iterations, ))
+    iteration_losses = np.zeros((n_iterations,))
     validation_losses = []
     validation_iterations = []
     averaging_window_size = 10
@@ -134,7 +136,7 @@ def main():
                             'iteration_losses': iteration_losses,
                             'validation_losses': validation_losses,
                             'best_loss': best_loss},
-                        f'checkpoints/{model_name}_latest.pt')
+                            f'checkpoints/{model_name}_latest.pt')
                         n_times_validated += 1
 
                 else:
@@ -157,5 +159,7 @@ def main():
     run.log(final_metrics)
 
     run.finish()
+
+
 if __name__ == "__main__":
     main()
