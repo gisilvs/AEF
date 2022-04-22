@@ -1,29 +1,26 @@
-
 import torch
-import normflow as nf
-import torch.nn as nn
-from torch.nn import functional as F
 from nflows.nn import nets as nets
 from nflows.transforms.base import CompositeTransform
 from nflows.transforms.coupling import (
     AdditiveCouplingTransform,
     AffineCouplingTransform,
 )
+from torch.nn import functional as F
+
 from flows.actnorm import ActNorm
 
+
 def get_realnvp_bijector(features, hidden_features, num_layers,
-        num_blocks_per_layer,
-        use_volume_preserving=False,
-        activation=F.relu,
-        dropout_probability=0.0,
-        batch_norm_within_layers=False,
-        act_norm_between_layers=False,):
-    
+                         num_blocks_per_layer,
+                         use_volume_preserving=False,
+                         activation=F.relu,
+                         dropout_probability=0.0,
+                         batch_norm_within_layers=False,
+                         act_norm_between_layers=False, ):
     '''
     returns realnvp bijective transformation, only for flat tensors
     :return:
     '''
-    
 
     if use_volume_preserving:
         coupling_constructor = AdditiveCouplingTransform
