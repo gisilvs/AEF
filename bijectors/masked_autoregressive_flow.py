@@ -1,4 +1,4 @@
-"""Implementations of autoregressive flows."""
+"""Implementations of autoregressive bijectors."""
 
 from torch.nn import functional as F
 
@@ -7,7 +7,7 @@ from nflows.flows.base import Flow
 from nflows.transforms.autoregressive import MaskedAffineAutoregressiveTransform
 from nflows.transforms.base import CompositeTransform
 from nflows.transforms.permutations import RandomPermutation, ReversePermutation
-from flows.actnorm import ActNorm
+from bijectors.actnorm import ActNorm
 from nflows.transforms.base import InverseTransform
 
 #todo: check which is the right direction for maf and iaf

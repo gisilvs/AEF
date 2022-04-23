@@ -2,12 +2,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from nflows.transforms.base import InverseTransform
-from flows.sigmoid import Sigmoid
+from bijectors.sigmoid import Sigmoid
 from nflows.transforms.standard import AffineTransform
 
 import wandb
 from datasets import get_train_val_dataloaders, get_test_dataloader
-from flows.actnorm import ActNorm
+from bijectors.actnorm import ActNorm
 from models.autoencoder import ConvolutionalEncoder, IndependentVarianceDecoder
 from models.normalizing_autoencoder import NormalizingAutoEncoder
 from util import make_averager, dequantize

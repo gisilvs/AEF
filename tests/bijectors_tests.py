@@ -1,8 +1,8 @@
 import torch
 
-from flows.actnorm import ActNorm
-from flows.realnvp import get_realnvp_bijector
-from flows.masked_autoregressive_flow import get_autoregressive_flow
+from bijectors.actnorm import ActNorm
+from bijectors.realnvp import get_realnvp_bijector
+from bijectors.masked_autoregressive_flow import get_autoregressive_flow
 
 
 def test_flat_bijector(bijector):

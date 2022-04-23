@@ -1,7 +1,7 @@
 import torch
 from torch import Tensor, distributions
 
-from flows.masked_autoregressive_flow import get_autoregressive_flow
+from bijectors.masked_autoregressive_flow import get_autoregressive_flow
 from models.autoencoder import GaussianEncoder, GaussianDecoder
 from models.autoencoder_base import GaussianAutoEncoder
 

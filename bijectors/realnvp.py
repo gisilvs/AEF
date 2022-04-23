@@ -7,7 +7,7 @@ from nflows.transforms.coupling import (
 )
 from torch.nn import functional as F
 
-from flows.actnorm import ActNorm
+from bijectors.actnorm import ActNorm
 
 
 def get_realnvp_bijector(features, hidden_features, num_layers,

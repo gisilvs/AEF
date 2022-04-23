@@ -4,7 +4,7 @@ from torch import Tensor
 from torch.distributions import Normal
 from torch.nn import ModuleList
 
-from flows.realnvp import get_realnvp_bijector
+from bijectors.realnvp import get_realnvp_bijector
 from models.autoencoder import ConvolutionalEncoder, LatentDependentDecoder, GaussianEncoder, GaussianDecoder
 from models.autoencoder_base import GaussianAutoEncoder
 
