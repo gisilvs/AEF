@@ -10,7 +10,7 @@ from bijectors.actnorm import ActNorm
 
 
 # todo: check which is the right direction for maf and iaf
-def get_autoregressive_flow(
+def get_masked_autoregressive_transform(
         features,
         hidden_features,
         num_layers,

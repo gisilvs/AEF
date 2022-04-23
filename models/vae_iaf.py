@@ -1,7 +1,7 @@
 import torch
 from torch import Tensor, distributions
 
-from bijectors.masked_autoregressive_flow import get_autoregressive_flow
+from bijectors.masked_autoregressive_transform import get_masked_autoregressive_transform
 from models.autoencoder import GaussianEncoder, GaussianDecoder
 from models.autoencoder_base import GaussianAutoEncoder
 
@@ -14,7 +14,7 @@ class VAEIAF(GaussianAutoEncoder):
         self.eps = 1e-5
         self.prior = distributions.normal.Normal(torch.zeros(self.latent_dim), torch.ones(self.latent_dim))
         self.device = None
-        self.iaf = get_autoregressive_flow(self.latent_dim, 256, 8, 2, act_norm_between_layers=True, is_inverse=True)
+        self.iaf = get_masked_autoregressive_transform(self.latent_dim, 256, 8, 2, act_norm_between_layers=True, is_inverse=True)
 
     def encode(self, x: Tensor):
         return self.encoder(x)  # Encoder returns mu and log(sigma)
