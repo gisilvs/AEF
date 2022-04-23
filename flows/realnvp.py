@@ -49,6 +49,6 @@ def get_realnvp_bijector(features, hidden_features, num_layers,
         layers.append(transform)
         mask *= -1
         if act_norm_between_layers:
-            layers.append(ActNorm(features=features))
+            layers.append(ActNorm(features=1))
 
     return CompositeTransform(layers)
