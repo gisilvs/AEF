@@ -5,7 +5,7 @@ from models.autoencoder import GaussianDecoder, GaussianEncoder
 
 class AutoEncoder(nn.Module):
     def __init__(self):
-        super().__init__()
+        super(AutoEncoder, self).__init__()
 
     def encode(self, x: Tensor):
         raise NotImplementedError
@@ -25,7 +25,7 @@ class AutoEncoder(nn.Module):
 
 class GaussianAutoEncoder(AutoEncoder):
     def __init__(self, encoder: GaussianEncoder, decoder: GaussianDecoder):
-        super().__init__()
+        super(GaussianAutoEncoder, self).__init__()
         self.encoder = encoder
         self.decoder = decoder
 

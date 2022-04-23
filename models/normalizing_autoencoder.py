@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 from torch.distributions import Normal
+from torch.nn import ModuleList
 
 from flows.realnvp import get_realnvp_bijector
 from models.autoencoder import ConvolutionalEncoder, LatentDependentDecoder, GaussianEncoder, GaussianDecoder
@@ -11,7 +12,7 @@ from models.autoencoder_base import GaussianAutoEncoder
 class NormalizingAutoEncoder(GaussianAutoEncoder):
     def __init__(self, encoder: GaussianEncoder, decoder: GaussianDecoder,
                  preprocessing_layers=[], hardcoded_mask=True):
-        super().__init__(encoder, decoder)
+        super(NormalizingAutoEncoder, self).__init__(encoder, decoder)
 
 
         self.core_size = self.encoder.latent_dim
@@ -28,6 +29,10 @@ class NormalizingAutoEncoder(GaussianAutoEncoder):
                                                    act_norm_between_layers=True)
         self.eps = 1e-5
 
+        preprocessing_layers = nn.ModuleList(preprocessing_layers)
+        self.preprocessing_layers = preprocessing_layers
+        self.device = None
+
         if hardcoded_mask:
             mask = torch.zeros(self.image_shape)
             if self.core_size == 2:
@@ -41,10 +46,12 @@ class NormalizingAutoEncoder(GaussianAutoEncoder):
             else:
                 print('NOT IMPLEMENTED YET')
                 exit(1)
-            self.mask = mask
+            self.register_buffer('mask', mask)
+            #self.mask = mask
         else:
-            self.mask = self._get_mask()
-        self.preprocessing_layers = preprocessing_layers
+            mask = self._get_mask()
+            self.register_buffer('mask', mask)
+            #self.mask = self._get_mask()
 
     def _get_mask(self):
         '''
@@ -146,7 +153,7 @@ class NormalizingAutoEncoder(GaussianAutoEncoder):
         return x
 
     def sample(self, num_samples=1, sample_deviations=False):
-        device = next(self.parameters()).device
+        device = self.get_device()
         z = torch.normal(torch.zeros(num_samples, self.core_size),
                          torch.ones(num_samples, self.core_size)).to(device)
         if sample_deviations:
@@ -176,3 +183,9 @@ class NormalizingAutoEncoder(GaussianAutoEncoder):
 
     def loss_function(self, x: Tensor):
         return self.neg_log_likelihood(x)
+
+    def get_device(self):
+        if self.device is None:
+            self.device = next(self.parameters()).device
+            #self.mask = self.mask.to(self.device)
+        return self.device

@@ -8,7 +8,7 @@ import torch.nn.functional as F
 
 class Coder(nn.Module):
     def __init__(self):
-        super().__init__()
+        super(Coder, self).__init__()
 
     def forward(self, x: Tensor) -> Tensor:
         raise NotImplementedError
@@ -16,7 +16,7 @@ class Coder(nn.Module):
 
 class GaussianCoder(Coder):
     def __init__(self):
-        super().__init__()
+        super(GaussianCoder, self).__init__()
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor]:
         '''
@@ -29,14 +29,14 @@ class GaussianCoder(Coder):
 
 class GaussianEncoder(GaussianCoder):
     def __init__(self, input_shape: List, latent_dim: int):
-        super().__init__()
+        super(GaussianEncoder, self).__init__()
         self.input_shape = input_shape
         self.latent_dim = latent_dim
 
 
 class GaussianDecoder(GaussianCoder):
     def __init__(self, output_shape: List, latent_dim: int):
-        super().__init__()
+        super(GaussianDecoder, self).__init__()
         self.latent_dim = latent_dim
         self.output_shape = output_shape
 
@@ -49,7 +49,7 @@ class ConvolutionalEncoder(GaussianEncoder):
         :param input_shape: [C,H,W]
         :param latent_dim:
         '''
-        super().__init__(input_shape=input_shape, latent_dim=latent_dim)
+        super(ConvolutionalEncoder, self).__init__(input_shape=input_shape, latent_dim=latent_dim)
         self.conv1 = nn.Conv2d(in_channels=input_shape[0],
                                out_channels=hidden_channels,
                                kernel_size=3,
@@ -93,7 +93,7 @@ class LatentDependentDecoder(GaussianDecoder):
         """
         Convolutional decoder where sigma is not dependent on z (but is learned).
         """
-        super().__init__(latent_dim=latent_dim, output_shape=output_shape)
+        super(LatentDependentDecoder, self).__init__(latent_dim=latent_dim, output_shape=output_shape)
         self.hidden_channels = hidden_channels
         # out features will work for images of size 28x28. 32x32 and 64x64
         # would crash for sizes that are not divisible by 4
@@ -129,7 +129,7 @@ class LatentDependentDecoder(GaussianDecoder):
 
 class IndependentVarianceDecoder(GaussianDecoder):
     def __init__(self, hidden_channels: int, output_shape: List, latent_dim: int):
-        super().__init__(latent_dim=latent_dim, output_shape=output_shape)
+        super(IndependentVarianceDecoder, self).__init__(latent_dim=latent_dim, output_shape=output_shape)
 
         self.hidden_channels = hidden_channels
 

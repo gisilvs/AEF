@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from nflows.transforms.base import InverseTransform
-from nflows.transforms.nonlinearities import Sigmoid
+from flows.sigmoid import Sigmoid
 from nflows.transforms.standard import AffineTransform
 
 import wandb
