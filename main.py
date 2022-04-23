@@ -36,8 +36,8 @@ def main():
                      name=None, config=config)  # todo: name should be defined with command line arguments
     # todo: example {model}_{dataset}_{latent_space_dim}_{run_number}
 
-    #device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
-    device = torch.device("cpu")
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+    # device = torch.device("cpu")
     p_validation = 0.1
     train_dataloader, validation_dataloader, image_dim, alpha = get_train_val_dataloaders('mnist', batch_size,
                                                                                           p_validation)
