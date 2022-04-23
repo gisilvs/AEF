@@ -28,7 +28,7 @@ parser.add_argument('--batch-size', type=int, default=128,
                     help='input batch size for training and testing (default: 128)')
 parser.add_argument('--runs', type=str, help='run numbers in string format, e.g. "0,1,2,3"')
 parser.add_argument('--iterations', type=int, default=100000, help='amount of iterations to train (default: 100,000)')
-parser.add_argument('--val-iters', type=int, default=5000, help='validate every x iterations (default: 5,000')
+parser.add_argument('--val-iters', type=int, default=500, help='validate every x iterations (default: 5,000')
 parser.add_argument('--lr', type=float, default=1e-3, help='learning rate (default: 1e-3)')
 parser.add_argument('--seed', type=int, default=3, help='seed for the training data (default: 3)')
 parser.add_argument('--use-center', action='store_true',
