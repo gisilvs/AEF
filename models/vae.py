@@ -1,20 +1,19 @@
+from typing import List
+
 import torch
-from torch import Tensor, distributions, nn
-from models.autoencoder_base import AutoEncoder
-from models.autoencoder import Encoder, IndependentVarianceDecoder
+from torch import Tensor, distributions
 
-class VAE(AutoEncoder):
-    def __init__(self, hidden_channels: int, latent_dim: int, input_dim: torch.Size):
-        super().__init__()
-        self.hidden_channels = hidden_channels
-        self.latent_dim = latent_dim
-        self.input_dim = input_dim
+from models.autoencoder_base import GaussianAutoEncoder
+from models.autoencoder import GaussianEncoder, GaussianDecoder
+
+
+class VAE(GaussianAutoEncoder):
+    def __init__(self, encoder: GaussianEncoder, decoder: GaussianDecoder):
+        super().__init__(encoder, decoder)
+
+        self.latent_dim = encoder.latent_dim
         self.eps = 1e-5
-
-        self.encoder = Encoder(hidden_channels, latent_dim, input_dim)
-        self.decoder = IndependentVarianceDecoder(hidden_channels, latent_dim, input_dim)
-
-        self.prior = distributions.normal.Normal(torch.zeros(latent_dim), torch.ones(latent_dim))
+        self.prior = distributions.normal.Normal(torch.zeros(self.latent_dim), torch.ones(self.latent_dim))
         self.device = None
 
     def encode(self, x: Tensor):
@@ -36,12 +35,10 @@ class VAE(AutoEncoder):
 
     def loss_function(self, x: Tensor):
         x_mu, x_sigma, z_mu, z_sigma = self.forward(x)
-        reconstruction_loss = -torch.distributions.normal.Normal(x_mu,x_sigma+self.eps).log_prob(x).sum([1,2,3])
+        reconstruction_loss = -torch.distributions.normal.Normal(x_mu, x_sigma+self.eps).log_prob(x).sum([1,2,3])
         q_z = distributions.normal.Normal(z_mu, z_sigma)
-        p_z = distributions.normal.Normal(torch.zeros(self.latent_dim).to(self.get_device()),
-                                          torch.ones(self.latent_dim).to(self.get_device()))
 
-        kl_div = distributions.kl.kl_divergence(q_z,p_z).sum(1)
+        kl_div = distributions.kl.kl_divergence(q_z, self.prior).sum(1)
         return reconstruction_loss + kl_div
 
     def get_device(self):

@@ -2,23 +2,19 @@ import torch
 from torch import Tensor, distributions, nn
 from torch.distributions import Normal
 
-from models.autoencoder_base import AutoEncoder
-from models.autoencoder import Encoder, IndependentVarianceDecoder
+from models.autoencoder_base import GaussianAutoEncoder
+from models.autoencoder import GaussianEncoder, GaussianDecoder
 
 
-class IWAE(AutoEncoder):
-    def __init__(self, hidden_channels: int, latent_dim: int, input_dim: torch.Size, num_samples: int = 10):
-        super().__init__()
-        self.hidden_channels = hidden_channels
-        self.latent_dim = latent_dim
-        self.input_dim = input_dim
+class IWAE(GaussianAutoEncoder):
+    def __init__(self, encoder: GaussianEncoder, decoder: GaussianDecoder, num_samples: int = 10):
+        super().__init__(encoder, decoder)
         self.eps = 1e-5
         self.num_samples = num_samples
 
-        self.encoder = Encoder(hidden_channels, latent_dim, input_dim)
-        self.decoder = IndependentVarianceDecoder(hidden_channels, latent_dim, input_dim)
+        self.latent_dim = self.encoder.latent_dim
 
-        self.prior = distributions.normal.Normal(torch.zeros(latent_dim), torch.ones(latent_dim))
+        self.prior = distributions.normal.Normal(torch.zeros(self.latent_dim), torch.ones(self.latent_dim))
         self.device = None
 
     def encode(self, x: Tensor):

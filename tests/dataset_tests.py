@@ -1,7 +1,7 @@
 import torch
 
-from models.autoencoder_base import AutoEncoder
 from datasets import get_train_val_dataloaders, get_list_of_datasets, get_test_dataloader
+from models.autoencoder import ConvolutionalEncoder, IndependentVarianceDecoder
 from models.vae import VAE
 
 
@@ -11,7 +11,10 @@ def test_processing_all_datasets():
     for dataset_name in dataset_names:
         train_dataloader, val_dataloader, img_dims, alpha = get_train_val_dataloaders(dataset_name)
         test_dataloader = get_test_dataloader(dataset_name)
-        model = VAE(64, 2, img_dims)
+
+        encoder = ConvolutionalEncoder(32, img_dims, 2)
+        decoder = IndependentVarianceDecoder(32, img_dims, 2)
+        model = VAE(encoder, decoder)
 
         train_batch, _ = next(iter(train_dataloader))
         _ = model.loss_function(train_batch)

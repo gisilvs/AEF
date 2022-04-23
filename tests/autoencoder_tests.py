@@ -2,7 +2,7 @@ from typing import List
 
 import torch
 
-from models.autoencoder import IndependentVarianceDecoder, LatentDependentDecoder
+from models.autoencoder import IndependentVarianceDecoder, LatentDependentDecoder, ConvolutionalEncoder
 from models.autoencoder_base import AutoEncoder
 from models.iwae import IWAE
 from models.normalizing_autoencoder import NormalizingAutoEncoder
@@ -37,12 +37,12 @@ def test_all_autoencoders(batch_size: int = 4, hidden_channels: int = 64):
     }  # TODO: add NAE once it's refactored
     for input_dim in different_dims:
         for latent_dim in latent_dims:
-            # encoder = Encoder(hidden_channels, latent_dim, input_dim)
+            encoder = ConvolutionalEncoder(hidden_channels=hidden_channels, input_shape=input_dim, latent_dim=latent_dim)
             for decoder_class in decoders:
                 for key, autoencoder_class in autoencoders.items():
                     # Add all tests here
-                    # decoder = decoder_class(hidden_channels, latent_dim, input_dim)
-                    ae = autoencoder_class(hidden_channels, latent_dim, input_dim)
+                    decoder = decoder_class(hidden_channels=hidden_channels, output_shape=input_dim, latent_dim=latent_dim)
+                    ae = autoencoder_class(encoder, decoder)
                     test_autoencoder_loss_backward(ae, input_dim, n_iterations=10, batch_size=batch_size)
                     test_autoencoder_sample(ae)
     return True
