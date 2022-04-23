@@ -2,6 +2,7 @@ import torch
 
 from flows.actnorm import ActNorm
 from flows.realnvp import get_realnvp_bijector
+from flows.masked_autoregressive_flow import get_autoregressive_flow
 
 
 def test_flat_bijector(bijector):
@@ -23,7 +24,8 @@ def test_image_bijector(bijector):
 
 def main():
     flat_bijectors = {'RealNVP': get_realnvp_bijector(45, 256, 4, 2),
-                      'ActNorm': ActNorm(1)}
+                      'ActNorm': ActNorm(1),
+                      'MaskedAutoregressive': get_autoregressive_flow(45, 256, 8, 2)}
     for name, bijector in flat_bijectors.items():
         if test_flat_bijector(bijector):
             print(f'{name} test PASSED')
