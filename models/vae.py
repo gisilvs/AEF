@@ -29,17 +29,17 @@ class VAE(GaussianAutoEncoder):
 
     def forward(self, x: Tensor):
         z_mu, z_sigma = self.encode(x)
-        z = distributions.normal.Normal(z_mu, z_sigma).rsample().to(self.get_device())
+        z = distributions.normal.Normal(z_mu, z_sigma+self.eps).rsample().to(self.get_device())
         x_mu, x_sigma = self.decode(z)
         return x_mu, x_sigma, z_mu, z_sigma
 
     def loss_function(self, x: Tensor):
         x_mu, x_sigma, z_mu, z_sigma = self.forward(x)
-        reconstruction_loss = -torch.distributions.normal.Normal(x_mu, x_sigma+self.eps).log_prob(x).sum([1,2,3])
-        q_z = distributions.normal.Normal(z_mu, z_sigma)
+        reconstruction_loss = torch.distributions.normal.Normal(x_mu, x_sigma+self.eps).log_prob(x).sum([1,2,3])
+        q_z = distributions.normal.Normal(z_mu, z_sigma+self.eps)
 
         kl_div = distributions.kl.kl_divergence(q_z, self.prior).sum(1)
-        return reconstruction_loss + kl_div
+        return -(reconstruction_loss - kl_div)
 
     def get_device(self):
         if self.device is None:

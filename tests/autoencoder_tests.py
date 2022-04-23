@@ -7,6 +7,7 @@ from models.autoencoder_base import AutoEncoder
 from models.iwae import IWAE
 from models.normalizing_autoencoder import NormalizingAutoEncoder
 from models.vae import VAE
+from models.vae_iaf import VAEIAF
 
 
 def test_autoencoder_loss_backward(autoencoder: AutoEncoder, input_dims: List, n_iterations=10, batch_size=4):
@@ -33,7 +34,8 @@ def test_all_autoencoders(batch_size: int = 4, hidden_channels: int = 64):
     autoencoders = {
         'vae': VAE,
         'iwae': IWAE,
-        'nae': NormalizingAutoEncoder
+        'nae': NormalizingAutoEncoder,
+        'vae-iaf': VAEIAF
     }  # TODO: add NAE once it's refactored
     for input_dim in different_dims:
         for latent_dim in latent_dims:

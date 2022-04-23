@@ -30,19 +30,19 @@ class IWAE(GaussianAutoEncoder):
 
     def forward(self, x: Tensor):
         z_mu, z_sigma = self.encode(x)
-        z = distributions.normal.Normal(z_mu, z_sigma).rsample().to(self.get_device())
+        z = distributions.normal.Normal(z_mu, z_sigma+self.eps).rsample().to(self.get_device())
         x_mu, x_sigma = self.decode(z)
         return x_mu, x_sigma, z_mu, z_sigma
 
     def loss_function(self, x: Tensor):
         batch_size = x.shape[0]
         mu_z, sigma_z = self.encode(x)
-        samples = Normal(mu_z, sigma_z).rsample([self.num_samples]).transpose(1, 0)
+        samples = Normal(mu_z, sigma_z+self.eps).rsample([self.num_samples]).transpose(1, 0)
         mu_x, sigma_x = self.decode(samples.reshape(batch_size * self.num_samples, -1))
         mu_x, sigma_x = mu_x.view(batch_size, self.num_samples, -1), sigma_x.view(batch_size, self.num_samples, -1)
-        p_x_z = Normal(mu_x, sigma_x).log_prob(x.view(batch_size, 1, -1)).sum([2]).view(batch_size, self.num_samples)
+        p_x_z = Normal(mu_x, sigma_x+self.eps).log_prob(x.view(batch_size, 1, -1)).sum([2]).view(batch_size, self.num_samples)
         p_latent = Normal(0, 1).log_prob(samples).sum([-1])
-        q_latent = Normal(mu_z.unsqueeze(1), sigma_z.unsqueeze(1)).log_prob(samples).sum([-1])
+        q_latent = Normal(mu_z.unsqueeze(1), sigma_z.unsqueeze(1)+self.eps).log_prob(samples).sum([-1])
 
         return -torch.mean(torch.logsumexp(p_x_z + p_latent - q_latent, [1]) - torch.log(torch.tensor(self.num_samples)))
 
