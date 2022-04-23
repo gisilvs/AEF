@@ -3,6 +3,7 @@ import torch
 from bijectors.actnorm import ActNorm
 from bijectors.realnvp import get_realnvp_bijector
 from bijectors.masked_autoregressive_transform import get_masked_autoregressive_transform
+from flows.maf import MaskedAutoregressiveFlow
 
 
 def test_flat_bijector(bijector):
@@ -25,7 +26,8 @@ def test_image_bijector(bijector):
 def main():
     flat_bijectors = {'RealNVP': get_realnvp_bijector(45, 256, 4, 2),
                       'ActNorm': ActNorm(1),
-                      'MaskedAutoregressive': get_masked_autoregressive_transform(45, 256, 8, 2)}
+                      'MaskedAutoregressiveTransform': get_masked_autoregressive_transform(45, 256, 8, 2, act_norm_between_layers=True),
+                      'MaskedAutoregressiveFlow': MaskedAutoregressiveFlow(45,256, 8, 2, act_norm_between_layers=True)}
     for name, bijector in flat_bijectors.items():
         if test_flat_bijector(bijector):
             print(f'{name} test PASSED')
