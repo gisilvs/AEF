@@ -56,6 +56,7 @@ for model_nr in args.runs:
     use_center_pixels_str = use_center_pixels_str if model_name == 'nae' else ""
     run_name = f'{args.model}_{args.dataset}_latent_size({args.latent_dims})_{model_nr}_indvar{use_center_pixels_str}'
     config = {
+        "model" : model_name,
         "learning_rate": learning_rate,
         "n_iterations": n_iterations,
         "batch_size": batch_size,
