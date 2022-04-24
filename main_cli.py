@@ -165,7 +165,7 @@ for model_nr in args.runs:
                             histograms['Gradients/' + tag] = wandb.Histogram(value.grad.data.cpu())
 
                         wandb.log({**metrics, **val_metrics, **image_dict, **histograms})
-
+                        plt.close("all")
                 else:
                     wandb.log(metrics)
 
@@ -222,3 +222,4 @@ for model_nr in args.runs:
     wandb.summary['test_loss'] = test_loss
 
     run.finish()
+    plt.close("all")
