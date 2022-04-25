@@ -55,7 +55,7 @@ use_center_pixels = args.use_center == 1
 args.runs = [int(item) for item in args.runs.split(',')]
 
 for model_nr in args.runs:
-    if not args.custom_name == "":
+    if args.custom_name is not None:
         run_name = args.custom_name
     else:
         use_center_pixels_str = "_center" if use_center_pixels else "_corner"
