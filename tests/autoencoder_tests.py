@@ -2,7 +2,7 @@ from typing import List
 
 import torch
 
-from models.autoencoder import IndependentVarianceDecoder, LatentDependentDecoder, ConvolutionalEncoder
+from models.autoencoder import IndependentVarianceDecoder, LatentDependentDecoder, ConvolutionalEncoder, FixedVarianceDecoder
 from models.autoencoder_base import AutoEncoder
 from models.iwae import IWAE
 from models.normalizing_autoencoder import NormalizingAutoEncoder
@@ -30,7 +30,7 @@ def test_autoencoder_sample(autoencoder: AutoEncoder, n_samples=4):
 def test_all_autoencoders(batch_size: int = 4, hidden_channels: int = 64):
     different_dims = [[1, 28, 28], [3, 32, 32]]
     latent_dims = [2, 4, 8, 16]
-    decoders = [IndependentVarianceDecoder, LatentDependentDecoder]
+    decoders = [IndependentVarianceDecoder, LatentDependentDecoder, FixedVarianceDecoder]
     autoencoders = {
         'vae': VAE,
         'iwae': IWAE,

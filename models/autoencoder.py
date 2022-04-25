@@ -164,3 +164,40 @@ class IndependentVarianceDecoder(GaussianDecoder):
         sigma = F.softplus(self.pre_sigma).unsqueeze(0).repeat(x.shape[0], 1, 1, 1)
 
         return x_mu, sigma
+
+class FixedVarianceDecoder(GaussianDecoder):
+    def __init__(self, hidden_channels: int, output_shape: List, latent_dim: int):
+        super(FixedVarianceDecoder, self).__init__(latent_dim=latent_dim, output_shape=output_shape)
+
+        self.hidden_channels = hidden_channels
+
+        # out features will work for images of size 28x28. 32x32 and 64x64
+        # would crash for sizes that are not divisible by 4
+        self.fc = nn.Linear(in_features=latent_dim,
+                            out_features=hidden_channels * 2 * output_shape[1] // 4 * output_shape[2] // 4)
+
+        self.conv2 = nn.ConvTranspose2d(in_channels=hidden_channels * 2,
+                                        out_channels=hidden_channels,
+                                        kernel_size=4,
+                                        stride=2,
+                                        padding=1)
+        self.conv1 = nn.ConvTranspose2d(in_channels=hidden_channels,
+                                        out_channels=output_shape[0],
+                                        kernel_size=4,
+                                        stride=2,
+                                        padding=1)
+
+        self.activation = nn.ReLU()
+
+    def forward(self, z: torch.Tensor):
+        """
+        :param z: input batch from latent space
+        :returns: mu(x), sigma
+        """
+        x = self.fc(z)
+        x = x.view(x.size(0), self.hidden_channels * 2, self.output_shape[1] // 4, self.output_shape[2] // 4)
+        x = self.activation(self.conv2(x))
+        x_mu = self.conv1(x)
+        x_sigma = torch.ones_like(x_mu)
+
+        return x_mu, x_sigma
