@@ -4,6 +4,9 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 from torch.distributions.normal import Normal
+import wandb
+from models.models import get_model
+import os
 
 def get_avg_loss_over_iterations(iteration_losses: np.array, window_size: int, cur_iteration: int):
     low_window = max(0, cur_iteration - window_size)
@@ -116,3 +119,22 @@ def vae_log_prob(vae, images, n_samples):
 
     #return torch.log(torch.mean(torch.exp(p_x_z+p_latent-q_latent)))
     return torch.mean(torch.logsumexp(p_x_z + p_latent - q_latent, [1]) - torch.log(torch.tensor(n_samples)))
+
+
+def download_wandb_artifact(run, project_name, model_name, version='latest'):
+    artifact = run.use_artifact(f'nae/{project_name}/{model_name}:{version}', type='model')
+    artifact_dir = artifact.download()
+    return artifact_dir
+
+def download_best_model_and_get_path(run, project_name, model_name, version='latest'):
+    artifact_dir = download_wandb_artifact(run, project_name, model_name, version)
+    return artifact_dir + '/' + os.listdir(artifact_dir)[0]
+
+def load_best_model(run, project_name, model_name, experiment_name, device, latent_dims, image_dim, alpha, use_center_pixels, version='latest'):
+
+    model = get_model(model_name, latent_dims, image_dim, alpha, use_center_pixels)
+    model.sample(10) # needed as some components such as actnorm need to be initialized
+    model_path = download_best_model_and_get_path(run, project_name, experiment_name, version)
+    model.load_state_dict(torch.load(model_path, map_location=device))
+
+    return model
