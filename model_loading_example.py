@@ -13,8 +13,9 @@ alpha = 1e-6
 use_center_pixels = True
 device = 'cpu'
 version = 'v58' # v75 --> VAE, v78 -->IWAE v58 --> vae-iaf
+decoder = 'independent'
 
-model = load_best_model(run, project_name, model_name, experiment_name, device, latent_dims, image_dim, alpha, use_center_pixels, version=version)
+model = load_best_model(run, project_name, model_name, experiment_name, device, decoder, latent_dims, image_dim, alpha, use_center_pixels, version=version)
 
 for temperature in [0.1, 0.5, 2, 5]:
     samples = model.sample(16, temperature=temperature)
