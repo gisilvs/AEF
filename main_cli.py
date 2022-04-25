@@ -1,25 +1,15 @@
 import argparse
 import os
-from typing import List
 
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from nflows.transforms.base import InverseTransform
 
 import util
-from bijectors.sigmoid import Sigmoid
-from nflows.transforms.standard import AffineTransform
 
 import wandb
 from datasets import get_train_val_dataloaders, get_test_dataloader
-from bijectors.actnorm import ActNorm
-from models.autoencoder import ConvolutionalEncoder, IndependentVarianceDecoder
-from models.iwae import IWAE
 from models.models import get_model
-from models.normalizing_autoencoder import NormalizingAutoEncoder
-from models.vae import VAE
-from models.vae_iaf import VAEIAF
 from util import make_averager, dequantize, vae_log_prob
 
 parser = argparse.ArgumentParser(description='NAE Experiments')
