@@ -116,3 +116,7 @@ def vae_log_prob(vae, images, n_samples):
 
     #return torch.log(torch.mean(torch.exp(p_x_z+p_latent-q_latent)))
     return torch.mean(torch.logsumexp(p_x_z + p_latent - q_latent, [1]) - torch.log(torch.tensor(n_samples)))
+
+
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
