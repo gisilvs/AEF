@@ -32,7 +32,7 @@ class MaskedAutoregressiveFlow(nn.Module):
                                                        dropout_probability,
                                                        batch_norm_within_layers,
                                                        act_norm_between_layers)
-
+        self.device = None
         self.preprocessing_layers = nn.ModuleList(preprocessing_layers)
 
     def forward(self, x):
@@ -52,9 +52,18 @@ class MaskedAutoregressiveFlow(nn.Module):
         return x, log_j_maf + log_j_preprocessing
 
     def sample(self, n_samples):
+        self.get_device()  # TODO: make better
         samples = self.base_dist.sample([n_samples])
         return self.forward(samples)[0]
 
     def loss_function(self, x):
+        self.get_device() # TODO: make better
         z, log_j = self.inverse(x)
         return -(self.base_dist.log_prob(z).sum(-1) + log_j)
+
+    def get_device(self):
+        if self.device is None:
+            self.device = next(self.parameters()).device
+            self.base_dist = Normal(torch.zeros(self.features).to(self.device),
+                                    torch.ones(self.features).to(self.device))
+        return self.device

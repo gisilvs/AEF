@@ -44,4 +44,6 @@ class VAE(GaussianAutoEncoder):
     def get_device(self):
         if self.device is None:
             self.device = next(self.encoder.parameters()).device
+            self.prior = distributions.normal.Normal(torch.zeros(self.latent_dim).to(self.device),
+                                                     torch.ones(self.latent_dim).to(self.device))
         return self.device

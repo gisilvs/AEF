@@ -63,7 +63,7 @@ def get_train_val_dataloaders(dataset: str = 'mnist', batch_size: int = 128, p_v
         return_tuple = [DataLoader(train_dataset, batch_size=batch_size, shuffle=True, generator=torch_rng)]
 
     if return_img_dim:
-        img_dim = train_dataset[0][0].shape
+        img_dim = list(train_dataset[0][0].shape)
         return_tuple.append(img_dim)
     if return_alpha:
         return_tuple.append(alpha)
