@@ -121,14 +121,20 @@ def vae_log_prob(vae, images, n_samples):
     return torch.mean(torch.logsumexp(p_x_z + p_latent - q_latent, [1]) - torch.log(torch.tensor(n_samples)))
 
 
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
 def download_wandb_artifact(run, project_name, model_name, version='latest'):
     artifact = run.use_artifact(f'nae/{project_name}/{model_name}:{version}', type='model')
     artifact_dir = artifact.download()
     return artifact_dir
 
+
 def download_best_model_and_get_path(run, project_name, model_name, version='latest'):
     artifact_dir = download_wandb_artifact(run, project_name, model_name, version)
     return artifact_dir + '/' + os.listdir(artifact_dir)[0]
+
 
 def load_best_model(run, project_name, model_name, experiment_name, device, latent_dims, image_dim, alpha, use_center_pixels, version='latest'):
 
