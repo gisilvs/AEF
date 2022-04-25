@@ -133,7 +133,7 @@ def download_best_model_and_get_path(run, project_name, model_name, version='lat
 def load_best_model(run, project_name, model_name, experiment_name, device, latent_dims, image_dim, alpha, use_center_pixels, version='latest'):
 
     model = get_model(model_name, latent_dims, image_dim, alpha, use_center_pixels)
-    model.sample(10) # needed as some components such as actnorm need to be initialized
+    model.loss_function(model.sample(10)) # needed as some components such as actnorm need to be initialized
     model_path = download_best_model_and_get_path(run, project_name, experiment_name, version)
     model.load_state_dict(torch.load(model_path, map_location=device))
 
