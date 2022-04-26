@@ -87,6 +87,7 @@ for run_nr in args.runs:
     test_dataloader = get_test_dataloader(dataset, batch_size)
     n_pixels = np.prod(image_dim)
 
+    #TODO: add core_flow selection for NAE
     model = get_model(model_name, args.decoder, latent_dims, image_dim, alpha, use_center_pixels)
     optimizer = torch.optim.Adam(params=model.parameters(), lr=learning_rate)
 
@@ -127,15 +128,15 @@ for run_nr in args.runs:
                 if (n_iterations_done % validate_every_n_iterations) == 0 or (n_iterations_done == n_iterations - 1):
                     model.eval()
 
-                    val_loss_averager = make_averager()
-
-                    # todo: move this to utils with plotting function
-                    samples = model.sample(16)
-                    samples = samples.cpu().detach()
-                    plot_image_grid(samples, cols=4)
-                    image_dict = {'samples': plt}
-
                     with torch.no_grad():
+                        val_loss_averager = make_averager()
+
+                        # todo: move this to utils with plotting function
+                        samples = model.sample(16)
+                        samples = samples.cpu().detach()
+                        plot_image_grid(samples, cols=4)
+                        image_dict = {'samples': plt}
+
                         for validation_batch, _ in validation_dataloader:
                             validation_batch = dequantize(validation_batch)
                             validation_batch = validation_batch.to(device)
