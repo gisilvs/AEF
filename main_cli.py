@@ -211,9 +211,10 @@ for run_nr in args.runs:
             for test_batch, _ in test_dataloader:
                 test_batch = dequantize(test_batch)
                 test_batch = test_batch.to(device)
-                log_likelihood = vae_log_prob(model, test_batch, n_samples=128)
-                loss = torch.mean(model.loss_function(test_batch))
-                test_ll_averager(loss.item())
+                for iw_iter in range(100):
+                    log_likelihood = vae_log_prob(model, test_batch, n_samples=128)
+                    loss = torch.mean(model.loss_function(test_batch))
+                    test_ll_averager(loss.item())
             test_ll = test_ll_averager(None)
             wandb.summary['test_log_likelihood'] = test_ll
 
