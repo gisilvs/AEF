@@ -147,11 +147,11 @@ def load_best_model(run, project_name, model_name, experiment_name, device, deco
     return model
 
 
-def plot_image_grid(samples, cols, title=None):
+def plot_image_grid(samples, cols, padding=2, title=None):
     '''
     Samples should be a torch aray with dimensions BxCxWxH
     '''
-    grid_img = torchvision.utils.make_grid(samples, pad_value=1., nrow=cols)
+    grid_img = torchvision.utils.make_grid(samples, padding=padding, pad_value=1., nrow=cols)
     plt.imshow(grid_img.permute(1, 2, 0))
     plt.axis("off")
     if title:
