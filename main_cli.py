@@ -131,8 +131,8 @@ for run_nr in args.runs:
 
                     # todo: move this to utils with plotting function
                     samples = model.sample(16)
-                    samples = samples.cpu().detach().numpy()
-                    plot_image_grid(samples, cols=4, rows=4, n_channels=image_dim[0])
+                    samples = samples.cpu().detach()
+                    plot_image_grid(samples, cols=4)
                     image_dict = {'samples': plt}
 
                     with torch.no_grad():
@@ -210,9 +210,10 @@ for run_nr in args.runs:
             for test_batch, _ in test_dataloader:
                 test_batch = dequantize(test_batch)
                 test_batch = test_batch.to(device)
-                log_likelihood = vae_log_prob(model, test_batch, n_samples=128)
-                loss = torch.mean(model.loss_function(test_batch))
-                test_ll_averager(loss.item())
+                for iw_iter in range(20):
+                    log_likelihood = vae_log_prob(model, test_batch, n_samples=128)
+                    loss = torch.mean(model.loss_function(test_batch))
+                    test_ll_averager(loss.item())
             test_ll = test_ll_averager(None)
             wandb.summary['test_log_likelihood'] = test_ll
             bpp_test = bits_per_pixel(test_ll, n_pixels)
@@ -227,8 +228,8 @@ for run_nr in args.runs:
 
         for i in range(5):
             samples = model.sample(16)
-            samples = samples.cpu().detach().numpy()
-            plot_image_grid(samples, cols=4, rows=4, n_channels=image_dim[0])
+            samples = samples.cpu().detach()
+            plot_image_grid(samples, cols=4)
             image_dict = {'final_samples': plt}
             run.log(image_dict)
 

@@ -7,6 +7,7 @@ from torch.distributions.normal import Normal
 import wandb
 from models.models import get_model
 import os
+import torchvision
 
 def get_avg_loss_over_iterations(iteration_losses: np.array, window_size: int, cur_iteration: int):
     low_window = max(0, cur_iteration - window_size)
@@ -149,24 +150,19 @@ def load_best_model(run, project_name, model_name, experiment_name, device, late
     return model
 
 
-def plot_image_grid(samples, cols, rows, n_channels, title=None):
+def plot_image_grid(samples, cols, padding=2, title=None):
     '''
-    Samples should be a numpy aray of cols x rows samples, with dimensions BxCxWxH
+    Samples should be a torch aray with dimensions BxCxWxH
     '''
-    _, axs = plt.subplots(cols, rows, )
-    axs = axs.flatten()
-    for img, ax in zip(samples, axs):
-        ax.axis('off')
-        if n_channels == 1:
-            ax.imshow(img.squeeze(0), cmap='gray')
-        else:
-            ax.imshow(img.transpose(1,2,0))
+    grid_img = torchvision.utils.make_grid(samples, padding=padding, pad_value=1., nrow=cols)
+    plt.imshow(grid_img.permute(1, 2, 0))
+    plt.axis("off")
     if title:
         plt.suptitle(title)
 
         
 def bits_per_pixel(log_prob, n_pixels, adjust_value=None):
-    # log prob must be positive
+    # log prob must be positive (meaning that we shouldn't pass -log_prob)
     if adjust_value:
         log_prob += (n_pixels*torch.log(torch.ones(1)*adjust_value))[0]
     log_prob_base_2 = log_prob/torch.log(torch.ones(1)*2.)
