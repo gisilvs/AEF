@@ -5,24 +5,25 @@ from torch.distributions import Normal
 from torch.nn import ModuleList
 
 from bijectors.realnvp import get_realnvp_bijector
+from bijectors.masked_autoregressive_transform import get_masked_autoregressive_transform
 from models.autoencoder import ConvolutionalEncoder, LatentDependentDecoder, GaussianEncoder, GaussianDecoder
 from models.autoencoder_base import GaussianAutoEncoder
 
 
 class NormalizingAutoEncoder(GaussianAutoEncoder):
     def __init__(self, encoder: GaussianEncoder, decoder: GaussianDecoder,
-                 preprocessing_layers=[], hardcoded_mask=True):
+                 preprocessing_layers=[], hardcoded_mask=True, core_flow_fn=get_realnvp_bijector):
         super(NormalizingAutoEncoder, self).__init__(encoder, decoder)
 
 
         self.core_size = self.encoder.latent_dim
         self.image_shape = self.encoder.input_shape
-        self.core_flow_pre = get_realnvp_bijector(features=self.core_size,
+        self.core_flow_pre = core_flow_fn(features=self.core_size,
                                                   hidden_features=256,
                                                   num_layers=4,
                                                   num_blocks_per_layer=2,
                                                   act_norm_between_layers=True)
-        self.core_flow_post = get_realnvp_bijector(features=self.core_size,
+        self.core_flow_post = core_flow_fn(features=self.core_size,
                                                    hidden_features=256,
                                                    num_layers=4,
                                                    num_blocks_per_layer=2,
