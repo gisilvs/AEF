@@ -131,8 +131,8 @@ for run_nr in args.runs:
 
                     # todo: move this to utils with plotting function
                     samples = model.sample(16)
-                    samples = samples.cpu().detach().numpy()
-                    plot_image_grid(samples, cols=4, rows=4, n_channels=image_dim[0])
+                    samples = samples.cpu().detach()
+                    plot_image_grid(samples, cols=4)
                     image_dict = {'samples': plt}
 
                     with torch.no_grad():
@@ -227,8 +227,8 @@ for run_nr in args.runs:
 
         for i in range(5):
             samples = model.sample(16)
-            samples = samples.cpu().detach().numpy()
-            plot_image_grid(samples, cols=4, rows=4, n_channels=image_dim[0])
+            samples = samples.cpu().detach()
+            plot_image_grid(samples, cols=4)
             image_dict = {'final_samples': plt}
             run.log(image_dict)
 
