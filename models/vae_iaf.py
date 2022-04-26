@@ -23,8 +23,9 @@ class VAEIAF(GaussianAutoEncoder):
         decoded_mu, decoded_sigma = self.decoder(z)
         return decoded_mu, decoded_sigma
 
-    def sample(self, num_samples: int):
-        z = self.prior.sample((num_samples,)).to(self.get_device())
+    def sample(self, num_samples: int, z: Tensor = None):
+        if z is None:
+            z = self.prior.sample((num_samples,)).to(self.get_device())
         return self.decode(z)[0]
 
     def forward(self, x: Tensor):
