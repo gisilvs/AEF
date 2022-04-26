@@ -38,14 +38,14 @@ class ActNorm(Transform):
             self._initialize_forward(inputs)
 
         scale, shift = self._broadcastable_scale_shift(inputs)
-        outputs = scale * inputs + shift
+        outputs = (scale+1e-5) * inputs + shift
 
         if inputs.dim() == 4:
             batch_size, _, h, w = inputs.shape
-            logabsdet = h * w * torch.sum(self.log_scale) * outputs.new_ones(batch_size)
+            logabsdet = h * w * torch.sum(torch.log(scale + 1e-5)) * outputs.new_ones(batch_size)
         else:
-            batch_size, _ = inputs.shape
-            logabsdet = torch.sum(self.log_scale) * outputs.new_ones(batch_size)
+            batch_size, w = inputs.shape
+            logabsdet = w * torch.sum(torch.log(scale + 1e-5)) * outputs.new_ones(batch_size)
 
         return outputs, logabsdet
 
@@ -57,14 +57,14 @@ class ActNorm(Transform):
             self._initialize_inverse(inputs)
 
         scale, shift = self._broadcastable_scale_shift(inputs)
-        outputs = (inputs - shift) / scale
+        outputs = (inputs - shift) / (scale+1e-5)
 
         if inputs.dim() == 4:
             batch_size, _, h, w = inputs.shape
-            logabsdet = -h * w * torch.sum(self.log_scale) * outputs.new_ones(batch_size)
+            logabsdet = -h * w * torch.sum(torch.log(scale + 1e-5)) * outputs.new_ones(batch_size)
         else:
-            batch_size, _ = inputs.shape
-            logabsdet = -torch.sum(self.log_scale) * outputs.new_ones(batch_size)
+            batch_size, w = inputs.shape
+            logabsdet = - w * torch.sum(torch.log(scale + 1e-5)) * outputs.new_ones(batch_size)
 
         return outputs, logabsdet
 
@@ -74,6 +74,8 @@ class ActNorm(Transform):
         if inputs.dim() == 4:
             num_channels = inputs.shape[1]
             inputs = inputs.permute(0, 2, 3, 1).reshape(-1, num_channels)
+        else:
+            inputs = inputs.view(-1,1)
 
         with torch.no_grad():
             std = inputs.std(dim=0)
@@ -88,6 +90,8 @@ class ActNorm(Transform):
         if inputs.dim() == 4:
             num_channels = inputs.shape[1]
             inputs = inputs.permute(0, 2, 3, 1).reshape(-1, num_channels)
+        else:
+            inputs = inputs.view(-1,1)
 
         with torch.no_grad():
             mu = inputs.mean(dim=0)
@@ -95,3 +99,5 @@ class ActNorm(Transform):
             self.log_scale.data = torch.log(std)
             self.shift.data = mu
             self.initialized.data = torch.tensor(True, dtype=torch.bool)
+
+
