@@ -159,7 +159,7 @@ def plot_image_grid(samples, cols, padding=2, title=None):
 
         
 def bits_per_pixel(log_prob, n_pixels, adjust_value=None):
-    # log prob must be positive
+    # log prob must be positive (meaning that we shouldn't pass -log_prob)
     if adjust_value:
         log_prob += (n_pixels*torch.log(torch.ones(1)*adjust_value))[0]
     log_prob_base_2 = log_prob/torch.log(torch.ones(1)*2.)
