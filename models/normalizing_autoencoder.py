@@ -12,7 +12,7 @@ from models.autoencoder_base import GaussianAutoEncoder
 
 class NormalizingAutoEncoder(GaussianAutoEncoder):
     def __init__(self, encoder: GaussianEncoder, decoder: GaussianDecoder,
-                 preprocessing_layers=[], hardcoded_mask=True, core_flow_fn=get_realnvp_bijector):
+                 preprocessing_layers=[], hardcoded_mask=True, core_flow_fn=get_masked_autoregressive_transform):
         super(NormalizingAutoEncoder, self).__init__(encoder, decoder)
 
 
