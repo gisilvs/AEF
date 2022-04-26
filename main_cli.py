@@ -10,7 +10,9 @@ import util
 import wandb
 from datasets import get_train_val_dataloaders, get_test_dataloader
 from models.models import get_model
-from util import make_averager, dequantize, vae_log_prob
+
+from util import make_averager, dequantize, vae_log_prob, plot_image_grid, bits_per_pixel
+
 
 parser = argparse.ArgumentParser(description='NAE Experiments')
 parser.add_argument('--wandb-type', type=str, help='phase1 | phase2 | prototyping | visualization')
@@ -83,6 +85,7 @@ for run_nr in args.runs:
     train_dataloader, validation_dataloader, image_dim, alpha = get_train_val_dataloaders(dataset, batch_size,
                                                                                           p_validation, seed=args.seed)
     test_dataloader = get_test_dataloader(dataset, batch_size)
+    n_pixels = np.prod(image_dim)
 
     model = get_model(model_name, args.decoder, latent_dims, image_dim, alpha, use_center_pixels)
     optimizer = torch.optim.Adam(params=model.parameters(), lr=learning_rate)
@@ -112,7 +115,7 @@ for run_nr in args.runs:
                 loss = torch.mean(model.loss_function(image_batch))
                 iteration_losses[n_iterations_done] = loss.item()
                 metrics = {
-                    'train/train_loss': loss
+                    'train_loss': loss
                 }
 
                 optimizer.zero_grad()
@@ -129,11 +132,7 @@ for run_nr in args.runs:
                     # todo: move this to utils with plotting function
                     samples = model.sample(16)
                     samples = samples.cpu().detach().numpy()
-                    _, axs = plt.subplots(4, 4, )
-                    axs = axs.flatten()
-                    for img, ax in zip(samples, axs):
-                        ax.axis('off')
-                        ax.imshow(img.reshape(28, 28), cmap='gray')
+                    plot_image_grid(samples, cols=4, rows=4, n_channels=image_dim[0])
                     image_dict = {'samples': plt}
 
                     with torch.no_grad():
@@ -147,7 +146,7 @@ for run_nr in args.runs:
 
                         validation_losses.append(val_loss_averager(None))
                         val_metrics = {
-                            'val/val_loss': validation_losses[-1]
+                            'val_loss': validation_losses[-1]
                         }
                         if n_iterations_done == 0:
                             best_loss = validation_losses[-1]
@@ -216,16 +215,20 @@ for run_nr in args.runs:
                 test_ll_averager(loss.item())
             test_ll = test_ll_averager(None)
             wandb.summary['test_log_likelihood'] = test_ll
+            bpp_test = bits_per_pixel(test_ll, n_pixels)
+            bpp_test_adjusted = bits_per_pixel(test_ll, n_pixels, adjust_value=256.)
 
+        else:
+            bpp_test = bits_per_pixel(test_loss, n_pixels)
+            bpp_test_adjusted = bits_per_pixel(test_loss, n_pixels, adjust_value=256.)
+
+        wandb.summary['test_bpp'] = bpp_test
+        wandb.summary['test_bpp_adjusted'] = bpp_test_adjusted
 
         for i in range(5):
             samples = model.sample(16)
             samples = samples.cpu().detach().numpy()
-            _, axs = plt.subplots(4, 4, )
-            axs = axs.flatten()
-            for img, ax in zip(samples, axs):
-                ax.axis('off')
-                ax.imshow(img.reshape(28, 28), cmap='gray')
+            plot_image_grid(samples, cols=4, rows=4, n_channels=image_dim[0])
             image_dict = {'final_samples': plt}
             run.log(image_dict)
 

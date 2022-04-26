@@ -10,7 +10,7 @@ from datasets import get_train_val_dataloaders, get_test_dataloader
 from bijectors.actnorm import ActNorm
 from models.autoencoder import ConvolutionalEncoder, IndependentVarianceDecoder
 from models.normalizing_autoencoder import NormalizingAutoEncoder
-from util import make_averager, dequantize
+from util import make_averager, dequantize, plot_image_grid
 
 
 def main():
@@ -90,11 +90,7 @@ def main():
                     # todo: move this to utils with plotting function
                     samples = model.sample(16)
                     samples = samples.cpu().detach().numpy()
-                    _, axs = plt.subplots(4, 4, )
-                    axs = axs.flatten()
-                    for img, ax in zip(samples, axs):
-                        ax.axis('off')
-                        ax.imshow(img.reshape(28, 28), cmap='gray')
+                    plot_image_grid(samples, cols=4, rows=4, n_channels=image_dim[0])
                     image_dict = {'samples': plt}
 
                     with torch.no_grad():
@@ -156,11 +152,7 @@ def main():
         for i in range(4):
             samples = model.sample(16)
             samples = samples.cpu().detach().numpy()
-            _, axs = plt.subplots(4, 4, )
-            axs = axs.flatten()
-            for img, ax in zip(samples, axs):
-                ax.axis('off')
-                ax.imshow(img.reshape(28, 28), cmap='gray')
+            plot_image_grid(samples, cols=4, rows=4, n_channels=image_dim[0])
             image_dict = {'final_samples': plt}
             run.log(image_dict)
 

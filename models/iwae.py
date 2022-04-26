@@ -24,9 +24,12 @@ class IWAE(GaussianAutoEncoder):
         decoded_mu, decoded_sigma = self.decoder(z)
         return decoded_mu, decoded_sigma
 
-    def sample(self, num_samples: int, z: Tensor = None):
+    def sample(self, num_samples: int, temperature: float = 1, z: Tensor = None):
+        # multiplying by the temperature works like the reparametrization trick,
+        # only if the prior is N(0,1)
         if z is None:
-            z = self.prior.sample((num_samples, )).to(self.get_device())
+            z = self.prior.sample((num_samples,)).to(self.get_device()) * temperature
+
         return self.decode(z)[0]
 
     def forward(self, x: Tensor):

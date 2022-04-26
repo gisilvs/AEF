@@ -136,12 +136,40 @@ def download_best_model_and_get_path(run, project_name, model_name, version='lat
     return artifact_dir + '/' + os.listdir(artifact_dir)[0]
 
 
+
 def load_best_model(run, project_name, model_name, experiment_name, device, latent_dims, image_dim, alpha,
                     decoder, use_center_pixels, version='latest'):
-
     model = get_model(model_name, decoder, latent_dims, image_dim, alpha, use_center_pixels)
     model.sample(10) # needed as some components such as actnorm need to be initialized
+    model.loss_function(model.sample(10)) # needed as some components such as actnorm need to be initialized
+
     model_path = download_best_model_and_get_path(run, project_name, experiment_name, version)
     model.load_state_dict(torch.load(model_path, map_location=device))
 
     return model
+
+
+def plot_image_grid(samples, cols, rows, n_channels, title=None):
+    '''
+    Samples should be a numpy aray of cols x rows samples, with dimensions BxCxWxH
+    '''
+    _, axs = plt.subplots(cols, rows, )
+    axs = axs.flatten()
+    for img, ax in zip(samples, axs):
+        ax.axis('off')
+        if n_channels == 1:
+            ax.imshow(img.squeeze(0), cmap='gray')
+        else:
+            ax.imshow(img.transpose(1,2,0))
+    if title:
+        plt.suptitle(title)
+
+        
+def bits_per_pixel(log_prob, n_pixels, adjust_value=None):
+    # log prob must be positive
+    if adjust_value:
+        log_prob += (n_pixels*torch.log(torch.ones(1)*adjust_value))[0]
+    log_prob_base_2 = log_prob/torch.log(torch.ones(1)*2.)
+
+    return log_prob_base_2/n_pixels
+
