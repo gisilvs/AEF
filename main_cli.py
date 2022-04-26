@@ -72,6 +72,7 @@ for run_nr in args.runs:
         "learning_rate": learning_rate,
         "n_iterations": n_iterations,
         "batch_size": batch_size,
+        "seed": args.seed,
     }
     run = wandb.init(project=args.wandb_type, entity="nae",
                      name=run_name, config=config)
