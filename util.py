@@ -145,10 +145,12 @@ def load_best_model(run, project_name, model_name, experiment_name, device, late
 
     return model
 
-def plot_image_gird(samples, cols, rows, image_shape, title=None):
+def plot_image_gird(samples, cols, rows, n_channels, title=None):
+    '''
+    Samples should be a numpy aray of cols x rows samples, with dimensions BxCxWxH
+    '''
     _, axs = plt.subplots(cols, rows, )
     axs = axs.flatten()
-    n_channels = image_shape[0]
     for img, ax in zip(samples, axs):
         ax.axis('off')
         if n_channels == 1:
