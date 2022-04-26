@@ -211,7 +211,7 @@ for run_nr in args.runs:
             for test_batch, _ in test_dataloader:
                 test_batch = dequantize(test_batch)
                 test_batch = test_batch.to(device)
-                for iw_iter in range(100):
+                for iw_iter in range(20):
                     log_likelihood = vae_log_prob(model, test_batch, n_samples=128)
                     loss = torch.mean(model.loss_function(test_batch))
                     test_ll_averager(loss.item())
