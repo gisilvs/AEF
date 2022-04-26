@@ -43,6 +43,8 @@ class NormalizingAutoEncoder(GaussianAutoEncoder):
                 mask[0, 12:16, 13:15] = 1
             elif self.core_size == 16:
                 mask[0, 12:16, 12:16] = 1
+            elif self.core_size == 32:
+                mask[0, 10:18, 12:16] = 1
             else:
                 print('NOT IMPLEMENTED YET')
                 exit(1)
