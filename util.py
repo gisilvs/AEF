@@ -145,6 +145,23 @@ def load_best_model(run, project_name, model_name, experiment_name, device, deco
 
     return model
 
+
+def plot_image_grid(samples, cols, rows, n_channels, title=None):
+    '''
+    Samples should be a numpy aray of cols x rows samples, with dimensions BxCxWxH
+    '''
+    _, axs = plt.subplots(cols, rows, )
+    axs = axs.flatten()
+    for img, ax in zip(samples, axs):
+        ax.axis('off')
+        if n_channels == 1:
+            ax.imshow(img.squeeze(0), cmap='gray')
+        else:
+            ax.imshow(img.transpose(1,2,0))
+    if title:
+        plt.suptitle(title)
+
+        
 def bits_per_pixel(log_prob, n_pixels, adjust_value=None):
     # log prob must be positive
     if adjust_value:
@@ -152,3 +169,4 @@ def bits_per_pixel(log_prob, n_pixels, adjust_value=None):
     log_prob_base_2 = log_prob/torch.log(torch.ones(1)*2.)
 
     return log_prob_base_2/n_pixels
+
