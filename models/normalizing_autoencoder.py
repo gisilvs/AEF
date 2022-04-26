@@ -152,13 +152,13 @@ class NormalizingAutoEncoder(GaussianAutoEncoder):
         x = self.inverse_partition(core, shell)
         return x
 
-    def sample(self, num_samples=1, sample_deviations=False):
+    def sample(self, num_samples=1, sample_deviations=False, temperature=1.):
         device = self.get_device()
         z = torch.normal(torch.zeros(num_samples, self.core_size),
-                         torch.ones(num_samples, self.core_size)).to(device)
+                         torch.ones(num_samples, self.core_size)*temperature).to(device)
         if sample_deviations:
             deviations = torch.normal(torch.zeros_like(self.mask),
-                                      torch.ones_like(self.mask)).to(device)
+                                      torch.ones_like(self.mask)*temperature).to(device)
         else:
             deviations = None
 

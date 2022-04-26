@@ -51,9 +51,9 @@ class MaskedAutoregressiveFlow(nn.Module):
         x, log_j_maf = self.maf.inverse(y)
         return x, log_j_maf + log_j_preprocessing
 
-    def sample(self, n_samples):
+    def sample(self, n_samples, temperature=1):
         self.get_device()  # TODO: make better
-        samples = self.base_dist.sample([n_samples])
+        samples = self.base_dist.sample([n_samples])*temperature
         return self.forward(samples)[0]
 
     def loss_function(self, x):

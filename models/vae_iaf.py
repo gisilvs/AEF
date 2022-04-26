@@ -23,8 +23,10 @@ class VAEIAF(GaussianAutoEncoder):
         decoded_mu, decoded_sigma = self.decoder(z)
         return decoded_mu, decoded_sigma
 
-    def sample(self, num_samples: int):
-        z = self.prior.sample((num_samples,)).to(self.get_device())
+    def sample(self, num_samples: int, temperature=1):
+        # multiplying by the temperature works like the reparametrization trick,
+        # only if the prior is N(0,1)
+        z = self.prior.sample((num_samples,)).to(self.get_device()) * temperature
         return self.decode(z)[0]
 
     def forward(self, x: Tensor):
