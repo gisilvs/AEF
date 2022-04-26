@@ -145,7 +145,7 @@ def load_best_model(run, project_name, model_name, experiment_name, device, late
 
     return model
 
-def plot_image_gird(samples, cols, rows, n_channels, title=None):
+def plot_image_grid(samples, cols, rows, n_channels, title=None):
     '''
     Samples should be a numpy aray of cols x rows samples, with dimensions BxCxWxH
     '''

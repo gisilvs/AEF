@@ -10,7 +10,7 @@ import util
 import wandb
 from datasets import get_train_val_dataloaders, get_test_dataloader
 from models.models import get_model
-from util import make_averager, dequantize, vae_log_prob, plot_image_gird
+from util import make_averager, dequantize, vae_log_prob, plot_image_grid
 
 parser = argparse.ArgumentParser(description='NAE Experiments')
 parser.add_argument('--wandb-type', type=str, help='phase1 | phase2 | prototyping | visualization')
@@ -129,7 +129,7 @@ for run_nr in args.runs:
                     # todo: move this to utils with plotting function
                     samples = model.sample(16)
                     samples = samples.cpu().detach().numpy()
-                    plot_image_gird(samples, cols=4, rows=4, n_channels=image_dim[0])
+                    plot_image_grid(samples, cols=4, rows=4, n_channels=image_dim[0])
                     image_dict = {'samples': plt}
 
                     with torch.no_grad():
@@ -217,7 +217,7 @@ for run_nr in args.runs:
         for i in range(5):
             samples = model.sample(16)
             samples = samples.cpu().detach().numpy()
-            plot_image_gird(samples, cols=4, rows=4, n_channels=image_dim[0])
+            plot_image_grid(samples, cols=4, rows=4, n_channels=image_dim[0])
             image_dict = {'final_samples': plt}
             run.log(image_dict)
 
