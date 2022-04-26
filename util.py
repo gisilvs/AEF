@@ -144,3 +144,11 @@ def load_best_model(run, project_name, model_name, experiment_name, device, deco
     model.load_state_dict(torch.load(model_path, map_location=device))
 
     return model
+
+def bits_per_pixel(log_prob, n_pixels, adjust_value=None):
+    # log prob must be positive
+    if adjust_value:
+        log_prob += (n_pixels*torch.log(torch.ones(1)*adjust_value))[0]
+    log_prob_base_2 = log_prob/torch.log(torch.ones(1)*2.)
+
+    return log_prob_base_2/n_pixels
