@@ -134,6 +134,8 @@ for run_nr in args.runs:
                         # todo: move this to utils with plotting function
                         samples = model.sample(16)
                         samples = samples.cpu().detach()
+                        if model_name == 'maf':
+                            samples =samples.view(-1, image_dim[0], image_dim[1], image_dim[2])
                         plot_image_grid(samples, cols=4)
                         image_dict = {'samples': plt}
 
