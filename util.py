@@ -150,10 +150,12 @@ def load_best_model(run, project_name, model_name, experiment_name, device, late
     return model
 
 
-def plot_image_grid(samples, cols, padding=2, title=None):
+def plot_image_grid(samples, cols, padding=2, title=None, hires=False):
     '''
     Samples should be a torch aray with dimensions BxCxWxH
     '''
+    if hires:
+        fig = plt.figure(figsize=(10, 10), dpi=300)
     grid_img = torchvision.utils.make_grid(samples, padding=padding, pad_value=1., nrow=cols)
     plt.imshow(grid_img.permute(1, 2, 0))
     plt.axis("off")
