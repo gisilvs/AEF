@@ -1,6 +1,8 @@
 import torch.distributions
 import torchvision
 
+import numpy as np
+
 import datasets
 import util
 import wandb
@@ -43,21 +45,33 @@ def get_z_values(n_vals: int = 20, border: float = 0.15, latent_dims: int = 2):
 
     return z_vals
 
+def plot_latent_space_2d(model, test_loader):
+    plt.figure()
+    arr = np.zeros(len(test_loader.dataset), 3)
+    n_added = 0
+    for image_batch, image_labels in test_loader:
+        image_batch = util.dequantize(image_batch)
+        image_batch = image_batch.to(device)
+        mu, _ = model.encode(image_batch)
+
+
+
+
 from util import load_best_model
 
 run = wandb.init()
-project_name = 'prototyping'
+project_name = 'phase1'
 model_name = 'nae'
-experiment_name = 'vae_mnist_run_0_latent_size_2_decoder_fixed'
+experiment_name = 'nae_mnist_run_0_latent_size_2_decoder_independent_corner'
 latent_dims = 2
 image_dim = [1, 28, 28]
 alpha = 1e-6
-use_center_pixels = True
+use_center_pixels = False
 device = 'cpu'
 decoder = 'fixed'
 
 model = load_best_model(run, project_name, model_name, experiment_name, device, latent_dims, image_dim, alpha, decoder,
-                        use_center_pixels, version='best:v14')
+                        use_center_pixels, version='best:v2')
 z_vals = get_z_values(n_vals=10, latent_dims=2)
 
 output = model.sample(z=z_vals).detach()
