@@ -3,7 +3,7 @@ import torchvision
 
 import numpy as np
 
-import datasets
+from datasets import get_test_dataloader
 import util
 import wandb
 from models.autoencoder_base import AutoEncoder
@@ -50,8 +50,8 @@ def get_z_values(n_vals: int = 20, border: float = 0.15, latent_dims: int = 2):
 def plot_latent_space(model, test_loader):
     n_latent_dims = model.encoder.latent_dim
     if n_latent_dims == 2:
-        plot_latent_space_2d(model, test_loader)
-        return
+        return plot_latent_space_2d(model, test_loader)
+
     arr = np.zeros((len(test_loader.dataset), n_latent_dims))
     labels = np.zeros((len(test_loader.dataset),))
     n_added = 0
@@ -64,16 +64,29 @@ def plot_latent_space(model, test_loader):
         n_added += len(image_batch)
 
 
-    embedded = TSNE(learning_rate='auto', init='pca', perplexity=10).fit_transform(arr)#TSNE(learning_rate='auto', perplexity=50, n_iter=2000, init='pca').fit_transform(arr)
+    embedded = TSNE(learning_rate='auto', init='pca', perplexity=50).fit_transform(arr)#TSNE(learning_rate='auto', perplexity=50, n_iter=2000, init='pca').fit_transform(arr)
 
-    plt.figure()
+    fig = plt.figure(figsize=(10,10), dpi=150)
     plt.style.use('seaborn')
     scat = plt.scatter(embedded[:, 0], embedded[:, 1], s=10, c=labels, cmap=plt.get_cmap('tab10'))
     cb = plt.colorbar(scat, spacing='proportional')
-    plt.show()
+    plt.tick_params(
+        axis='x',  # changes apply to the x-axis
+        which='both',  # both major and minor ticks are affected
+        bottom=False,  # ticks along the bottom edge are off
+        top=False,  # ticks along the top edge are off
+        labelbottom=False)  # labels along the bottom edge are off
+    plt.tick_params(
+        axis='y',  # changes apply to the x-axis
+        which='both',  # both major and minor ticks are affected
+        left=False,  # ticks along the bottom edge are off
+        right=False,  # ticks along the top edge are off
+        labelleft=False)  # labels along the bottom edge are off
+    return fig
+
+
 
 def plot_latent_space_2d(model: AutoEncoder, test_loader):
-    plt.figure()
     arr = np.zeros([len(test_loader.dataset), 3])
     n_added = 0
     for image_batch, image_labels in test_loader:
@@ -84,37 +97,74 @@ def plot_latent_space_2d(model: AutoEncoder, test_loader):
         arr[n_added:n_added + len(image_batch), 2] = image_labels
         n_added += len(image_batch)
 
-
-
+    fig = plt.figure(figsize=(10,10), dpi=150)
     plt.style.use('seaborn')
     scat = plt.scatter(arr[:, 0], arr[:, 1], s=10, c=arr[:, 2], cmap=plt.get_cmap('tab10'))
-    cb = plt.colorbar(scat, spacing='proportional')
-    plt.show()
+    cb = plt.colorbar(scat, spacing='uniform')
+    cur_min_x, cur_max_x = np.min(arr[:, 0]), np.max(arr[:, 0])
+    cur_min_y, cur_max_y = np.min(arr[:, 1]), np.max(arr[:, 1])
+    plt.xlim((max(cur_min_x, -5), min(cur_max_x, 5)))
+    plt.ylim((max(cur_min_y, -5), min(cur_max_y, 5)))
+    return fig
+
 
 
 
 from util import load_best_model
 
-run = wandb.init()
+run = wandb.init(project='visualizations', entity="nae")
+
 project_name = 'phase1'
-model_name = 'nae'
-experiment_name = 'nae_mnist_run_4_latent_size_8_decoder_independent_corner'
-latent_dims = 8
 image_dim = [1, 28, 28]
+
+latent_sizes = [2, 4, 8, 16]
+
 alpha = 1e-6
 use_center_pixels = False
 device = 'cpu'
-decoder = 'independent'
-dataset = 'mnist'
 
-model = load_best_model(run, project_name, model_name, experiment_name, device, latent_dims, image_dim, alpha, decoder,
-                        use_center_pixels, version='best:latest')
-test_loader = datasets.get_test_dataloader(dataset)
-plot_latent_space(model, test_loader)
-# z_vals = get_z_values(n_vals=10, latent_dims=2)
+latent_grid_size = 20
+datasets = ['mnist', 'fashionmnist']
+models = ['nae-center', 'nae-corner', 'vae', 'vae-iaf', 'iwae']#['vae', 'vae-iaf', 'iwae', 'nae']
+for dataset in datasets:
+    for latent_size in latent_sizes:
+        latent_dims = latent_size
+        for model_name in models:
+            if model_name == 'nae-corner':
+                experiment_name = f'nae_{dataset}_run_2_latent_size_{latent_size}_decoder_independent_corner'
+                decoder = 'independent'
+                model_name = 'nae'
+                use_center_pixels = False
+            elif model_name == 'nae-center':
+                experiment_name = f'nae_{dataset}_run_2_latent_size_{latent_size}_decoder_independent_center'
+                decoder = 'independent'
+                model_name = 'nae'
+                use_center_pixels = True
+            else:
+                experiment_name = f'{model_name}_{dataset}_run_2_latent_size_{latent_size}_decoder_fixed'
+                decoder = 'fixed'
+
+
+
+            model = load_best_model(run, project_name, model_name, experiment_name, device, latent_dims, image_dim,
+                                    alpha, decoder, use_center_pixels, version='best:latest')
+
+            if latent_size == 2:
+
+                z_vals = get_z_values(n_vals=latent_grid_size, latent_dims=2)
+                output = model.sample(z=z_vals).detach()
+
+                util.plot_image_grid(output, cols=latent_grid_size, padding=0, hires=True)
+                image_dict = {f'latent grid {model_name} {dataset}': plt}
+                wandb.log({**image_dict})
+
+            test_loader = get_test_dataloader(dataset)
+            fig = plot_latent_space(model, test_loader)
+            wandb.log({f"latent dims {latent_size} {dataset} {model_name}" : wandb.Image(fig)})
+# test_loader = datasets.get_test_dataloader(dataset)
+# plot_latent_space(model, test_loader)
+run.finish()
+exit()
 #
-# output = model.sample(z=z_vals).detach()
-#
-# util.plot_image_grid(output, 10, 10, 1)
 # plt.show()
 # run.finish()
