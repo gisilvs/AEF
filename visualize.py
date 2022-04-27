@@ -38,19 +38,19 @@ from sklearn.manifold import TSNE
 # get
 
 
-
 def get_z_values(n_vals: int = 20, border: float = 0.15, latent_dims: int = 2):
-    lin_vals = torch.linspace(border, 1-border, steps=n_vals)
-    icdf_vals = torch.cartesian_prod(*([lin_vals]*latent_dims))
+    lin_vals = torch.linspace(border, 1 - border, steps=n_vals)
+    icdf_vals = torch.cartesian_prod(*([lin_vals] * latent_dims))
     distr = torch.distributions.normal.Normal(torch.zeros(latent_dims), torch.ones(latent_dims))
     z_vals = distr.icdf(icdf_vals)
 
     return z_vals
 
-def plot_latent_space(model, test_loader):
+
+def plot_latent_space(model, test_loader, device):
     n_latent_dims = model.encoder.latent_dim
     if n_latent_dims == 2:
-        return plot_latent_space_2d(model, test_loader)
+        return plot_latent_space_2d(model, test_loader, device)
 
     arr = np.zeros((len(test_loader.dataset), n_latent_dims))
     labels = np.zeros((len(test_loader.dataset),))
@@ -59,14 +59,14 @@ def plot_latent_space(model, test_loader):
         image_batch = util.dequantize(image_batch)
         image_batch = image_batch.to(device)
         mu, _ = model.encode(image_batch)
-        arr[n_added:n_added+len(image_batch), :] = mu.detach().numpy()
-        labels[n_added:n_added+len(image_batch)] = image_labels
+        arr[n_added:n_added + len(image_batch), :] = mu.detach().numpy()
+        labels[n_added:n_added + len(image_batch)] = image_labels
         n_added += len(image_batch)
 
+    embedded = TSNE(learning_rate='auto', init='pca', perplexity=50).fit_transform(
+        arr)  # TSNE(learning_rate='auto', perplexity=50, n_iter=2000, init='pca').fit_transform(arr)
 
-    embedded = TSNE(learning_rate='auto', init='pca', perplexity=50).fit_transform(arr)#TSNE(learning_rate='auto', perplexity=50, n_iter=2000, init='pca').fit_transform(arr)
-
-    fig = plt.figure(figsize=(10,10), dpi=150)
+    fig = plt.figure(figsize=(10, 10), dpi=150)
     plt.style.use('seaborn')
     scat = plt.scatter(embedded[:, 0], embedded[:, 1], s=10, c=labels, cmap=plt.get_cmap('tab10'))
     cb = plt.colorbar(scat, spacing='proportional')
@@ -85,8 +85,7 @@ def plot_latent_space(model, test_loader):
     return fig
 
 
-
-def plot_latent_space_2d(model: AutoEncoder, test_loader):
+def plot_latent_space_2d(model: AutoEncoder, test_loader, device):
     arr = np.zeros([len(test_loader.dataset), 3])
     n_added = 0
     for image_batch, image_labels in test_loader:
@@ -97,17 +96,15 @@ def plot_latent_space_2d(model: AutoEncoder, test_loader):
         arr[n_added:n_added + len(image_batch), 2] = image_labels
         n_added += len(image_batch)
 
-    fig = plt.figure(figsize=(10,10), dpi=150)
+    fig = plt.figure(figsize=(10, 10), dpi=150)
     plt.style.use('seaborn')
     scat = plt.scatter(arr[:, 0], arr[:, 1], s=10, c=arr[:, 2], cmap=plt.get_cmap('tab10'))
     cb = plt.colorbar(scat, spacing='uniform')
     cur_min_x, cur_max_x = np.min(arr[:, 0]), np.max(arr[:, 0])
     cur_min_y, cur_max_y = np.min(arr[:, 1]), np.max(arr[:, 1])
-    plt.xlim((max(cur_min_x, -5), min(cur_max_x, 5)))
-    plt.ylim((max(cur_min_y, -5), min(cur_max_y, 5)))
+    plt.ylim((max(cur_min_x, -5), min(cur_max_x, 5)))  # Why are these reversed?
+    plt.xlim((max(cur_min_y, -5), min(cur_max_y, 5)))
     return fig
-
-
 
 
 from util import load_best_model
@@ -121,11 +118,12 @@ latent_sizes = [2, 4, 8, 16]
 
 alpha = 1e-6
 use_center_pixels = False
-device = 'cpu'
+use_gpu = False
+device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
 
 latent_grid_size = 20
 datasets = ['mnist', 'fashionmnist']
-models = ['nae-center', 'nae-corner', 'vae', 'vae-iaf', 'iwae']#['vae', 'vae-iaf', 'iwae', 'nae']
+models = ['nae-center', 'nae-corner', 'vae', 'vae-iaf', 'iwae']  # ['vae', 'vae-iaf', 'iwae', 'nae']
 for dataset in datasets:
     for latent_size in latent_sizes:
         latent_dims = latent_size
@@ -134,33 +132,40 @@ for dataset in datasets:
                 experiment_name = f'nae_{dataset}_run_2_latent_size_{latent_size}_decoder_independent_corner'
                 decoder = 'independent'
                 model_name = 'nae'
+                model_name_addition = '-corner'
                 use_center_pixels = False
             elif model_name == 'nae-center':
                 experiment_name = f'nae_{dataset}_run_2_latent_size_{latent_size}_decoder_independent_center'
                 decoder = 'independent'
                 model_name = 'nae'
+                model_name_addition = '-center'
                 use_center_pixels = True
             else:
                 experiment_name = f'{model_name}_{dataset}_run_2_latent_size_{latent_size}_decoder_fixed'
                 decoder = 'fixed'
+                model_name_addition = ''  # This could be nicer
 
-
-
-            model = load_best_model(run, project_name, model_name, experiment_name, device, latent_dims, image_dim,
-                                    alpha, decoder, use_center_pixels, version='best:latest')
+            try:
+                model = load_best_model(run, project_name, model_name, experiment_name, device, latent_dims, image_dim,
+                                        alpha, decoder, use_center_pixels, version='best:latest')
+            except Exception as E:
+                print(E)
+                continue
+            model = model.to(device)
 
             if latent_size == 2:
-
                 z_vals = get_z_values(n_vals=latent_grid_size, latent_dims=2)
-                output = model.sample(z=z_vals).detach()
+                z_vals = z_vals.to(device)
+
+                output = model.sample(z=z_vals).detach().cpu()
 
                 util.plot_image_grid(output, cols=latent_grid_size, padding=0, hires=True)
-                image_dict = {f'latent grid {model_name} {dataset}': plt}
+                image_dict = {f'latent grid {dataset} {model_name}{model_name_addition} ': plt}
                 wandb.log({**image_dict})
 
             test_loader = get_test_dataloader(dataset)
-            fig = plot_latent_space(model, test_loader)
-            wandb.log({f"latent dims {latent_size} {dataset} {model_name}" : wandb.Image(fig)})
+            fig = plot_latent_space(model, test_loader, device)
+            wandb.log({f"latent dims {latent_size} {dataset} {model_name}{model_name_addition}": wandb.Image(fig)})
 # test_loader = datasets.get_test_dataloader(dataset)
 # plot_latent_space(model, test_loader)
 run.finish()
