@@ -9,7 +9,7 @@ import util
 
 import wandb
 from datasets import get_train_val_dataloaders, get_test_dataloader
-from models.models import get_model
+from models.model_classes import get_model
 
 from util import make_averager, dequantize, vae_log_prob, plot_image_grid, bits_per_pixel
 

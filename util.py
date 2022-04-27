@@ -5,7 +5,7 @@ import torch
 import matplotlib.pyplot as plt
 from torch.distributions.normal import Normal
 import wandb
-from models.models import get_model
+from models.model_classes import get_model
 import os
 import torchvision
 
