@@ -43,7 +43,7 @@ def get_model(model_name: str, decoder: str,
             model = model_dict[model_name](encoder, decoder)
     else:
         model = model_dict[model_name](784, hidden_features=flow_features, # TODO: dont hardcode
-                                       num_layers=8, num_blocks_per_layer=2,
+                                       num_layers=4, num_blocks_per_layer=2,
                                        preprocessing_layers=preprocessing_layers,
                                        act_norm_between_layers=True)
     return model
