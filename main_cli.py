@@ -38,7 +38,7 @@ parser.add_argument('--batch-size', type=int, default=128,
 args = parser.parse_args()
 
 assert args.wandb_type in ['phase1', 'phase2', 'prototyping', 'visualization']
-assert args.model in ['nae', 'vae', 'iwae', 'vae-iaf', 'maf']
+assert args.model in ['nae', 'vae', 'iwae', 'vae-iaf', 'maf', 'nae-ext']
 assert args.dataset in ['mnist', 'kmnist', 'emnist', 'fashionmnist', 'cifar10']
 assert args.decoder in ['fixed', 'independent', 'dependent']
 
@@ -62,8 +62,8 @@ for run_nr in args.runs:
     else:
         use_center_pixels_str = "_center" if use_center_pixels else "_corner"
         use_center_pixels_str = use_center_pixels_str if model_name == 'nae' else ""
-        latent_size_str = f"_latent_size_{args.latent_dims}" if model_name in ['nae', 'vae', 'iwae', 'vae-iaf'] else ""
-        decoder_str = f"_decoder_{args.decoder}" if model_name in ['nae', 'vae', 'iwae', 'vae-iaf'] else ""
+        latent_size_str = f"_latent_size_{args.latent_dims}" if model_name in ['nae', 'vae', 'iwae', 'vae-iaf', 'nae-ext'] else ""
+        decoder_str = f"_decoder_{args.decoder}" if model_name in ['nae', 'vae', 'iwae', 'vae-iaf', 'nae-ext'] else ""
         run_name = f'{args.model}_{args.dataset}_run_{run_nr}{latent_size_str}{decoder_str}{use_center_pixels_str}'
 
     config = {

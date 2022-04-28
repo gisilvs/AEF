@@ -6,13 +6,14 @@ from nflows.transforms import InverseTransform, AffineTransform
 from bijectors.actnorm import ActNorm
 from bijectors.sigmoid import Sigmoid
 from flows.maf import MaskedAutoregressiveFlow
-from models.autoencoder import IndependentVarianceDecoder, LatentDependentDecoder, ConvolutionalEncoder, \
+from .autoencoder import IndependentVarianceDecoder, LatentDependentDecoder, ConvolutionalEncoder, \
     FixedVarianceDecoder
-from models.iwae import IWAE
-from models.normalizing_autoencoder import NormalizingAutoEncoder
-from models.vae import VAE
-from models.vae_iaf import VAEIAF
-
+from .iwae import IWAE
+from .normalizing_autoencoder import NormalizingAutoEncoder
+from .vae import VAE
+from .vae_iaf import VAEIAF
+from .nae_external import NaeExternal
+import numpy as np
 
 def get_model(model_name: str, decoder: str,
               latent_dims: int, img_shape: List, alpha: float, use_center_pixels: bool):
@@ -20,7 +21,8 @@ def get_model(model_name: str, decoder: str,
                   'vae': VAE,
                   'iwae': IWAE,
                   'vae-iaf': VAEIAF,
-                  'maf': MaskedAutoregressiveFlow
+                  'maf': MaskedAutoregressiveFlow,
+                  'nae-ext': NaeExternal
                   }
     decoder_dict = {
         'fixed': FixedVarianceDecoder,
@@ -28,7 +30,7 @@ def get_model(model_name: str, decoder: str,
         'dependent': LatentDependentDecoder,
     }
 
-    vaes = ['nae', 'vae', 'iwae', 'vae-iaf']
+    vaes = ['nae', 'vae', 'iwae', 'vae-iaf', 'nae-ext']
     vae_channels = 64
     flow_features = 256
 
@@ -39,10 +41,12 @@ def get_model(model_name: str, decoder: str,
     if model_name in vaes:
         if model_name == 'nae':
             model = model_dict[model_name](encoder, decoder, preprocessing_layers, hardcoded_mask=use_center_pixels)
+        elif model_name == 'nae-ext':
+            model = model_dict[model_name](encoder, decoder, preprocessing_layers)
         else:
             model = model_dict[model_name](encoder, decoder)
     else:
-        model = model_dict[model_name](784, hidden_features=flow_features, # TODO: dont hardcode
+        model = model_dict[model_name](np.prod(img_shape), hidden_features=flow_features, # TODO: dont hardcode
                                        num_layers=4, num_blocks_per_layer=2,
                                        preprocessing_layers=preprocessing_layers,
                                        act_norm_between_layers=True)
