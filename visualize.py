@@ -11,6 +11,8 @@ from models.models import get_model
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 
+from util import load_best_model
+
 
 # def get_model_by_run_id(project: str, run_id: str, run_name:str, which_file: str = 'best', wandb_api: wandb.apis.public.Api = None):
 #     if wandb_api is None:
@@ -106,70 +108,133 @@ def plot_latent_space_2d(model: AutoEncoder, test_loader, device):
     plt.xlim((max(cur_min_y, -5), min(cur_max_y, 5)))
     return fig
 
+def generate_visualizations():
 
-from util import load_best_model
+    run = wandb.init(project='visualizations', entity="nae")
 
-run = wandb.init(project='visualizations', entity="nae")
+    project_name = 'phase1'
+    image_dim = [1, 28, 28]
 
-project_name = 'phase1'
-image_dim = [1, 28, 28]
+    latent_sizes = [2, 4, 8, 16]
 
-latent_sizes = [2, 4, 8, 16]
+    alpha = 1e-6
+    use_center_pixels = False
+    use_gpu = False
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
 
-alpha = 1e-6
-use_center_pixels = False
-use_gpu = False
-device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+    latent_grid_size = 20
+    datasets = ['mnist', 'fashionmnist']
+    models = ['nae-center', 'nae-corner', 'vae', 'vae-iaf', 'iwae']  # ['vae', 'vae-iaf', 'iwae', 'nae']
+    for dataset in datasets:
+        for latent_size in latent_sizes:
+            latent_dims = latent_size
+            for model_name in models:
+                if model_name == 'nae-corner':
+                    experiment_name = f'nae_{dataset}_run_2_latent_size_{latent_size}_decoder_independent_corner'
+                    decoder = 'independent'
+                    model_name = 'nae'
+                    model_name_addition = '-corner'
+                    use_center_pixels = False
+                elif model_name == 'nae-center':
+                    experiment_name = f'nae_{dataset}_run_2_latent_size_{latent_size}_decoder_independent_center'
+                    decoder = 'independent'
+                    model_name = 'nae'
+                    model_name_addition = '-center'
+                    use_center_pixels = True
+                else:
+                    experiment_name = f'{model_name}_{dataset}_run_2_latent_size_{latent_size}_decoder_fixed'
+                    decoder = 'fixed'
+                    model_name_addition = ''  # This could be nicer
 
-latent_grid_size = 20
-datasets = ['mnist', 'fashionmnist']
-models = ['nae-center', 'nae-corner', 'vae', 'vae-iaf', 'iwae']  # ['vae', 'vae-iaf', 'iwae', 'nae']
-for dataset in datasets:
-    for latent_size in latent_sizes:
-        latent_dims = latent_size
-        for model_name in models:
-            if model_name == 'nae-corner':
-                experiment_name = f'nae_{dataset}_run_2_latent_size_{latent_size}_decoder_independent_corner'
-                decoder = 'independent'
-                model_name = 'nae'
-                model_name_addition = '-corner'
-                use_center_pixels = False
-            elif model_name == 'nae-center':
-                experiment_name = f'nae_{dataset}_run_2_latent_size_{latent_size}_decoder_independent_center'
-                decoder = 'independent'
-                model_name = 'nae'
-                model_name_addition = '-center'
-                use_center_pixels = True
-            else:
-                experiment_name = f'{model_name}_{dataset}_run_2_latent_size_{latent_size}_decoder_fixed'
-                decoder = 'fixed'
-                model_name_addition = ''  # This could be nicer
+                try:
+                    model = load_best_model(run, project_name, model_name, experiment_name, device, latent_dims, image_dim,
+                                            alpha, decoder, use_center_pixels, version='best:latest')
+                except Exception as E:
+                    print(E)
+                    continue
+                model = model.to(device)
 
-            try:
-                model = load_best_model(run, project_name, model_name, experiment_name, device, latent_dims, image_dim,
-                                        alpha, decoder, use_center_pixels, version='best:latest')
-            except Exception as E:
-                print(E)
+                if latent_size == 2:
+                    z_vals = get_z_values(n_vals=latent_grid_size, latent_dims=2)
+                    z_vals = z_vals.to(device)
+
+                    output = model.sample(z=z_vals).detach().cpu()
+
+                    util.plot_image_grid(output, cols=latent_grid_size, padding=0, hires=True)
+                    image_dict = {f'latent grid {dataset} {model_name}{model_name_addition} ': plt}
+                    wandb.log({**image_dict})
+
+                test_loader = get_test_dataloader(dataset)
+                fig = plot_latent_space(model, test_loader, device)
+                wandb.log({f"latent dims {latent_size} {dataset} {model_name}{model_name_addition}": wandb.Image(fig)})
+    # test_loader = datasets.get_test_dataloader(dataset)
+    # plot_latent_space(model, test_loader)
+
+        #
+        # plt.show()
+    run.finish()
+
+def generate_loss_over_latentdims():
+    api = wandb.Api(timeout=19)
+
+    project_name = 'phase1'
+    image_dim = [1, 28, 28]
+
+    alpha = 1e-6
+    use_center_pixels = False
+    use_gpu = False
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+
+    dataset = 'mnist'
+    model_name = 'nae'
+    latent_sizes = [2, 4, 8, 16, 32]
+    n_runs = 5
+    decoder = 'independent'
+    nae_type = 'corner'
+
+    scores = np.zeros((n_runs, len(latent_sizes)))
+    #n_recorded = np.zeros((len(latent_sizes)))
+    for idx, latent_size in enumerate(latent_sizes):
+        runs = api.runs(path="nae/phase1", filters={"config.dataset": dataset,
+                                                    "config.latent_dims": latent_size,
+                                                    "config.model": model_name,
+                                                    "config.decoder": decoder,
+                                                    })
+        n_recorded = 0
+        for run in runs:
+            if nae_type not in run.name:
                 continue
-            model = model.to(device)
+            if n_recorded >= n_runs:
+                print(f'Found more than {n_runs} with latent size {latent_size}')
+                break
+            scores[n_recorded, idx] = run.summary['test_loss']
+            n_recorded += 1
+    scores[scores == np.inf] = np.nan
+    best_scores = -1 * np.nanmin(scores, axis=0)
+    fig = plt.figure(dpi=300)
+    plt.scatter(np.arange(len(latent_sizes)), best_scores)
+    plt.ylabel('Log-likelihood')
+    plt.xlabel('Dimensionality of latent space')
+    plt.xticks(np.arange(len(latent_sizes)), labels=[f'$2^{i+1}$' for i in range(len(latent_sizes))])
 
-            if latent_size == 2:
-                z_vals = get_z_values(n_vals=latent_grid_size, latent_dims=2)
-                z_vals = z_vals.to(device)
+    # GET MAF likelihood
+    scores_maf = np.zeros((n_runs,))
+    runs = api.runs(path="nae/phase1", filters={"config.dataset": dataset,
+                                                "config.model": 'maf',
+                                                })
+    n_recorded = 0
+    for run in runs:
+        if n_recorded >= n_runs:
+            print(f'Found more than {n_runs} for maf')
+            break
+        scores_maf[n_recorded] = run.summary['test_loss']
+        n_recorded += 1
+    plt.axhline(y=-1 * np.min(scores_maf), color='k', linestyle='--')
 
-                output = model.sample(z=z_vals).detach().cpu()
+    plt.savefig('./plots/likelihood_for_latents.png', dpi='figure')
 
-                util.plot_image_grid(output, cols=latent_grid_size, padding=0, hires=True)
-                image_dict = {f'latent grid {dataset} {model_name}{model_name_addition} ': plt}
-                wandb.log({**image_dict})
 
-            test_loader = get_test_dataloader(dataset)
-            fig = plot_latent_space(model, test_loader, device)
-            wandb.log({f"latent dims {latent_size} {dataset} {model_name}{model_name_addition}": wandb.Image(fig)})
-# test_loader = datasets.get_test_dataloader(dataset)
-# plot_latent_space(model, test_loader)
-run.finish()
-exit()
-#
-# plt.show()
-# run.finish()
+
+
+if __name__ == "__main__":
+    generate_loss_over_latentdims()
