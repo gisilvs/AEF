@@ -1,4 +1,12 @@
 import torch
+import numpy as np
+import torchvision
+from scipy import linalg
+from torch import nn
+from torch.hub import load_state_dict_from_url
+import torch.nn.functional as F
+
+
 
 class SampleLoader:
     def __init__(self, batch_size, num_total_samples, density):
@@ -93,7 +101,7 @@ def get_inception_activations(dataloader, length, device):
     model = InceptionV3().to(device)
     model.eval()
 
-    for batch, _ in tqdm(dataloader, desc="Getting activations", leave=False):
+    for batch, _ in dataloader:
         if batch.shape[1] == 1:
             # HACK: Inception expects three channels so we tile
             batch = batch.repeat((1,3,1,1))

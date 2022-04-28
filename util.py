@@ -127,7 +127,7 @@ def count_parameters(model):
 
 
 def download_wandb_artifact(run, project_name, model_name, version='latest'):
-    artifact = run.use_artifact(f'nae/{project_name}/{model_name}:{version}', type='model')
+    artifact = run.use_artifact(f'nae/{project_name}/{model_name}_{version}', type='model')
     artifact_dir = artifact.download()
     return artifact_dir
 
