@@ -9,7 +9,9 @@ import util
 
 import wandb
 from datasets import get_train_val_dataloaders, get_test_dataloader
-from models.model_classes import get_model
+from models.models import get_model
+from models.vdvae import VDVAE
+from models.vdnae import VDNAE
 
 from util import make_averager, dequantize, vae_log_prob, plot_image_grid, bits_per_pixel
 
@@ -38,7 +40,7 @@ parser.add_argument('--batch-size', type=int, default=128,
 args = parser.parse_args()
 
 assert args.wandb_type in ['phase1', 'phase2', 'prototyping', 'visualization']
-assert args.model in ['nae', 'vae', 'iwae', 'vae-iaf', 'maf']
+assert args.model in ['nae', 'vae', 'iwae', 'vae-iaf', 'maf', 'vdvae', 'vdnae']
 assert args.dataset in ['mnist', 'kmnist', 'emnist', 'fashionmnist', 'cifar10']
 assert args.decoder in ['fixed', 'independent', 'dependent']
 
@@ -62,8 +64,8 @@ for run_nr in args.runs:
     else:
         use_center_pixels_str = "_center" if use_center_pixels else "_corner"
         use_center_pixels_str = use_center_pixels_str if model_name == 'nae' else ""
-        latent_size_str = f"_latent_size_{args.latent_dims}" if model_name in ['nae', 'vae', 'iwae', 'vae-iaf'] else ""
-        decoder_str = f"_decoder_{args.decoder}" if model_name in ['nae', 'vae', 'iwae', 'vae-iaf'] else ""
+        latent_size_str = f"_latent_size_{args.latent_dims}" if model_name in ['nae', 'vae', 'iwae', 'vae-iaf', 'vdvae', 'vdnae'] else ""
+        decoder_str = f"_decoder_{args.decoder}" if model_name in ['nae', 'vae', 'iwae', 'vae-iaf', 'vdnae'] else ""
         run_name = f'{args.model}_{args.dataset}_run_{run_nr}{latent_size_str}{decoder_str}{use_center_pixels_str}'
 
     config = {
@@ -88,7 +90,12 @@ for run_nr in args.runs:
     n_pixels = np.prod(image_dim)
 
     #TODO: add core_flow selection for NAE
-    model = get_model(model_name, args.decoder, latent_dims, image_dim, alpha, use_center_pixels)
+    if model_name == 'vdvae':
+        model = VDVAE()
+    elif model_name == 'vdnae':
+        model = VDNAE()
+    else:
+        model = get_model(model_name, args.decoder, latent_dims, image_dim, alpha, use_center_pixels)
     optimizer = torch.optim.Adam(params=model.parameters(), lr=learning_rate)
 
     model = model.to(device)
