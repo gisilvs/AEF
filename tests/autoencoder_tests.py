@@ -7,10 +7,10 @@ from models.autoencoder import IndependentVarianceDecoder, LatentDependentDecode
 from models.autoencoder_base import AutoEncoder
 from models.iwae import IWAE
 from models.models import get_model
-from models.nae_internal import InternalAutoEncoder
+from models.nae_internal import InternalLatentAutoEncoder
 from models.vae import VAE
 from models.vae_iaf import VAEIAF
-from models.nae_external import ExternalAutoEncoder
+from models.nae_external import ExternalLatentAutoEncoder
 
 
 def test_autoencoder_loss_backward(autoencoder: AutoEncoder, input_dims: List, n_iterations=10, batch_size=4):
