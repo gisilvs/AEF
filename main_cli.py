@@ -59,8 +59,7 @@ for run_nr in args.runs:
     if args.custom_name is not None:
         run_name = args.custom_name
     else:
-        latent_size_str = f"_latent_size_{args.latent_dims}" if model_name in ['nae-center', 'nae-corner', 'vae',
-                                                                               'iwae', 'vae-iaf', 'nae-external'] else ""
+        latent_size_str = f"_latent_size_{args.latent_dims}" if model_name in AE_like_models else ""
         decoder_str = f"_decoder_{args.decoder}" if model_name in AE_like_models else ""
         run_name = f'{args.model}_{args.dataset}_run_{run_nr}{latent_size_str}{decoder_str}'
 
