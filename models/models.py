@@ -10,22 +10,22 @@ from flows.maf import MaskedAutoregressiveFlow
 from .autoencoder import IndependentVarianceDecoder, LatentDependentDecoder, ConvolutionalEncoder, \
     FixedVarianceDecoder
 from .iwae import IWAE
-from .nae_internal import InternalAutoEncoder
+from .nae_internal import InternalLatentAutoEncoder
 from .vae import VAE
 from .vae_iaf import VAEIAF
-from .nae_external import ExternalAutoEncoder
+from .nae_external import ExternalLatentAutoEncoder
 import numpy as np
 
 
 def get_model(model_name: str, decoder: str,
               latent_dims: int, img_shape: List, alpha: float):
-    model_dict = {'nae-center': InternalAutoEncoder,
-                  'nae-corner': InternalAutoEncoder,
+    model_dict = {'nae-center': InternalLatentAutoEncoder,
+                  'nae-corner': InternalLatentAutoEncoder,
                   'vae': VAE,
                   'iwae': IWAE,
                   'vae-iaf': VAEIAF,
                   'maf': MaskedAutoregressiveFlow,
-                  'nae-external': ExternalAutoEncoder
+                  'nae-external': ExternalLatentAutoEncoder
                   }
     decoder_dict = {
         'fixed': FixedVarianceDecoder,
