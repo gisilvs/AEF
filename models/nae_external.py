@@ -12,11 +12,11 @@ from models.autoencoder_base import GaussianAutoEncoder
 from models.neural_nets import MLP
 
 
-class ExternalAutoEncoder(GaussianAutoEncoder):
+class ExternalLatentAutoEncoder(GaussianAutoEncoder):
     def __init__(self, encoder: GaussianEncoder, decoder: GaussianDecoder,
                  core_flow_pre: Transform, core_flow_post: Transform,
                  dense_net: nn.Module = None, preprocessing_layers=[]):
-        super(ExternalAutoEncoder, self).__init__(encoder, decoder)
+        super(ExternalLatentAutoEncoder, self).__init__(encoder, decoder)
 
         self.core_size = self.encoder.latent_dim
         self.image_shape = self.encoder.input_shape

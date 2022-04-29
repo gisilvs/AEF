@@ -9,11 +9,11 @@ from models.autoencoder import GaussianEncoder, GaussianDecoder
 from models.autoencoder_base import GaussianAutoEncoder
 
 
-class InternalAutoEncoder(GaussianAutoEncoder):
+class InternalLatentAutoEncoder(GaussianAutoEncoder):
     def __init__(self, encoder: GaussianEncoder, decoder: GaussianDecoder,
                  core_flow_pre: Transform, core_flow_post: Transform,
                  preprocessing_layers=[], center_mask=True):
-        super(InternalAutoEncoder, self).__init__(encoder, decoder)
+        super(InternalLatentAutoEncoder, self).__init__(encoder, decoder)
 
         self.core_size = self.encoder.latent_dim
         self.image_shape = self.encoder.input_shape
