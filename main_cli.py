@@ -16,7 +16,7 @@ from util import make_averager, dequantize, vae_log_prob, plot_image_grid, bits_
 
 parser = argparse.ArgumentParser(description='NAE Experiments')
 parser.add_argument('--wandb-type', type=str, help='phase1 | phase2 | prototyping | visualization')
-parser.add_argument('--model', type=str, help='nae | vae | iwae | vae-iaf | maf')
+parser.add_argument('--model', type=str, help='nae-center | nae-corner | nae-external | vae | iwae | vae-iaf | maf')
 parser.add_argument('--dataset', type=str, help='mnist | kmnist | fashionmnist | cifar10')
 parser.add_argument('--latent-dims', type=int, help='size of the latent space')
 parser.add_argument('--runs', type=str, help='run numbers in string format, e.g. "0,1,2,3"')
@@ -26,8 +26,6 @@ parser.add_argument('--save-iters', type=int, default=10000,
                     help='save model to wandb every x iterations (default: 10,000)')
 parser.add_argument('--lr', type=float, default=1e-3, help='learning rate (default: 1e-3)')
 parser.add_argument('--seed', type=int, default=3, help='seed for the training data (default: 3)')
-parser.add_argument('--use-center', type=int, default=0,
-                    help='if using nae: 0 for corner pixels, 1 for center pixels (default: 0)')
 parser.add_argument('--decoder', type=str, default='fixed',
                     help='fixed (var = 1) | independent (var = s) | dependent (var = s(x))')
 parser.add_argument('--custom-name', type=str, help='custom name for wandb tracking')
@@ -38,7 +36,7 @@ parser.add_argument('--batch-size', type=int, default=128,
 args = parser.parse_args()
 
 assert args.wandb_type in ['phase1', 'phase2', 'prototyping', 'visualization']
-assert args.model in ['nae', 'vae', 'iwae', 'vae-iaf', 'maf', 'nae-ext']
+assert args.model in ['nae-center', 'nae-corner', 'vae', 'iwae', 'vae-iaf', 'maf', 'nae-external']
 assert args.dataset in ['mnist', 'kmnist', 'emnist', 'fashionmnist', 'cifar10']
 assert args.decoder in ['fixed', 'independent', 'dependent']
 
@@ -52,19 +50,19 @@ learning_rate = args.lr
 use_gpu = True
 validate_every_n_iterations = args.val_iters
 save_every_n_iterations = args.save_iters
-use_center_pixels = args.use_center == 1
 
 args.runs = [int(item) for item in args.runs.split(',')]
+
+AE_like_models = ['nae-center', 'nae-corner', 'nae-external', 'vae', 'iwae', 'vae-iaf']
 
 for run_nr in args.runs:
     if args.custom_name is not None:
         run_name = args.custom_name
     else:
-        use_center_pixels_str = "_center" if use_center_pixels else "_corner"
-        use_center_pixels_str = use_center_pixels_str if model_name == 'nae' else ""
-        latent_size_str = f"_latent_size_{args.latent_dims}" if model_name in ['nae', 'vae', 'iwae', 'vae-iaf', 'nae-ext'] else ""
-        decoder_str = f"_decoder_{args.decoder}" if model_name in ['nae', 'vae', 'iwae', 'vae-iaf', 'nae-ext'] else ""
-        run_name = f'{args.model}_{args.dataset}_run_{run_nr}{latent_size_str}{decoder_str}{use_center_pixels_str}'
+        latent_size_str = f"_latent_size_{args.latent_dims}" if model_name in ['nae-center', 'nae-corner', 'vae',
+                                                                               'iwae', 'vae-iaf', 'nae-external'] else ""
+        decoder_str = f"_decoder_{args.decoder}" if model_name in AE_like_models else ""
+        run_name = f'{args.model}_{args.dataset}_run_{run_nr}{latent_size_str}{decoder_str}'
 
     config = {
         "model": model_name,
@@ -87,8 +85,7 @@ for run_nr in args.runs:
     test_dataloader = get_test_dataloader(dataset, batch_size)
     n_pixels = np.prod(image_dim)
 
-    #TODO: add core_flow selection for NAE
-    model = get_model(model_name, args.decoder, latent_dims, image_dim, alpha, use_center_pixels)
+    model = get_model(model_name, args.decoder, latent_dims, image_dim, alpha)
     optimizer = torch.optim.Adam(params=model.parameters(), lr=learning_rate)
 
     model = model.to(device)
@@ -110,6 +107,7 @@ for run_nr in args.runs:
             for image_batch, _ in train_dataloader:
                 image_batch = dequantize(image_batch)
                 image_batch = image_batch.to(device)
+
                 if model_name == 'maf':
                     image_batch = image_batch.view(-1, torch.prod(torch.tensor(image_dim)))
 
@@ -131,11 +129,10 @@ for run_nr in args.runs:
                     with torch.no_grad():
                         val_loss_averager = make_averager()
 
-                        # todo: move this to utils with plotting function
                         samples = model.sample(16)
                         samples = samples.cpu().detach()
                         if model_name == 'maf':
-                            samples =samples.view(-1, image_dim[0], image_dim[1], image_dim[2])
+                            samples = samples.view(-1, image_dim[0], image_dim[1], image_dim[2])
                         plot_image_grid(samples, cols=4)
                         image_dict = {'samples': plt}
 
@@ -186,7 +183,6 @@ for run_nr in args.runs:
                     artifact_best = wandb.Artifact(f'{run_name}_best', type='model')
                     artifact_best.add_file(f'checkpoints/{run_name}_best.pt')
                     run.log_artifact(artifact_best)
-
 
                 n_iterations_done += 1
                 model.train()
