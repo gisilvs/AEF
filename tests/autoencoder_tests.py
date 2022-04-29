@@ -2,13 +2,15 @@ from typing import List
 
 import torch
 
-from models.autoencoder import IndependentVarianceDecoder, LatentDependentDecoder, ConvolutionalEncoder, FixedVarianceDecoder
+from models.autoencoder import IndependentVarianceDecoder, LatentDependentDecoder, ConvolutionalEncoder, \
+    FixedVarianceDecoder
 from models.autoencoder_base import AutoEncoder
 from models.iwae import IWAE
-from models.normalizing_autoencoder import NormalizingAutoEncoder
+from models.models import get_model
+from models.nae_internal import InternalAutoEncoder
 from models.vae import VAE
 from models.vae_iaf import VAEIAF
-from models.nae_external import NaeExternal
+from models.nae_external import ExternalAutoEncoder
 
 
 def test_autoencoder_loss_backward(autoencoder: AutoEncoder, input_dims: List, n_iterations=10, batch_size=4):
@@ -31,22 +33,28 @@ def test_autoencoder_sample(autoencoder: AutoEncoder, n_samples=4):
 def test_all_autoencoders(batch_size: int = 4, hidden_channels: int = 64):
     different_dims = [[1, 28, 28], [3, 32, 32]]
     latent_dims = [2, 4, 8, 16]
-    decoders = [IndependentVarianceDecoder, LatentDependentDecoder, FixedVarianceDecoder]
-    autoencoders = {
-        'vae': VAE,
-        'iwae': IWAE,
-        'nae': NormalizingAutoEncoder,
-        'vae-iaf': VAEIAF,
-        'nae-ext': NaeExternal,
-    }  # TODO: add NAE once it's refactored
+    decoder_names = ['fixed', 'independent', 'dependent']
+    autoencoder_names = ['vae',
+                         'iwae',
+                         'vae-iaf',
+                         'nae-center',
+                         'nae-corner',
+                         'nae-external'
+                         ]
+    # autoencoders = {
+    #     # 'vae': VAE,
+    #     # 'iwae': IWAE,
+    #     'nae-center': NormalizingAutoEncoder,
+    #     'nae-corner'
+    #     # 'vae-iaf': VAEIAF,
+    #     # 'nae-ext': NaeExternal,
+    # }  # TODO: add NAE once it's refactored
     for input_dim in different_dims:
         for latent_dim in latent_dims:
-            encoder = ConvolutionalEncoder(hidden_channels=hidden_channels, input_shape=input_dim, latent_dim=latent_dim)
-            for decoder_class in decoders:
-                for key, autoencoder_class in autoencoders.items():
+            for decoder_name in decoder_names:
+                for autoencoder_name in autoencoder_names:
                     # Add all tests here
-                    decoder = decoder_class(hidden_channels=hidden_channels, output_shape=input_dim, latent_dim=latent_dim)
-                    ae = autoencoder_class(encoder, decoder)
+                    ae = get_model(autoencoder_name, decoder_name, latent_dim, input_dim, 0.05)
                     test_autoencoder_loss_backward(ae, input_dim, n_iterations=10, batch_size=batch_size)
                     test_autoencoder_sample(ae)
     return True
