@@ -9,13 +9,12 @@ from nflows.transforms import Transform
 
 from models.autoencoder import GaussianEncoder, GaussianDecoder
 from models.autoencoder_base import GaussianAutoEncoder
-from models.neural_nets import MLP
 
 
 class ExternalLatentAutoEncoder(GaussianAutoEncoder):
     def __init__(self, encoder: GaussianEncoder, decoder: GaussianDecoder,
                  core_flow_pre: Transform, core_flow_post: Transform,
-                 dense_net: nn.Module = None, preprocessing_layers=[]):
+                 external_net: nn.Module = None, preprocessing_layers=[]):
         super(ExternalLatentAutoEncoder, self).__init__(encoder, decoder)
 
         self.core_size = self.encoder.latent_dim
@@ -25,10 +24,10 @@ class ExternalLatentAutoEncoder(GaussianAutoEncoder):
         self.eps = 1e-5
         self.preprocessing_layers = nn.ModuleList(preprocessing_layers)
         self.device = None
-        if dense_net is None:
-            self.dense = MLP(np.prod(self.image_shape), self.core_size)
+        if external_net is None:
+            self.dense = nn.Linear(np.prod(self.image_shape), self.core_size)
         else:
-            self.dense = dense_net
+            self.dense = external_net
 
     def embedding(self, x):
         log_j_preprocessing = 0

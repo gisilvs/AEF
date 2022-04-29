@@ -26,10 +26,9 @@ class InternalLatentAutoEncoder(GaussianAutoEncoder):
 
         if center_mask:
             mask = self._get_center_mask()
-            self.register_buffer('mask', mask)
         else:
             mask = self._get_corner_mask()
-            self.register_buffer('mask', mask)
+        self.register_buffer('mask', mask)
 
     def partition(self, x):
         core = x[:, self.mask == 1].view(x.shape[0], -1)
