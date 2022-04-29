@@ -80,69 +80,6 @@ def calculate_fid(model, dataset, device, n_samples=1024, batch_size=32):
     return fid_test_train, fid_test_sample, fid_train_sample
 
 
-class SampleLoader:
-    def __init__(self, batch_size, num_total_samples, density):
-        self.batch_size = batch_size
-        self.num_total_samples = num_total_samples
-        self.density = density
-
-    def __iter__(self):
-        self.num_remaining_samples = self.num_total_samples
-        return self
-
-    def __next__(self):
-        if self.batch_size < self.num_remaining_samples:
-            num_samples = self.batch_size
-        elif self.num_remaining_samples > 0:
-            num_samples = self.num_remaining_samples
-        else:
-            raise StopIteration
-
-        samples = self.density.sample(num_samples)
-        self.num_remaining_samples -= num_samples
-
-        return samples, None # HACK: return tuple to conform to SupervisedDataset signature
-
-
-
-def get_fid_function(config, train_loader):
-    train_dataset = train_loader.dataset.x
-
-    if config["dataset"] in ["mnist", "fashion-mnist", "svhn", "cifar10"]:
-        get_data_fn = get_inception_activations
-    else:
-        get_data_fn = get_data_from_loader
-
-    train_data_numpy = get_data_fn(
-        dataloader=train_loader,
-        length=train_dataset.shape[0],
-        device=train_dataset.device
-    )
-    train_mu, train_cov = get_statistics_numpy(train_data_numpy)
-
-    def fid_function(density):
-        sample_loader = SampleLoader(
-            batch_size=config["test_batch_size"],
-            num_total_samples=config["num_fid_samples"],
-            density=density
-        )
-        sample_data = get_data_fn(
-            dataloader=sample_loader,
-            length=config["num_fid_samples"],
-            device=train_dataset.device
-        )
-        sample_mu, sample_cov = get_statistics_numpy(sample_data)
-
-        return calculate_frechet_distance(
-            mu1=sample_mu,
-            sigma1=sample_cov,
-            mu2=train_mu,
-            sigma2=train_cov
-        )
-
-    return fid_function
-
-
 #### NOTE: Below adapted from
 # https://github.com/mseitzer/pytorch-fid/blob/master/src/pytorch_fid/fid_score.py
 
