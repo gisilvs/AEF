@@ -5,7 +5,79 @@ from scipy import linalg
 from torch import nn
 from torch.hub import load_state_dict_from_url
 import torch.nn.functional as F
+import util, datasets
 
+
+def calculate_fid(model, dataset, device, n_samples=1024, batch_size=32):
+
+    test_loader = datasets.get_test_dataloader(dataset, batch_size)
+
+    activations_test = np.empty((n_samples, InceptionV3.DEFAULT_DIMS))
+
+    incept = InceptionV3().to(device)
+    incept.eval()
+    start_idx = 0
+    for batch, _ in test_loader:
+        if batch.shape[1] == 1:
+            # HACK: Inception expects three channels so we tile
+            batch = batch.repeat((1, 3, 1, 1))
+
+        with torch.no_grad():
+            batch_activations = incept(batch)[0].squeeze(3).squeeze(2).cpu().numpy()
+
+        activations_test[start_idx:start_idx + batch_size, :] = batch_activations
+        start_idx = start_idx + batch_size
+        if start_idx >= n_samples:
+            break
+
+    train_loader = \
+    datasets.get_train_val_dataloaders(dataset, batch_size, p_validation=0, return_img_dim=False, return_alpha=False)[0]
+
+    activations_train = np.empty((n_samples, InceptionV3.DEFAULT_DIMS))
+
+    start_idx = 0
+    for batch, _ in train_loader:
+        if batch.shape[1] == 1:
+            # HACK: Inception expects three channels so we tile
+            batch = batch.repeat((1, 3, 1, 1))
+
+        with torch.no_grad():
+            batch_activations = incept(batch)[0].squeeze(3).squeeze(2).cpu().numpy()
+
+        activations_train[start_idx:start_idx + batch_size, :] = batch_activations
+        start_idx = start_idx + batch_size
+        if start_idx >= n_samples:
+            break
+
+    activations_samples = np.empty((n_samples, InceptionV3.DEFAULT_DIMS))
+    n_filled = 0
+    min_max_samples = np.empty((n_samples, 2))
+    while n_filled < n_samples:
+        samples = model.sample(batch_size, temperature=1)
+        min_max_samples[n_filled:n_filled + batch_size, 0] = torch.min(samples.view(batch_size, -1).cpu().detach(),
+                                                                       dim=1).values.numpy()
+        min_max_samples[n_filled:n_filled + batch_size, 1] = torch.max(samples.view(batch_size, -1).cpu().detach(),
+                                                                       dim=1).values.numpy()
+        if samples.shape[1] == 1:
+            # HACK: Inception expects three channels so we tile
+            samples = samples.repeat((1, 3, 1, 1))
+
+            with torch.no_grad():
+                batch_activations = incept(samples)[0].squeeze(3).squeeze(2).cpu().numpy()
+            activations_samples[n_filled:n_filled + batch_size] = batch_activations
+            n_filled += batch_size
+
+    train_mu, train_cov = get_statistics_numpy(activations_train)
+    test_mu, test_cov = get_statistics_numpy(activations_test)
+    samples_mu, samples_cov = get_statistics_numpy(activations_samples)
+
+    fid_test_sample = calculate_frechet_distance(samples_mu, samples_cov, test_mu, test_cov)
+    fid_test_train = calculate_frechet_distance(train_mu, train_cov, test_mu, test_cov)
+    fid_train_sample = calculate_frechet_distance(train_mu, train_cov, samples_mu, samples_cov)
+    print(f'FID between test and train set: {fid_test_train}')
+    print(f'FID between test set and generated samples: {fid_test_sample}')
+    print(f'FID between train set and generated samples: {fid_train_sample}')
+    return fid_test_train, fid_test_sample, fid_train_sample
 
 
 class SampleLoader:
