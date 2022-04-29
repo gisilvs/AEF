@@ -2,7 +2,6 @@ import torch
 
 import metrics
 import wandb
-f
 from util import load_best_model
 
 
@@ -42,9 +41,9 @@ else:
     experiment_name = f'{model_name}_{dataset}_run_2_latent_size_{latent_size}_decoder_fixed'
     decoder = 'fixed'
     model_name_addition = ''  # This could be nicer
-
+experiment_name += '_best'
 model = load_best_model(run, project_name, model_name, experiment_name, device, decoder, latent_dims, image_dim,
-                            alpha, use_center_pixels, version='best:latest')
+                            alpha, use_center_pixels, version='latest')
 
 model = model.to(device)
 metrics.calculate_fid(model, dataset, device, n_samples=32)
