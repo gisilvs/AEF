@@ -9,20 +9,11 @@ import itertools
 from util import count_parameters
 
 WIDTH = 256 #384
-lr = 0.0002
-ZDIM = 16
-wd = 0.01
 DEC_BLOCKS = "1x1,4m1,4x2,8m4,8x5,16m8,16x10,32m16,32x21"
 ENC_BLOCKS = "32x11,32d2,16x6,16d2,8x6,8d2,4x3,4d4,1x3"
-warmup_iters = 100
-dataset = 'cifar10'
-n_batch = 16
-ema_rate = 0.9999
 BOTTLENECK_MULTIPLE = 0.25
 CUSTOM_WIDTH_STR = ''
-IMAGE_SIZE = 32
 IMAGE_CHANNELS = 3
-NO_BIAS_ABOVE = 64
 
 
 def pad_channels(t, width):
@@ -149,6 +140,8 @@ class Encoder(nn.Module):
         for block in self.enc_blocks:
             x = block(x)
         mu, sigma = torch.split(x, split_size_or_sections=x.shape[1]//2, dim=1)
+        mu = mu.view(mu.shape[0], -1)
+        sigma = sigma.view(sigma.shape[0], -1)
         return mu, F.softplus(sigma)
 
 class Decoder(nn.Module):
@@ -165,9 +158,10 @@ class Decoder(nn.Module):
         self.gain = nn.Parameter(torch.ones(1, WIDTH, 1, 1))
         self.bias = nn.Parameter(torch.zeros(1, WIDTH, 1, 1))
         self.final_fn = lambda x: x * self.gain + self.bias
-        self.out_conv = get_conv(WIDTH, 3, kernel_size=1, stride=1, padding=0)
+        self.out_conv = get_conv(WIDTH, IMAGE_CHANNELS, kernel_size=1, stride=1, padding=0)
 
     def forward(self, x):
+        x = x.view(x.shape[0], x.shape[1], 1, 1)
         for block in self.dec_blocks:
             x = block(x)
         x = self.final_fn(x)
@@ -198,7 +192,7 @@ class VDVAE(nn.Module):
     def sample(self, num_samples: int, temperature=1):
         # multiplying by the temperature works like the reparametrization trick,
         # only if the prior is N(0,1)
-        z = self.prior.sample((num_samples,)).view(-1, self.latent_dim, 1, 1).to(self.get_device()) * temperature
+        z = self.prior.sample((num_samples,)).to(self.get_device()) * temperature
         return self.decode(z)[0]
 
     def forward(self, x: Tensor):
@@ -210,7 +204,7 @@ class VDVAE(nn.Module):
     def loss_function(self, x: Tensor):
         x_mu, x_sigma, z_mu, z_sigma = self.forward(x)
         reconstruction_loss = torch.distributions.normal.Normal(x_mu, x_sigma + self.eps).log_prob(x).sum([1, 2, 3])
-        q_z = distributions.normal.Normal(z_mu.view(-1, self.latent_dim), z_sigma.view(-1, self.latent_dim) + self.eps)
+        q_z = distributions.normal.Normal(z_mu, z_sigma + self.eps)
 
         kl_div = distributions.kl.kl_divergence(q_z, self.prior).sum(1)
         return -(reconstruction_loss - kl_div)
