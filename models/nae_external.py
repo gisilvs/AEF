@@ -25,7 +25,9 @@ class ExternalLatentAutoEncoder(GaussianAutoEncoder):
         self.preprocessing_layers = nn.ModuleList(preprocessing_layers)
         self.device = None
         if external_net is None:
-            self.dense = nn.Linear(np.prod(self.image_shape), self.core_size)
+            self.dense = nn.Sequential(
+          nn.Flatten(),
+          nn.Linear(np.prod(self.image_shape), self.core_size))
         else:
             self.dense = external_net
 
