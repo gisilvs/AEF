@@ -6,12 +6,12 @@ from nflows.transforms import InverseTransform, AffineTransform
 from bijectors.actnorm import ActNorm
 from bijectors.sigmoid import Sigmoid
 from flows.maf import MaskedAutoregressiveFlow
-from models.autoencoder import IndependentVarianceDecoder, LatentDependentDecoder, ConvolutionalEncoder, \
+from .autoencoder import IndependentVarianceDecoder, LatentDependentDecoder, ConvolutionalEncoder, \
     FixedVarianceDecoder
-from models.iwae import IWAE
-from models.normalizing_autoencoder import NormalizingAutoEncoder
-from models.vae import VAE
-from models.vae_iaf import VAEIAF
+from .iwae import IWAE
+from .normalizing_autoencoder import NormalizingAutoEncoder
+from .vae import VAE
+from .vae_iaf import VAEIAF
 
 
 def get_model(model_name: str, decoder: str,
