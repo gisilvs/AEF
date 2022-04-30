@@ -4,7 +4,7 @@ from bijectors.actnorm import ActNorm
 from bijectors.realnvp import get_realnvp_bijector
 from bijectors.masked_autoregressive_transform import get_masked_autoregressive_transform
 from flows.maf import MaskedAutoregressiveFlow
-from models.normalizing_autoencoder import NormalizingAutoEncoder
+from bijectors.glow import SimpleGlow
 from models.autoencoder import ConvolutionalEncoder, IndependentVarianceDecoder
 
 
@@ -28,7 +28,7 @@ def test_image_bijector(bijector):
         return False
     if not torch.allclose(ildj, -fldj):
         return False
-    return 0
+    return True
 
 
 def main():
@@ -46,9 +46,10 @@ def main():
     print('Tests on 4D data')
     image_bijectors = {
         'ActNorm': ActNorm(3),
+        'Glow': SimpleGlow(8,3,256)
     }
     for name, bijector in image_bijectors.items():
-        if test_flat_bijector(bijector):
+        if test_image_bijector(bijector):
             print(f'{name} test PASSED')
         else:
             print(f'{name} test FAILED')
