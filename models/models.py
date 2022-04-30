@@ -38,8 +38,8 @@ def get_model(model_name: str, decoder: str,
     flow_features = 256
 
     decoder = decoder_dict[decoder](hidden_channels=vae_channels, output_shape=img_shape,
-                                    latent_dim=latent_dims)
-    encoder = ConvolutionalEncoder(hidden_channels=vae_channels, input_shape=img_shape, latent_dim=latent_dims)
+                                    latent_ndims=latent_dims)
+    encoder = ConvolutionalEncoder(hidden_channels=vae_channels, input_shape=img_shape, latent_ndims=latent_dims)
     preprocessing_layers = [InverseTransform(AffineTransform(alpha, 1 - 2 * alpha)), Sigmoid(), ActNorm(img_shape[0])]
     if model_name in vaes:
         if 'nae' in model_name:

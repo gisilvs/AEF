@@ -7,16 +7,17 @@ import torch.nn.functional as F
 
 
 class Coder(nn.Module):
-    def __init__(self):
+    def __init__(self, latent_ndims: int):
         super(Coder, self).__init__()
+        self.latent_ndims = latent_ndims
 
     def forward(self, x: Tensor) -> Tensor:
         raise NotImplementedError
 
 
 class GaussianCoder(Coder):
-    def __init__(self):
-        super(GaussianCoder, self).__init__()
+    def __init__(self, latent_ndims: int):
+        super(GaussianCoder, self).__init__(latent_ndims)
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor]:
         '''
@@ -28,28 +29,26 @@ class GaussianCoder(Coder):
 
 
 class GaussianEncoder(GaussianCoder):
-    def __init__(self, input_shape: List, latent_dim: int):
-        super(GaussianEncoder, self).__init__()
+    def __init__(self, input_shape: List, latent_ndims: int):
+        super(GaussianEncoder, self).__init__(latent_ndims)
         self.input_shape = input_shape
-        self.latent_dim = latent_dim
 
 
 class GaussianDecoder(GaussianCoder):
-    def __init__(self, output_shape: List, latent_dim: int):
-        super(GaussianDecoder, self).__init__()
-        self.latent_dim = latent_dim
+    def __init__(self, output_shape: List, latent_ndims: int):
+        super(GaussianDecoder, self).__init__(latent_ndims)
         self.output_shape = output_shape
 
 
 class ConvolutionalEncoder(GaussianEncoder):
-    def __init__(self, hidden_channels: int, input_shape: List, latent_dim: int):
+    def __init__(self, hidden_channels: int, input_shape: List, latent_ndims: int):
         '''
         Default convolutional encoder class.
         :param hidden_channels:
         :param input_shape: [C,H,W]
-        :param latent_dim:
+        :param latent_ndims:
         '''
-        super(ConvolutionalEncoder, self).__init__(input_shape=input_shape, latent_dim=latent_dim)
+        super(ConvolutionalEncoder, self).__init__(input_shape=input_shape, latent_ndims=latent_ndims)
         self.conv1 = nn.Conv2d(in_channels=input_shape[0],
                                out_channels=hidden_channels,
                                kernel_size=3,
@@ -63,9 +62,9 @@ class ConvolutionalEncoder(GaussianEncoder):
                                padding=1)
 
         self.fc_mu = nn.Linear(in_features=hidden_channels * 2 * input_shape[1] // 4 * input_shape[2] // 4,
-                               out_features=latent_dim)
+                               out_features=latent_ndims)
         self.fc_sigma = nn.Linear(in_features=hidden_channels * 2 * input_shape[1] // 4 * input_shape[2] // 4,
-                                  out_features=latent_dim)
+                                  out_features=latent_ndims)
 
         self.activation = nn.ReLU()
 
@@ -87,17 +86,15 @@ class ConvolutionalEncoder(GaussianEncoder):
 
         return z_mu, z_sigma
 
+class ConvolutionalDecoder(GaussianDecoder):
+    def __init__(self, hidden_channels: int, output_shape: List, latent_ndims: int):
+        super(ConvolutionalDecoder, self).__init__(output_shape=output_shape, latent_ndims=latent_ndims)
 
-class LatentDependentDecoder(GaussianDecoder):
-    def __init__(self, hidden_channels: int, output_shape: List, latent_dim: int):
-        """
-        Convolutional decoder where sigma is not dependent on z (but is learned).
-        """
-        super(LatentDependentDecoder, self).__init__(latent_dim=latent_dim, output_shape=output_shape)
         self.hidden_channels = hidden_channels
+
         # out features will work for images of size 28x28. 32x32 and 64x64
         # would crash for sizes that are not divisible by 4
-        self.fc = nn.Linear(in_features=latent_dim,
+        self.fc = nn.Linear(in_features=latent_ndims,
                             out_features=hidden_channels * 2 * output_shape[1] // 4 * output_shape[2] // 4)
 
         self.conv2 = nn.ConvTranspose2d(in_channels=hidden_channels * 2,
@@ -105,6 +102,22 @@ class LatentDependentDecoder(GaussianDecoder):
                                         kernel_size=4,
                                         stride=2,
                                         padding=1)
+        self.conv1 = nn.ConvTranspose2d(in_channels=hidden_channels,
+                                        out_channels=output_shape[0],
+                                        kernel_size=4,
+                                        stride=2,
+                                        padding=1)
+
+        self.activation = nn.ReLU()
+
+
+class LatentDependentDecoder(ConvolutionalDecoder):
+    def __init__(self, hidden_channels: int, output_shape: List, latent_ndims: int):
+        """
+        Convolutional decoder where sigma is not dependent on z (but is learned).
+        """
+        super(LatentDependentDecoder, self).__init__(hidden_channels, output_shape, latent_ndims)
+        #  Our last convolutional layer encodes both mu and sigma
         self.conv1 = nn.ConvTranspose2d(in_channels=hidden_channels,
                                         out_channels=output_shape[0] * 2,
                                         kernel_size=4,
@@ -127,35 +140,16 @@ class LatentDependentDecoder(GaussianDecoder):
         return x_mu, x_sigma
 
 
-class IndependentVarianceDecoder(GaussianDecoder):
-    def __init__(self, hidden_channels: int, output_shape: List, latent_dim: int):
-        super(IndependentVarianceDecoder, self).__init__(latent_dim=latent_dim, output_shape=output_shape)
+class IndependentVarianceDecoder(ConvolutionalDecoder):
+    def __init__(self, hidden_channels: int, output_shape: List, latent_ndims: int):
+        super(IndependentVarianceDecoder, self).__init__(hidden_channels, output_shape, latent_ndims)
 
-        self.hidden_channels = hidden_channels
-
-        # out features will work for images of size 28x28. 32x32 and 64x64
-        # would crash for sizes that are not divisible by 4
-        self.fc = nn.Linear(in_features=latent_dim,
-                            out_features=hidden_channels * 2 * output_shape[1] // 4 * output_shape[2] // 4)
-
-        self.conv2 = nn.ConvTranspose2d(in_channels=hidden_channels * 2,
-                                        out_channels=hidden_channels,
-                                        kernel_size=4,
-                                        stride=2,
-                                        padding=1)
-        self.conv1 = nn.ConvTranspose2d(in_channels=hidden_channels,
-                                        out_channels=output_shape[0],
-                                        kernel_size=4,
-                                        stride=2,
-                                        padding=1)
-
-        self.activation = nn.ReLU()
         self.pre_sigma = nn.Parameter(torch.zeros(output_shape))
 
     def forward(self, z: torch.Tensor):
         """
         :param z: input batch from latent space
-        :returns: mu(x), sigma
+        :returns: mu(x), sigma (learned constant)
         """
         x = self.fc(z)
         x = x.view(x.size(0), self.hidden_channels * 2, self.output_shape[1] // 4, self.output_shape[2] // 4)
@@ -165,34 +159,14 @@ class IndependentVarianceDecoder(GaussianDecoder):
 
         return x_mu, sigma
 
-class FixedVarianceDecoder(GaussianDecoder):
-    def __init__(self, hidden_channels: int, output_shape: List, latent_dim: int):
-        super(FixedVarianceDecoder, self).__init__(latent_dim=latent_dim, output_shape=output_shape)
-
-        self.hidden_channels = hidden_channels
-
-        # out features will work for images of size 28x28. 32x32 and 64x64
-        # would crash for sizes that are not divisible by 4
-        self.fc = nn.Linear(in_features=latent_dim,
-                            out_features=hidden_channels * 2 * output_shape[1] // 4 * output_shape[2] // 4)
-
-        self.conv2 = nn.ConvTranspose2d(in_channels=hidden_channels * 2,
-                                        out_channels=hidden_channels,
-                                        kernel_size=4,
-                                        stride=2,
-                                        padding=1)
-        self.conv1 = nn.ConvTranspose2d(in_channels=hidden_channels,
-                                        out_channels=output_shape[0],
-                                        kernel_size=4,
-                                        stride=2,
-                                        padding=1)
-
-        self.activation = nn.ReLU()
+class FixedVarianceDecoder(ConvolutionalDecoder):
+    def __init__(self, hidden_channels: int, output_shape: List, latent_ndims: int):
+        super(FixedVarianceDecoder, self).__init__(hidden_channels, output_shape, latent_ndims)
 
     def forward(self, z: torch.Tensor):
         """
         :param z: input batch from latent space
-        :returns: mu(x), sigma
+        :returns: mu(x), sigma (equal to 1 for each dimension)
         """
         x = self.fc(z)
         x = x.view(x.size(0), self.hidden_channels * 2, self.output_shape[1] // 4, self.output_shape[2] // 4)
