@@ -15,10 +15,11 @@ from .vae import VAE
 from .vae_iaf import VAEIAF
 from .nae_external import ExternalLatentAutoEncoder
 import numpy as np
+from bijectors.glow import SimpleGlow
 
 
 def get_model(model_name: str, decoder: str,
-              latent_dims: int, img_shape: List, alpha: float):
+              latent_dims: int, img_shape: List, alpha: float, use_glow=False):
     model_dict = {'nae-center': InternalLatentAutoEncoder,
                   'nae-corner': InternalLatentAutoEncoder,
                   'vae': VAE,
@@ -41,6 +42,8 @@ def get_model(model_name: str, decoder: str,
                                     latent_dim=latent_dims)
     encoder = ConvolutionalEncoder(hidden_channels=vae_channels, input_shape=img_shape, latent_dim=latent_dims)
     preprocessing_layers = [InverseTransform(AffineTransform(alpha, 1 - 2 * alpha)), Sigmoid(), ActNorm(img_shape[0])]
+    if use_glow:
+        preprocessing_layers.append(SimpleGlow(8, n_channels=img_shape[0], hidden_channels=256))
     if model_name in vaes:
         if 'nae' in model_name:
             # TODO: add core_flow selection for NAE
