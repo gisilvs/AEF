@@ -31,6 +31,9 @@ parser.add_argument('--decoder', type=str, default='fixed',
 parser.add_argument('--custom-name', type=str, help='custom name for wandb tracking')
 parser.add_argument('--batch-size', type=int, default=128,
                     help='input batch size for training and testing (default: 128)')
+parser.add_argument('--use-glow', type=int, default=0,
+                    help='whether to add glow as preprocessing layer - 0 no (default), 1 yes')
+
 
 
 args = parser.parse_args()
@@ -50,6 +53,7 @@ learning_rate = args.lr
 use_gpu = True
 validate_every_n_iterations = args.val_iters
 save_every_n_iterations = args.save_iters
+use_glow = args.use_glow == 1
 
 args.runs = [int(item) for item in args.runs.split(',')]
 
@@ -62,7 +66,8 @@ for run_nr in args.runs:
         latent_size_str = f"_latent_size_{args.latent_dims}" if model_name in AE_like_models else ""
         decoder_str = f"_decoder_{args.decoder}" if model_name in AE_like_models else ""
         run_name = f'{args.model}_{args.dataset}_run_{run_nr}{latent_size_str}{decoder_str}'
-
+    if use_glow:
+        run_name += '_glow'
     config = {
         "model": model_name,
         "dataset": dataset,
@@ -84,7 +89,7 @@ for run_nr in args.runs:
     test_dataloader = get_test_dataloader(dataset, batch_size)
     n_pixels = np.prod(image_dim)
 
-    model = get_model(model_name, args.decoder, latent_dims, image_dim, alpha)
+    model = get_model(model_name, args.decoder, latent_dims, image_dim, alpha, use_glow)
     optimizer = torch.optim.Adam(params=model.parameters(), lr=learning_rate)
 
     model = model.to(device)
