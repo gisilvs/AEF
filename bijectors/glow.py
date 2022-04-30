@@ -1,9 +1,10 @@
 import normflow as nf
+from torch import nn
 
-class SimpleGlow():
+class SimpleGlow(nn.Module):
     def __init__(self, K, n_channels, hidden_channels):
-        super().__init__()
-        self.bijectors = [nf.flows.GlowBlock(n_channels, hidden_channels, split_mode='checkerboard') for _ in range(K)]
+        super(SimpleGlow, self).__init__()
+        self.bijectors = nn.ModuleList([nf.flows.GlowBlock(n_channels, hidden_channels, split_mode='checkerboard') for _ in range(K)])
 
     def forward(self, x):
         y, log_j_final = self.bijectors[-1].forward(x)
