@@ -12,7 +12,6 @@ from models.autoencoder import GaussianEncoder, GaussianDecoder
 
 BOTTLENECK_MULTIPLE = 0.25
 
-
 def get_encoder_string(image_dim: List, latent_ndims: int, size: str = None):
     if image_dim == [3, 32, 32]:
         if size == 'test':
@@ -23,6 +22,7 @@ def get_encoder_string(image_dim: List, latent_ndims: int, size: str = None):
     # # This code doesn't support 28x28
     # if image_dim == [1, 28, 28]:
     #     enc_block_str = "28x6,28d2,14x4,14d2,7x3,7d2,3x3,3d2,1x2"
+
     return enc_block_str
 
 
@@ -36,6 +36,7 @@ def get_decoder_string(image_dim: List, latent_ndims: int, size: str = None):
     # # This code doesn't support 28x28
     # if image_dim == [1, 28, 28]:
     #     dec_block_str = "1x1,4m1,4x2,8m4,8x4,14m8,14x6,28m14,28x14"
+
     return dec_block_str
 
 def pad_channels(t, width):
@@ -116,7 +117,6 @@ class ConvolutionalEncoderBig(GaussianEncoder):
 
         enc_str = get_encoder_string(input_shape, latent_ndims, size)
         self.in_conv = get_3x3(input_shape[0], latent_ndims)
-        # self.widths = get_width_settings(latent_ndims, CUSTOM_WIDTH_STR) # TODO: remove
         enc_blocks = []
         blockstr = parse_layer_string(enc_str)
         squeeze_dim = max(1, int(latent_ndims * BOTTLENECK_MULTIPLE))
@@ -233,6 +233,3 @@ class LatentDependentDecoderBig(GaussianDecoder):
         # x_mu = x_mu.view(x_mu.shape[0], -1)
         # x_sigma = x_sigma.view(x_sigma.shape[0], -1)
         return x_mu, F.softplus(x_sigma)
-
-
-# "1x1,4m1,4x2,8m4,8x4,14m8,14x6,28m14,28x14"
