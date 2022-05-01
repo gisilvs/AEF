@@ -9,7 +9,7 @@ import itertools
 
 from models.autoencoder import GaussianEncoder, GaussianDecoder
 
-
+# TODO: do we still need these?
 WIDTH = 256 #384
 DEC_BLOCKS = "1x1,4m1,4x2,8m4,8x5,16m8,16x10,32m16,32x21"
 ENC_BLOCKS = "32x11,32d2,16x6,16d2,8x6,8d2,4x3,4d4,1x3"
