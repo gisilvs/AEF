@@ -37,7 +37,7 @@ def get_decoder_string(image_dim: List, latent_ndims: int, size: str = None):
             DEC_BLOCKS = "1x1,4m1,4x2,8m4,8x5,16m8,16x10,32m16,32x21"
     if image_dim == [1, 28, 28]:
         DEC_BLOCKS = "1x1,3m1,3x2,7m3,7x4,14m7,14x6,28m14,28x14"
-    return ENC_BLOCKS
+    return DEC_BLOCKS
 
 def pad_channels(t, width):
     d1, d2, d3, d4 = t.shape
