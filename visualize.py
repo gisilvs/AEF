@@ -1,3 +1,5 @@
+from typing import List
+
 import torch.distributions
 import torchvision
 
@@ -7,40 +9,16 @@ from datasets import get_test_dataloader
 import util
 import wandb
 from models.autoencoder_base import AutoEncoder
-from models.models import get_model
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 
 from util import load_best_model
 
-
-# def get_model_by_run_id(project: str, run_id: str, run_name:str, which_file: str = 'best', wandb_api: wandb.apis.public.Api = None):
-#     if wandb_api is None:
-#         api = wandb.Api()
-#
-#     run = api.run(f"nae/{project}/{run_id}")
-#     config = run.config
-#     model_name = config["model"]
-#     latent_dims = config["latent_dims"]
-#     dataset = config["dataset"]
-#     image_dim = datasets.get_img_dims(dataset)
-#     alpha = datasets.get_alpha(dataset)
-#     use_center_pixels = True  # TODO: get from config or filename
-#     device = 'cpu'
-#
-#     model = get_model(model_name, latent_dims, image_dim, alpha, use_center_pixels)
-#     model.sample(10)  # needed as some components such as actnorm need to be initialized
-#     artifact = api.artifact()
-#     model_path = run.(run, project_name, experiment_name, version)
-#     model.load_state_dict(torch.load(model_path, map_location=device))
-#
-#
-# project = 'phase1'
-# run_id = '3hho6lhe'
-# get
+from datetime import date
 
 
 def get_z_values(n_vals: int = 20, border: float = 0.15, latent_dims: int = 2):
+    ''' Get z values needed to plot a grid of samples from the latent space. Grid over two dimensional z. '''
     lin_vals = torch.linspace(border, 1 - border, steps=n_vals)
     icdf_vals = torch.cartesian_prod(*([lin_vals] * latent_dims))
     distr = torch.distributions.normal.Normal(torch.zeros(latent_dims), torch.ones(latent_dims))
@@ -50,6 +28,8 @@ def get_z_values(n_vals: int = 20, border: float = 0.15, latent_dims: int = 2):
 
 
 def plot_latent_space(model, test_loader, device):
+    ''' Function to generate a plot of the latent space of a model. If there are more than 2 dimensions we use
+    TSNE. '''
     n_latent_dims = model.encoder.latent_dim
     if n_latent_dims == 2:
         return plot_latent_space_2d(model, test_loader, device)
@@ -61,7 +41,7 @@ def plot_latent_space(model, test_loader, device):
         image_batch = util.dequantize(image_batch)
         image_batch = image_batch.to(device)
         mu, _ = model.encode(image_batch)
-        arr[n_added:n_added + len(image_batch), :] = mu.detach().numpy()
+        arr[n_added:n_added + len(image_batch), :] = mu.cpu().detach().numpy()
         labels[n_added:n_added + len(image_batch)] = image_labels
         n_added += len(image_batch)
 
@@ -87,14 +67,23 @@ def plot_latent_space(model, test_loader, device):
     return fig
 
 
-def plot_latent_space_2d(model: AutoEncoder, test_loader, device):
+def plot_latent_space_2d(model: AutoEncoder, test_loader, device, max_val=5):
+    '''
+
+    :param model:
+    :param test_loader:
+    :param device:
+    :param max_val: max value from 0 in x and y direction: sometimes we see outliers
+    :return:
+    '''
     arr = np.zeros([len(test_loader.dataset), 3])
     n_added = 0
     for image_batch, image_labels in test_loader:
         image_batch = util.dequantize(image_batch)
         image_batch = image_batch.to(device)
-        mu, _ = model.encode(image_batch)
-        arr[n_added:n_added + len(image_batch), :2] = mu.detach().numpy()
+        with torch.no_grad():
+            mu, _ = model.encode(image_batch)
+        arr[n_added:n_added + len(image_batch), :2] = mu.cpu().detach().numpy()
         arr[n_added:n_added + len(image_batch), 2] = image_labels
         n_added += len(image_batch)
 
@@ -104,75 +93,176 @@ def plot_latent_space_2d(model: AutoEncoder, test_loader, device):
     cb = plt.colorbar(scat, spacing='uniform')
     cur_min_x, cur_max_x = np.min(arr[:, 0]), np.max(arr[:, 0])
     cur_min_y, cur_max_y = np.min(arr[:, 1]), np.max(arr[:, 1])
-    plt.ylim((max(cur_min_x, -5), min(cur_max_x, 5)))  # Why are these reversed?
-    plt.xlim((max(cur_min_y, -5), min(cur_max_y, 5)))
+    plt.ylim((max(cur_min_x, -max_val), min(cur_max_x, max_val)))  # Why are these reversed?
+    plt.xlim((max(cur_min_y, -max_val), min(cur_max_y, max_val)))
     return fig
 
-def generate_visualizations():
+def plot_samples(model: AutoEncoder, img_shape: List = [1, 28, 28], n_rows: int = 10, n_cols: int = 10,
+                 batch_size: int = 100, temperature: int = 1):
+    '''
+    Function to plot a grid of samples given a model.
+    '''
+    n_samples = n_rows * n_cols
+    arr = torch.zeros((n_samples, *img_shape))
+    n_filled = 0
+    while n_filled < n_samples:
+        n_to_sample = min(batch_size, n_samples - n_filled)
+        with torch.no_grad():
+            arr[n_filled:n_filled+n_to_sample] = model.sample(n_to_sample, temperature=temperature).cpu().detach()
+        n_filled += n_to_sample
 
-    run = wandb.init(project='visualizations', entity="nae")
+    fig = plt.figure(figsize=(10, 10), dpi=300)
+    grid_img = torchvision.utils.make_grid(arr, padding=1, pad_value=0., nrow=n_rows)
+    plt.imshow(grid_img.permute(1, 2, 0))
+    plt.axis("off")
+    return fig
 
+def generate_visualizations_single_run():
+    run_name = 'visualizations_XXX'
     project_name = 'phase1'
+    model_name = 'nae-corner'
+    experiment_name = f'nae_mnist_run_3_latent_size_4_decoder_independent_corner'
+    decoder = 'independent'
+    dataset = 'mnist'
+    use_gpu = False
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+    alpha = 1e-6
+    latent_dims = 4
     image_dim = [1, 28, 28]
 
-    latent_sizes = [2, 4, 8, 16]
+    run = wandb.init(project='visualizations', entity="nae", name=run_name)
+    model = load_best_model(run, project_name, model_name, experiment_name, device, latent_dims, image_dim,
+                            alpha, decoder, version='latest')
+
+    do_plot_samples_from_latent_space_grid = False
+    do_plot_latent_space_equal_to_2 = False
+    latent_grid_size = 20
+    do_plot_latent_space_greater_than_2 = False
+    do_plot_samples = False
+    n_times_to_sample = 5
+    if do_plot_samples_from_latent_space_grid:
+        z_vals = get_z_values(n_vals=latent_grid_size, latent_dims=2)
+        z_vals = z_vals.to(device)
+
+        with torch.no_grad():
+            output = model.sample(z=z_vals).detach().cpu()
+
+        util.plot_image_grid(output, cols=latent_grid_size, padding=0, hires=True)
+        image_dict = {f'latent grid {dataset} {model_name}': plt}
+        wandb.log({**image_dict})
+    if do_plot_latent_space_equal_to_2:
+        test_loader = get_test_dataloader(dataset)
+        fig = plot_latent_space(model, test_loader, device)
+        wandb.log({f"latent dims {latent_dims} {dataset} {model_name}": wandb.Image(fig)})
+
+
+    # Don't do these for >2d latent space, doesn't add that much since very dependent on TSNE.
+    if do_plot_latent_space_greater_than_2:
+        test_loader = get_test_dataloader(dataset)
+        fig = plot_latent_space(model, test_loader, device)
+        wandb.log({f"latent dims {latent_dims} {dataset} {model_name}": wandb.Image(fig)})
+    if do_plot_samples:
+        for i in range(n_times_to_sample):
+            fig = plot_samples(model, image_dim)
+            wandb.log({f"samples {latent_dims} {dataset} {model_name} plot {i}": wandb.Image(fig)})
+
+
+
+def generate_visualizations_separately():
+    generate_visualizations(False, True, False, False, 0, custom_name="2D latent space plots")
+    generate_visualizations(False, False, True, False, 0, custom_name="Latent grid plots")
+    generate_visualizations(False, False, False, True, 5, custom_name="Samples")
+
+
+def generate_visualizations(do_plot_latent_space_greater_than_2 = False,
+                            do_plot_latent_space_equal_to_2 = True,
+                            do_plot_samples_from_latent_space_grid = True,
+                            do_plot_samples = True,
+                            n_times_to_sample = 5,
+                            custom_name = None): # Number of plots to create for each run):
+    '''
+    Function to create all plots for all runs of a certain phase. These will all be under a single wandb run.
+    For latent grid search: latent grid {dataset} {model_name} run {run_nr}
+    For latent space search: latent dims {latent_size} {dataset} {model_name} run {run_nr}
+    For samples search: samples {latent_size} {dataset} {model_name} run {run_nr} plot {i}
+    :return:
+    '''
+    today = date.today()
+    project_name = 'phase1'
+    image_dim = [1, 28, 28]
+    latent_sizes = [2] #[2, 4, 8, 16]
 
     alpha = 1e-6
-    use_center_pixels = False
-    use_gpu = False
+    use_gpu = True
     device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
 
     latent_grid_size = 20
     datasets = ['mnist', 'fashionmnist']
-    models = ['nae-center', 'nae-corner', 'vae', 'vae-iaf', 'iwae']  # ['vae', 'vae-iaf', 'iwae', 'nae']
-    for dataset in datasets:
-        for latent_size in latent_sizes:
-            latent_dims = latent_size
-            for model_name in models:
-                if model_name == 'nae-corner':
-                    experiment_name = f'nae_{dataset}_run_2_latent_size_{latent_size}_decoder_independent_corner'
-                    decoder = 'independent'
-                    model_name = 'nae'
-                    model_name_addition = '-corner'
-                    use_center_pixels = False
-                elif model_name == 'nae-center':
-                    experiment_name = f'nae_{dataset}_run_2_latent_size_{latent_size}_decoder_independent_center'
-                    decoder = 'independent'
-                    model_name = 'nae'
-                    model_name_addition = '-center'
-                    use_center_pixels = True
-                else:
-                    experiment_name = f'{model_name}_{dataset}_run_2_latent_size_{latent_size}_decoder_fixed'
-                    decoder = 'fixed'
-                    model_name_addition = ''  # This could be nicer
 
-                try:
-                    model = load_best_model(run, project_name, model_name, experiment_name, device, latent_dims, image_dim,
-                                            alpha, decoder, use_center_pixels, version='best:latest')
-                except Exception as E:
-                    print(E)
-                    continue
-                model = model.to(device)
+    models = ['nae-center', 'nae-corner', 'nae-external', 'vae', 'vae-iaf', 'iwae']
 
-                if latent_size == 2:
-                    z_vals = get_z_values(n_vals=latent_grid_size, latent_dims=2)
-                    z_vals = z_vals.to(device)
+    run_name = f"{today}_all" if custom_name is None else custom_name
 
-                    output = model.sample(z=z_vals).detach().cpu()
+    run = wandb.init(project='visualizations', entity="nae", name=run_name)
+    for run_nr in range(5):
+        for dataset in datasets:
+            for latent_size in latent_sizes:
+                latent_dims = latent_size
+                for model_name in models:
+                    if model_name == 'nae-corner':
+                        experiment_name = f'nae_{dataset}_run_{run_nr}_latent_size_{latent_size}_decoder_independent_corner'
+                        decoder = 'independent'
+                        model_name = 'nae-corner'
+                    elif model_name == 'nae-center':
+                        experiment_name = f'nae_{dataset}_run_{run_nr}_latent_size_{latent_size}_decoder_independent_center'
+                        decoder = 'independent'
+                        model_name = 'nae-center'
+                    elif model_name == 'nae-external':
+                        experiment_name = f'nae-external_{dataset}_run_{run_nr}_latent_size_{latent_size}_decoder_independent'
+                        decoder = 'independent'
+                        model_name = 'nae-external'
+                    else:
+                        experiment_name = f'{model_name}_{dataset}_run_{run_nr}_latent_size_{latent_size}_decoder_fixed'
+                        decoder = 'fixed'
 
-                    util.plot_image_grid(output, cols=latent_grid_size, padding=0, hires=True)
-                    image_dict = {f'latent grid {dataset} {model_name}{model_name_addition} ': plt}
-                    wandb.log({**image_dict})
+                    try:
+                        model = load_best_model(run, project_name, model_name, experiment_name, device, latent_dims, image_dim,
+                                                alpha, decoder, version='latest')
+                    except Exception as E:
+                        print(E)
+                        continue
+                    model = model.to(device)
 
-                    # Don't do these for >2d latent space, doesn't add that much since very dependent on TSNE.
-                    test_loader = get_test_dataloader(dataset)
-                    fig = plot_latent_space(model, test_loader, device)
-                    wandb.log({f"latent dims {latent_size} {dataset} {model_name}{model_name_addition}": wandb.Image(fig)})
+                    if latent_size == 2:
+                        if do_plot_samples_from_latent_space_grid:
+                            z_vals = get_z_values(n_vals=latent_grid_size, latent_dims=2)
+                            z_vals = z_vals.to(device)
 
+                            with torch.no_grad():
+                                output = model.sample(z=z_vals).detach().cpu()
+
+                            util.plot_image_grid(output, cols=latent_grid_size, padding=0, hires=True)
+                            image_dict = {f'latent grid {dataset} {model_name} run {run_nr}': plt}
+                            wandb.log({**image_dict})
+                        if do_plot_latent_space_equal_to_2:
+                            test_loader = get_test_dataloader(dataset)
+                            fig = plot_latent_space(model, test_loader, device)
+                            wandb.log({f"latent dims {latent_size} {dataset} {model_name} run {run_nr}": wandb.Image(fig)})
+                    else:
+                        # Don't do these for >2d latent space, doesn't add that much since very dependent on TSNE.
+                        if do_plot_latent_space_greater_than_2:
+                            test_loader = get_test_dataloader(dataset)
+                            fig = plot_latent_space(model, test_loader, device)
+                            wandb.log({f"latent dims {latent_size} {dataset} {model_name} run {run_nr}": wandb.Image(fig)})
+                    if do_plot_samples:
+                        for i in range(n_times_to_sample):
+                            fig = plot_samples(model, image_dim)
+                            wandb.log({f"samples {latent_size} {dataset} {model_name} run {run_nr} plot {i}": wandb.Image(fig)})
     run.finish()
 
+
 def generate_loss_over_latentdims():
-    api = wandb.Api(timeout=19)
+    api = wandb.Api()
 
     project_name = 'phase1'
     image_dim = [1, 28, 28]
@@ -231,7 +321,6 @@ def generate_loss_over_latentdims():
     plt.savefig('./plots/likelihood_for_latents.png', dpi='figure')
 
 
-
-
 if __name__ == "__main__":
-    generate_loss_over_latentdims()
+    generate_visualizations_separately()
+    #generate_loss_over_latentdims()

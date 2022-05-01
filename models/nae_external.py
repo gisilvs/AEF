@@ -67,10 +67,11 @@ class ExternalLatentAutoEncoder(GaussianAutoEncoder):
         x = self.forward(z, deviations)
         return x
 
-    def sample(self, num_samples=1, sample_deviations=False, temperature=1.):
+    def sample(self, num_samples=1, sample_deviations=False, temperature=1., z: Tensor = None):
         device = self.get_device()
-        z = torch.normal(torch.zeros(num_samples, self.core_size),
-                         torch.ones(num_samples, self.core_size) * temperature).to(device)
+        if z is None:
+            z = torch.normal(torch.zeros(num_samples, self.core_size),
+                             torch.ones(num_samples, self.core_size) * temperature).to(device)
         if sample_deviations:
             deviations = torch.normal(torch.zeros_like(self.mask),
                                       torch.ones_like(self.mask) * temperature).to(device)

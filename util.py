@@ -126,21 +126,21 @@ def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
-def download_wandb_artifact(run, project_name, model_name, version='latest'):
-    artifact = run.use_artifact(f'nae/{project_name}/{model_name}_{version}', type='model')
+def download_wandb_artifact(run, project_name, experiment_name, version='latest'):
+    artifact = run.use_artifact(f'nae/{project_name}/{experiment_name}_best:{version}', type='model')
     artifact_dir = artifact.download()
     return artifact_dir
 
 
-def download_best_model_and_get_path(run, project_name, model_name, version='latest'):
-    artifact_dir = download_wandb_artifact(run, project_name, model_name, version)
+def download_best_model_and_get_path(run, project_name, experiment_name, version='latest'):
+    artifact_dir = download_wandb_artifact(run, project_name, experiment_name, version)
     return artifact_dir + '/' + os.listdir(artifact_dir)[0]
 
 
 
 def load_best_model(run, project_name, model_name, experiment_name, device, latent_dims, image_dim, alpha,
-                    decoder, use_center_pixels, version='latest'):
-    model = get_model(model_name, decoder, latent_dims, image_dim, alpha, use_center_pixels)
+                    decoder, version='latest'):
+    model = get_model(model_name, decoder, latent_dims, image_dim, alpha)
     model.sample(10) # needed as some components such as actnorm need to be initialized
     model.loss_function(model.sample(10)) # needed as some components such as actnorm need to be initialized
 
