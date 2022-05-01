@@ -164,14 +164,11 @@ def generate_visualizations():
                     image_dict = {f'latent grid {dataset} {model_name}{model_name_addition} ': plt}
                     wandb.log({**image_dict})
 
-                test_loader = get_test_dataloader(dataset)
-                fig = plot_latent_space(model, test_loader, device)
-                wandb.log({f"latent dims {latent_size} {dataset} {model_name}{model_name_addition}": wandb.Image(fig)})
-    # test_loader = datasets.get_test_dataloader(dataset)
-    # plot_latent_space(model, test_loader)
+                    # Don't do these for >2d latent space, doesn't add that much since very dependent on TSNE.
+                    test_loader = get_test_dataloader(dataset)
+                    fig = plot_latent_space(model, test_loader, device)
+                    wandb.log({f"latent dims {latent_size} {dataset} {model_name}{model_name_addition}": wandb.Image(fig)})
 
-        #
-        # plt.show()
     run.finish()
 
 def generate_loss_over_latentdims():
@@ -210,7 +207,7 @@ def generate_loss_over_latentdims():
             scores[n_recorded, idx] = run.summary['test_loss']
             n_recorded += 1
     scores[scores == np.inf] = np.nan
-    best_scores = -1 * np.nanmin(scores, axis=0)
+    best_scores = -1 * np.nanmin(scores, axis=0) # TODO: change to mean once inf/positive runs are gone
     fig = plt.figure(dpi=300)
     plt.scatter(np.arange(len(latent_sizes)), best_scores)
     plt.ylabel('Log-likelihood')
