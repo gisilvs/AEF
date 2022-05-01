@@ -9,25 +9,17 @@ import itertools
 
 from models.autoencoder import GaussianEncoder, GaussianDecoder
 
-# TODO: do we still need these?
-# WIDTH = 256 #384
-# DEC_BLOCKS = "1x1,4m1,4x2,8m4,8x5,16m8,16x10,32m16,32x21"
-# ENC_BLOCKS = "32x11,32d2,16x6,16d2,8x6,8d2,4x3,4d4,1x3"
+
 BOTTLENECK_MULTIPLE = 0.25
-# CUSTOM_WIDTH_STR = ''
-# IMAGE_CHANNELS = 3
+
 
 def get_encoder_string(image_dim: List, latent_ndims: int, size: str = None):
-    if image_dim == [3, 32, 32]: #and latent_ndims >= 32:
+    if image_dim == [3, 32, 32]:
         if size == 'test':
             enc_block_str = "32x1,32d2,16x1,16d2,8x1,8d2,4x1,4d4,1x3"
         else:
-            enc_block_str = "32x11,32d2,16x6,16d2,8x6,8d2,4x3,4d4,1x3"
-    # if image_dim == [3, 32, 32] and latent_ndims < 32:
-    #     if size == 'test':
-    #         enc_block_str = "32x1,32d2,16x1,16d2,8x1,8d2,4x1,4d4,1x3"
-    #     else:
-    #         enc_block_str = "32x11,32d2,16x6,16d2,8x6,8d2,4x3,4d4,1x3"
+            # enc_block_str = "32x11,32d2,16x6,16d2,8x6,8d2,4x3,4d4,1x3"
+            enc_block_str = "32x8,32d2,16x4,16d2,8x4,8d2,4x2,4d4,1x2"
     # # This code doesn't support 28x28
     # if image_dim == [1, 28, 28]:
     #     enc_block_str = "28x6,28d2,14x4,14d2,7x3,7d2,3x3,3d2,1x2"
@@ -35,11 +27,12 @@ def get_encoder_string(image_dim: List, latent_ndims: int, size: str = None):
 
 
 def get_decoder_string(image_dim: List, latent_ndims: int, size: str = None):
-    if image_dim == [3, 32, 32]: #and latent_ndims >= 32:
+    if image_dim == [3, 32, 32]:
         if size == 'test':
             dec_block_str = "1x1,4m1,4x1,8m4,8x1,16m8,16x1,32m16,32x1"
         else:
-            dec_block_str = "1x1,4m1,4x2,8m4,8x5,16m8,16x10,32m16,32x21"
+            # dec_block_str = "1x1,4m1,4x2,8m4,8x5,16m8,16x10,32m16,32x21"
+            dec_block_str = "1x2,4m1,4x2,8m4,8x4,16m8,16x4,32m16,32x8"
     # # This code doesn't support 28x28
     # if image_dim == [1, 28, 28]:
     #     dec_block_str = "1x1,4m1,4x2,8m4,8x4,14m8,14x6,28m14,28x14"
