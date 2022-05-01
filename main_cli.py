@@ -10,8 +10,6 @@ import util
 import wandb
 from datasets import get_train_val_dataloaders, get_test_dataloader
 from models.model_database import get_model
-from models.vdvae import VDVAE
-from models.vdnae import VDNAE
 
 from util import make_averager, dequantize, vae_log_prob, plot_image_grid, bits_per_pixel
 
@@ -39,7 +37,7 @@ parser.add_argument('--batch-size', type=int, default=128,
 args = parser.parse_args()
 
 assert args.wandb_type in ['phase1', 'phase2', 'prototyping', 'visualization']
-assert args.model in ['nae-center', 'nae-corner', 'vae', 'iwae', 'vae-iaf', 'maf', 'nae-external', 'vdvae', 'vdnae']
+assert args.model in ['nae-center', 'nae-corner', 'vae', 'iwae', 'vae-iaf', 'maf', 'nae-external']
 assert args.dataset in ['mnist', 'kmnist', 'emnist', 'fashionmnist', 'cifar10']
 assert args.decoder in ['fixed', 'independent', 'dependent']
 assert args.architecture in ['small', 'big']
@@ -90,7 +88,7 @@ for run_nr in args.runs:
     n_pixels = np.prod(image_dim)
 
     #TODO: add core_flow selection for NAE
-    model = get_model(model_name, args.decoder, latent_dims, image_dim, alpha)
+    model = get_model(model_name, architecture_size, args.decoder, latent_dims, image_dim, alpha)
     optimizer = torch.optim.Adam(params=model.parameters(), lr=learning_rate)
 
     model = model.to(device)
