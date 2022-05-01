@@ -49,7 +49,6 @@ def get_model(model_name: str, architecture_size: str, decoder: str,
     preprocessing_layers = [InverseTransform(AffineTransform(alpha, 1 - 2 * alpha)), Sigmoid(), ActNorm(img_shape[0])]
 
 
-
     if model_name in vaes:
         if 'nae' in model_name:
             # TODO: add core_flow selection for NAE
@@ -58,8 +57,9 @@ def get_model(model_name: str, architecture_size: str, decoder: str,
                 flow_features = 256
                 num_layers = 4
             else:
-                flow_features = 512
-                num_layers = 8
+                # let's start humble since we were already overfitting
+                flow_features = 256
+                num_layers = 4
             core_flow_pre = core_flow_fn(features=latent_dims,
                                          hidden_features=flow_features,
                                          num_layers=num_layers,
@@ -85,11 +85,11 @@ def get_model(model_name: str, architecture_size: str, decoder: str,
             model = model_dict[model_name](encoder, decoder)
     else:
         if architecture_size == 'small':
-            flow_features = 512
+            flow_features = 256
             num_layers = 4
         else:
-            flow_features = 1024
-            num_layers = 16
+            flow_features = 512
+            num_layers = 8
         model = model_dict[model_name](np.prod(img_shape), hidden_features=flow_features,  # TODO: dont hardcode
                                        num_layers=num_layers, num_blocks_per_layer=2,
                                        preprocessing_layers=preprocessing_layers,
