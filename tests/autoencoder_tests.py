@@ -37,19 +37,20 @@ def test_all_autoencoders(batch_size: int = 4):
                          'nae-external'
                          ]
 
-    #device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    device = torch.device("cpu")
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    #device = torch.device("cpu")
     for architecture_size in architecture_sizes:
         for input_dim in different_dims:
             if architecture_size == 'big' and input_dim == [1, 28, 28]:
                 continue
             for latent_dim in latent_dims:
-                if architecture_size == 'big' and latent_dim < 32:
-                    continue
+                # if architecture_size == 'big' and latent_dim < 32:
+                #     continue
                 for decoder_name in decoder_names:
                     for autoencoder_name in autoencoder_names:
                         # Add all tests here
-                        ae = get_model(autoencoder_name, architecture_size, decoder_name, latent_dim, input_dim, 0.05).to(device)
+                        ae = get_model(autoencoder_name, architecture_size, decoder_name, latent_dim, input_dim,
+                                       alpha=0.05, test=True).to(device)
                         test_autoencoder_loss_backward(ae, input_dim, n_iterations=10, batch_size=batch_size, device=device)
                         test_autoencoder_sample(ae)
                         print(f'Tested {autoencoder_name} {decoder_name} {architecture_size} {latent_dim} {input_dim}')

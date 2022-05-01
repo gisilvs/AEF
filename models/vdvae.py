@@ -10,33 +10,29 @@ import itertools
 from models.autoencoder import GaussianEncoder, GaussianDecoder
 
 # TODO: do we still need these?
-DEC_BLOCKS = "1x1,4m1,4x2,8m4,8x5,16m8,16x10,32m16,32x21"
-ENC_BLOCKS = "32x11,32d2,16x6,16d2,8x6,8d2,4x3,4d4,1x3"
+
+#DEC_BLOCKS = "1x1,4m1,4x2,8m4,8x5,16m8,16x10,32m16,32x21"
+#ENC_BLOCKS = "32x11,32d2,16x6,16d2,8x6,8d2,4x3,4d4,1x3"
 BOTTLENECK_MULTIPLE = 0.25
 
 def get_encoder_string(image_dim: List, latent_ndims: int, size: str = None):
-    if image_dim == [3, 32, 32] and latent_ndims >= 32:
+    if image_dim == [3, 32, 32]: #and latent_ndims >= 32:
         if size == 'test':
-            ENC_BLOCKS = "32x1,32d2,16x1,16d2,8x1,8d2,4x1,4d4,1x3"
+            enc_block_str = "32x1,32d2,16x1,16d2,8x1,8d2,4x1,4d4,1x3"
         else:
-            #ENC_BLOCKS = "32x11,32d2,16x6,16d2,8x6,8d2,4x3,4d4,1x3"
-            ENC_BLOCKS = "32x1,32d2,16x1,16d2,8x1,8d2,4x1,4d4,1x3"
-
-    if image_dim == [1, 28, 28]:
-        ENC_BLOCKS = "28x6,28d2,14x4,14d2,7x3,7d2,3x3,3d2,1x2"
-    return ENC_BLOCKS
+            #enc_block_str = "32x11,32d2,16x6,16d2,8x6,8d2,4x3,4d4,1x3"
+            enc_block_str = "32x1,32d2,16x1,16d2,8x1,8d2,4x1,4d4,1x3"
+    return enc_block_str
 
 
 def get_decoder_string(image_dim: List, latent_ndims: int, size: str = None):
-    if image_dim == [3, 32, 32] and latent_ndims >= 32:
-        if size ==  'test':
-            DEC_BLOCKS = "1x1,4m1,4x1,8m4,8x1,16m8,16x1,32m16,32x1"
+    if image_dim == [3, 32, 32]: #and latent_ndims >= 32:
+        if size == 'test':
+            dec_block_str = "1x1,4m1,4x1,8m4,8x1,16m8,16x1,32m16,32x1"
         else:
-            #DEC_BLOCKS = "1x1,4m1,4x2,8m4,8x5,16m8,16x10,32m16,32x21"
-            DEC_BLOCKS = "1x1,4m1,4x1,8m4,8x1,16m8,16x1,32m16,32x1"
-    if image_dim == [1, 28, 28]:
-        DEC_BLOCKS = "1x1,3m1,3x2,7m3,7x4,14m7,14x6,28m14,28x14"
-    return DEC_BLOCKS
+            #dec_block_str = "1x1,4m1,4x2,8m4,8x5,16m8,16x10,32m16,32x21"
+            dec_block_str = "1x1,4m1,4x1,8m4,8x1,16m8,16x1,32m16,32x1"
+    return dec_block_str
 
 def pad_channels(t, width):
     d1, d2, d3, d4 = t.shape
@@ -232,3 +228,6 @@ class LatentDependentDecoderBig(GaussianDecoder):
         # x_mu = x_mu.view(x_mu.shape[0], -1)
         # x_sigma = x_sigma.view(x_sigma.shape[0], -1)
         return x_mu, F.softplus(x_sigma)
+
+
+# "1x1,4m1,4x2,8m4,8x4,14m8,14x6,28m14,28x14"
