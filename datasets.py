@@ -5,9 +5,15 @@ from torchvision.datasets import MNIST, EMNIST, FashionMNIST, CIFAR10, KMNIST
 
 
 def get_transform(dataset: str = 'mnist'):
-    img_transform = transforms.Compose([
-        transforms.ToTensor()
-    ])
+    if dataset == 'cifar10':
+        img_transform = transforms.Compose([
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor()
+        ])
+    else:
+        img_transform = transforms.Compose([
+            transforms.ToTensor()
+        ])
     return img_transform
 
 
