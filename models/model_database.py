@@ -58,7 +58,9 @@ def get_model(model_name: str, architecture_size: str, decoder: str,
         if 'nae' in model_name:
             # TODO: add core_flow selection for NAE
             core_flow_fn = get_masked_autoregressive_transform
-            
+
+            flow_features = 256
+            num_layers = 4
             if test:
                 flow_features = 128
                 num_layers = 2
