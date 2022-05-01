@@ -65,6 +65,11 @@ def get_model(model_name: str, architecture_size: str, decoder: str,
             else:
                 flow_features = 512
                 num_layers = 8
+
+            if test:
+                flow_features = 128
+                num_layers = 2
+
             core_flow_pre = core_flow_fn(features=latent_dims,
                                          hidden_features=flow_features,
                                          num_layers=num_layers,
