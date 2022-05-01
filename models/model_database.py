@@ -20,7 +20,7 @@ from .vdvae import FixedVarianceDecoderBig, IndependentVarianceDecoderBig, Laten
 
 
 def get_model(model_name: str, architecture_size: str, decoder: str,
-              latent_dims: int, img_shape: List, alpha: float):
+              latent_dims: int, img_shape: List, alpha: float, test=False):
     model_dict = {'nae-center': InternalLatentAutoEncoder,
                   'nae-corner': InternalLatentAutoEncoder,
                   'nae-external': ExternalLatentAutoEncoder,
@@ -43,8 +43,13 @@ def get_model(model_name: str, architecture_size: str, decoder: str,
                                                  latent_ndims=latent_dims)
         encoder = ConvolutionalEncoderSmall(hidden_channels=vae_channels, input_shape=img_shape, latent_ndims=latent_dims)
     else:
-        decoder = decoder_dict[decoder]['big'](output_shape=img_shape, latent_ndims=latent_dims)
-        encoder = ConvolutionalEncoderBig(input_shape=img_shape, latent_ndims=latent_dims)
+        if test:
+            decoder = decoder_dict[decoder]['big'](output_shape=img_shape, latent_ndims=latent_dims, size='test')
+            encoder = ConvolutionalEncoderBig(input_shape=img_shape, latent_ndims=latent_dims, size='test')
+        else:
+            decoder = decoder_dict[decoder]['big'](output_shape=img_shape, latent_ndims=latent_dims)
+            encoder = ConvolutionalEncoderBig(input_shape=img_shape, latent_ndims=latent_dims)
+
 
     preprocessing_layers = [InverseTransform(AffineTransform(alpha, 1 - 2 * alpha)), Sigmoid(), ActNorm(img_shape[0])]
 
