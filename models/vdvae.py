@@ -9,7 +9,7 @@ import itertools
 
 from models.autoencoder import GaussianEncoder, GaussianDecoder
 
-
+# TODO: do we still need these?
 WIDTH = 256 #384
 DEC_BLOCKS = "1x1,4m1,4x2,8m4,8x5,16m8,16x10,32m16,32x21"
 ENC_BLOCKS = "32x11,32d2,16x6,16d2,8x6,8d2,4x3,4d4,1x3"
@@ -63,15 +63,6 @@ def parse_layer_string(s):
             layers.append((res, None))
     return layers
 
-
-@torch.jit.script
-def gaussian_analytical_kl(mu1, mu2, logsigma1, logsigma2):
-    return -0.5 + logsigma2 - logsigma1 + 0.5 * (logsigma1.exp() ** 2 + (mu1 - mu2) ** 2) / (logsigma2.exp() ** 2)
-
-@torch.jit.script
-def draw_gaussian_diag_samples(mu, logsigma):
-    eps = torch.empty_like(mu).normal_(0., 1.)
-    return torch.exp(logsigma) * eps + mu
 
 def get_conv(in_dim, out_dim, kernel_size, stride, padding, zero_bias=True, zero_weights=False, groups=1, scaled=False):
     c = nn.Conv2d(in_dim, out_dim, kernel_size, stride, padding, groups=groups)
@@ -134,7 +125,9 @@ class ConvolutionalEncoderBig(GaussianEncoder):
             use_3x3 = res > 2  # Don't use 3x3s for 1x1, 2x2 patches
             enc_blocks.append(Block(latent_ndims, squeeze_dim,
                                     latent_ndims, down_rate=down_rate, residual=True, use_3x3=use_3x3))
+
         res, down_rate = blockstr[-1]
+        use_3x3 = res > 2
         enc_blocks.append(Block(latent_ndims, squeeze_dim,
                                 latent_ndims*2, down_rate=down_rate, residual=False, use_3x3=use_3x3))
         n_blocks = len(blockstr)
@@ -154,7 +147,7 @@ class ConvolutionalEncoderBig(GaussianEncoder):
 
 
 class DecBlock(nn.Module):
-    def __init__(self, res, mixin, n_blocks, width, final=False):
+    def __init__(self, res, mixin, n_blocks, width):
         super().__init__()
         self.base = res
         self.mixin = mixin
