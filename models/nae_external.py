@@ -27,7 +27,7 @@ class ExternalLatentAutoEncoder(GaussianAutoEncoder):
         if external_net is None:
             self.dense = nn.Sequential(
           nn.Flatten(),
-          nn.Linear(np.prod(self.image_shape), self.core_size))
+          nn.utils.weight_norm(nn.Linear(np.prod(self.image_shape), self.core_size)))
         else:
             self.dense = external_net
 
