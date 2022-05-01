@@ -17,15 +17,27 @@ BOTTLENECK_MULTIPLE = 0.25
 CUSTOM_WIDTH_STR = ''
 IMAGE_CHANNELS = 3
 
-def get_layer_string(image_dim: List, latent_ndims: int):
+def get_encoder_string(image_dim: List, latent_ndims: int, size: str = None):
     if image_dim == [3, 32, 32] and latent_ndims >= 32:
-        ENC_BLOCKS = "32x11,32d2,16x6,16d2,8x6,8d2,4x3,4d4,1x3"
-        DEC_BLOCKS = "1x1,4m1,4x2,8m4,8x5,16m8,16x10,32m16,32x21"
+        if size == 'test':
+            ENC_BLOCKS = "32x1,32d2,16x1,16d2,8x1,8d2,4x1,4d4,1x3"
+        else:
+            ENC_BLOCKS = "32x11,32d2,16x6,16d2,8x6,8d2,4x3,4d4,1x3"
+
     if image_dim == [1, 28, 28]:
         ENC_BLOCKS = "28x6,28d2,14x4,14d2,7x3,7d2,3x3,3d2,1x2"
+    return ENC_BLOCKS
+
+
+def get_decoder_string(image_dim: List, latent_ndims: int, size: str = None):
+    if image_dim == [3, 32, 32] and latent_ndims >= 32:
+        if size ==  'test':
+            DEC_BLOCKS = "1x1,4m1,4x1,8m4,8x1,16m8,16x1,32m16,32x1"
+        else:
+            DEC_BLOCKS = "1x1,4m1,4x2,8m4,8x5,16m8,16x10,32m16,32x21"
+    if image_dim == [1, 28, 28]:
         DEC_BLOCKS = "1x1,3m1,3x2,7m3,7x4,14m7,14x6,28m14,28x14"
-
-
+    return ENC_BLOCKS
 
 def pad_channels(t, width):
     d1, d2, d3, d4 = t.shape
@@ -109,13 +121,14 @@ class Block(nn.Module):
 
 
 class ConvolutionalEncoderBig(GaussianEncoder):
-    def __init__(self, input_shape: List, latent_ndims: int):
+    def __init__(self, input_shape: List, latent_ndims: int, size: str = None):
         super(ConvolutionalEncoderBig, self).__init__(input_shape, latent_ndims)
 
+        enc_str = get_encoder_string(input_shape, latent_ndims, size)
         self.in_conv = get_3x3(input_shape[0], latent_ndims)
         # self.widths = get_width_settings(latent_ndims, CUSTOM_WIDTH_STR) # TODO: remove
         enc_blocks = []
-        blockstr = parse_layer_string(ENC_BLOCKS)
+        blockstr = parse_layer_string(enc_str)
         squeeze_dim = max(1, int(latent_ndims * BOTTLENECK_MULTIPLE))
         for res, down_rate in blockstr[:-1]:
             use_3x3 = res > 2  # Don't use 3x3s for 1x1, 2x2 patches
@@ -159,11 +172,12 @@ class DecBlock(nn.Module):
 
 
 class ConvolutionalDecoderBig(GaussianDecoder):
-    def __init__(self, output_shape: List, latent_ndims: int):
+    def __init__(self, output_shape: List, latent_ndims: int, size: str = None):
         super(ConvolutionalDecoderBig, self).__init__(output_shape, latent_ndims)
 
         dec_blocks = []
-        blocks = parse_layer_string(DEC_BLOCKS)
+        dec_str = get_decoder_string(output_shape, latent_ndims, size)
+        blocks = parse_layer_string(dec_str)
         for idx, (res, mixin) in enumerate(blocks):
             dec_blocks.append(DecBlock(res, mixin, n_blocks=len(blocks), width=latent_ndims))
         self.dec_blocks = nn.ModuleList(dec_blocks)
@@ -174,8 +188,8 @@ class ConvolutionalDecoderBig(GaussianDecoder):
 
 
 class FixedVarianceDecoderBig(ConvolutionalDecoderBig):
-    def __init__(self, output_shape: List, latent_ndims: int):
-        super(FixedVarianceDecoderBig, self).__init__(output_shape, latent_ndims)
+    def __init__(self, output_shape: List, latent_ndims: int, size: str = None):
+        super(FixedVarianceDecoderBig, self).__init__(output_shape, latent_ndims, size)
 
     def forward(self, x):
         x = x.view(x.shape[0], x.shape[1], 1, 1)
@@ -187,8 +201,8 @@ class FixedVarianceDecoderBig(ConvolutionalDecoderBig):
 
 
 class IndependentVarianceDecoderBig(ConvolutionalDecoderBig):
-    def __init__(self, output_shape: List, latent_ndims: int):
-        super(IndependentVarianceDecoderBig, self).__init__(output_shape, latent_ndims)
+    def __init__(self, output_shape: List, latent_ndims: int, size: str = None):
+        super(IndependentVarianceDecoderBig, self).__init__(output_shape, latent_ndims, size)
         self.pre_sigma = nn.Parameter(torch.ones(output_shape))
 
     def forward(self, z):
@@ -202,11 +216,12 @@ class IndependentVarianceDecoderBig(ConvolutionalDecoderBig):
 
 
 class LatentDependentDecoderBig(GaussianDecoder):
-    def __init__(self, output_shape: List, latent_ndims: int):
+    def __init__(self, output_shape: List, latent_ndims: int, size: str = None):
         super(LatentDependentDecoderBig, self).__init__(output_shape, latent_ndims)
 
         dec_blocks = []
-        blocks = parse_layer_string(DEC_BLOCKS)
+        dec_str = get_decoder_string(output_shape, latent_ndims, size)
+        blocks = parse_layer_string(dec_str)
         for idx, (res, mixin) in enumerate(blocks):
             dec_blocks.append(DecBlock(res, mixin, n_blocks=len(blocks), width=latent_ndims))
 
