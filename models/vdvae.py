@@ -6,7 +6,9 @@ from torch.nn import functional as F
 from torch import Tensor, distributions
 import numpy as np
 import itertools
-from util import count_parameters
+
+from models.autoencoder import GaussianEncoder, GaussianDecoder
+
 
 WIDTH = 256 #384
 DEC_BLOCKS = "1x1,4m1,4x2,8m4,8x5,16m8,16x10,32m16,32x21"
@@ -14,6 +16,15 @@ ENC_BLOCKS = "32x11,32d2,16x6,16d2,8x6,8d2,4x3,4d4,1x3"
 BOTTLENECK_MULTIPLE = 0.25
 CUSTOM_WIDTH_STR = ''
 IMAGE_CHANNELS = 3
+
+def get_layer_string(image_dim: List, latent_ndims: int):
+    if image_dim == [3, 32, 32] and latent_ndims >= 32:
+        ENC_BLOCKS = "32x11,32d2,16x6,16d2,8x6,8d2,4x3,4d4,1x3"
+        DEC_BLOCKS = "1x1,4m1,4x2,8m4,8x5,16m8,16x10,32m16,32x21"
+    if image_dim == [1, 28, 28]:
+        ENC_BLOCKS = "28x6,28d2,14x4,14d2,7x3,7d2,3x3,3d2,1x2"
+        DEC_BLOCKS = "1x1,3m1,3x2,7m3,7x4,14m7,14x6,28m14,28x14"
+
 
 
 def pad_channels(t, width):
@@ -96,39 +107,23 @@ class Block(nn.Module):
             out = F.avg_pool2d(out, kernel_size=self.down_rate, stride=self.down_rate)
         return out
 
-class DecBlock(nn.Module):
-    def __init__(self, res, mixin, n_blocks):
-        super().__init__()
-        self.base = res
-        self.mixin = mixin
-        self.widths = get_width_settings(width=WIDTH, s=CUSTOM_WIDTH_STR)
-        width = self.widths[res]
-        use_3x3 = res > 2
-        cond_width = int(width * BOTTLENECK_MULTIPLE)
-        self.resnet = Block(width, cond_width, width, residual=True, use_3x3=use_3x3)
-        self.resnet.c4.weight.data *= np.sqrt(1 / n_blocks)
 
-    def forward(self, x):
-        if self.mixin is not None:
-            x = F.interpolate(x[:, :x.shape[1], ...], scale_factor=self.base // self.mixin)
-        x = self.resnet(x)
-        return x
+class ConvolutionalEncoderBig(GaussianEncoder):
+    def __init__(self, input_shape: List, latent_ndims: int):
+        super(ConvolutionalEncoderBig, self).__init__(input_shape, latent_ndims)
 
-
-class Encoder(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.build()
-    def build(self):
-        self.in_conv = get_3x3(IMAGE_CHANNELS, WIDTH)
-        self.widths = get_width_settings(WIDTH, CUSTOM_WIDTH_STR)
+        self.in_conv = get_3x3(input_shape[0], latent_ndims)
+        # self.widths = get_width_settings(latent_ndims, CUSTOM_WIDTH_STR) # TODO: remove
         enc_blocks = []
         blockstr = parse_layer_string(ENC_BLOCKS)
+        squeeze_dim = max(1, int(latent_ndims * BOTTLENECK_MULTIPLE))
         for res, down_rate in blockstr[:-1]:
             use_3x3 = res > 2  # Don't use 3x3s for 1x1, 2x2 patches
-            enc_blocks.append(Block(self.widths[res], int(self.widths[res] * BOTTLENECK_MULTIPLE), self.widths[res], down_rate=down_rate, residual=True, use_3x3=use_3x3))
+            enc_blocks.append(Block(latent_ndims, squeeze_dim,
+                                    latent_ndims, down_rate=down_rate, residual=True, use_3x3=use_3x3))
         res, down_rate = blockstr[-1]
-        enc_blocks.append(Block(self.widths[res], int(self.widths[res] * BOTTLENECK_MULTIPLE), self.widths[res]*2, down_rate=down_rate, residual=False, use_3x3=use_3x3))
+        enc_blocks.append(Block(latent_ndims, squeeze_dim,
+                                latent_ndims*2, down_rate=down_rate, residual=False, use_3x3=use_3x3))
         n_blocks = len(blockstr)
         for b in enc_blocks:
             b.c4.weight.data *= np.sqrt(1 / n_blocks)
@@ -144,21 +139,43 @@ class Encoder(nn.Module):
         sigma = sigma.view(sigma.shape[0], -1)
         return mu, F.softplus(sigma)
 
-class Decoder(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.build()
 
-    def build(self):
+class DecBlock(nn.Module):
+    def __init__(self, res, mixin, n_blocks, width, final=False):
+        super().__init__()
+        self.base = res
+        self.mixin = mixin
+        # self.widths = get_width_settings(width=width, s='') # TODO: remove
+        use_3x3 = res > 2
+        cond_width = max(1, int(width * BOTTLENECK_MULTIPLE))
+        self.resnet = Block(width, cond_width, width, residual=True, use_3x3=use_3x3)
+        self.resnet.c4.weight.data *= np.sqrt(1 / n_blocks)
+
+    def forward(self, x):
+        if self.mixin is not None:
+            x = F.interpolate(x[:, :x.shape[1], ...], scale_factor=self.base // self.mixin)
+        x = self.resnet(x)
+        return x
+
+
+class ConvolutionalDecoderBig(GaussianDecoder):
+    def __init__(self, output_shape: List, latent_ndims: int):
+        super(ConvolutionalDecoderBig, self).__init__(output_shape, latent_ndims)
+
         dec_blocks = []
         blocks = parse_layer_string(DEC_BLOCKS)
         for idx, (res, mixin) in enumerate(blocks):
-            dec_blocks.append(DecBlock(res, mixin, n_blocks=len(blocks)))
+            dec_blocks.append(DecBlock(res, mixin, n_blocks=len(blocks), width=latent_ndims))
         self.dec_blocks = nn.ModuleList(dec_blocks)
-        self.gain = nn.Parameter(torch.ones(1, WIDTH, 1, 1))
-        self.bias = nn.Parameter(torch.zeros(1, WIDTH, 1, 1))
+        self.gain = nn.Parameter(torch.ones(1, latent_ndims, 1, 1))
+        self.bias = nn.Parameter(torch.zeros(1, latent_ndims, 1, 1))
         self.final_fn = lambda x: x * self.gain + self.bias
-        self.out_conv = get_conv(WIDTH, IMAGE_CHANNELS, kernel_size=1, stride=1, padding=0)
+        self.out_conv = get_conv(latent_ndims, output_shape[0], kernel_size=1, stride=1, padding=0)
+
+
+class FixedVarianceDecoderBig(ConvolutionalDecoderBig):
+    def __init__(self, output_shape: List, latent_ndims: int):
+        super(FixedVarianceDecoderBig, self).__init__(output_shape, latent_ndims)
 
     def forward(self, x):
         x = x.view(x.shape[0], x.shape[1], 1, 1)
@@ -169,49 +186,43 @@ class Decoder(nn.Module):
         return x, torch.ones_like(x)
 
 
-class VDVAE(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.build()
-        self.eps = 1e-5
-        self.device = None
-        self.latent_dim = WIDTH
-        self.prior = distributions.normal.Normal(torch.zeros(self.latent_dim), torch.ones(self.latent_dim))
+class IndependentVarianceDecoderBig(ConvolutionalDecoderBig):
+    def __init__(self, output_shape: List, latent_ndims: int):
+        super(IndependentVarianceDecoderBig, self).__init__(output_shape, latent_ndims)
+        self.pre_sigma = nn.Parameter(torch.ones(output_shape))
 
-    def build(self):
-        self.encoder = Encoder()
-        self.decoder = Decoder()
+    def forward(self, z):
+        x = z.view(z.shape[0], z.shape[1], 1, 1)
+        for block in self.dec_blocks:
+            x = block(x)
+        x = self.final_fn(x)
+        x_mu = self.out_conv(x)
+        sigma = F.softplus(self.pre_sigma).unsqueeze(0).repeat(x.shape[0], 1, 1, 1)
+        return x_mu, sigma
 
-    def encode(self, x: Tensor):
-        return self.encoder(x) # Encoder returns mu and log(sigma)
 
-    def decode(self, z: Tensor):
-        decoded_mu, decoded_sigma = self.decoder(z)
-        return decoded_mu, decoded_sigma
+class LatentDependentDecoderBig(GaussianDecoder):
+    def __init__(self, output_shape: List, latent_ndims: int):
+        super(LatentDependentDecoderBig, self).__init__(output_shape, latent_ndims)
 
-    def sample(self, num_samples: int, temperature=1):
-        # multiplying by the temperature works like the reparametrization trick,
-        # only if the prior is N(0,1)
-        z = self.prior.sample((num_samples,)).to(self.get_device()) * temperature
-        return self.decode(z)[0]
+        dec_blocks = []
+        blocks = parse_layer_string(DEC_BLOCKS)
+        for idx, (res, mixin) in enumerate(blocks):
+            dec_blocks.append(DecBlock(res, mixin, n_blocks=len(blocks), width=latent_ndims))
 
-    def forward(self, x: Tensor):
-        z_mu, z_sigma = self.encode(x)
-        z = distributions.normal.Normal(z_mu, z_sigma + self.eps).rsample().to(self.get_device())
-        x_mu, x_sigma = self.decode(z)
-        return x_mu, x_sigma, z_mu, z_sigma
+        self.dec_blocks = nn.ModuleList(dec_blocks)
+        self.gain = nn.Parameter(torch.ones(1, latent_ndims, 1, 1))
+        self.bias = nn.Parameter(torch.zeros(1, latent_ndims, 1, 1))
+        self.final_fn = lambda x: x * self.gain + self.bias
+        self.out_conv = get_conv(latent_ndims, output_shape[0]*2, kernel_size=1, stride=1, padding=0)
 
-    def loss_function(self, x: Tensor):
-        x_mu, x_sigma, z_mu, z_sigma = self.forward(x)
-        reconstruction_loss = torch.distributions.normal.Normal(x_mu, x_sigma + self.eps).log_prob(x).sum([1, 2, 3])
-        q_z = distributions.normal.Normal(z_mu, z_sigma + self.eps)
-
-        kl_div = distributions.kl.kl_divergence(q_z, self.prior).sum(1)
-        return -(reconstruction_loss - kl_div)
-
-    def get_device(self):
-        if self.device is None:
-            self.device = next(self.encoder.parameters()).device
-            self.prior = distributions.normal.Normal(torch.zeros(self.latent_dim).to(self.device),
-                                                     torch.ones(self.latent_dim).to(self.device))
-        return self.device
+    def forward(self, z):
+        x = z.view(z.shape[0], z.shape[1], 1, 1)
+        for block in self.dec_blocks:
+            x = block(x)
+        x = self.final_fn(x)
+        x = self.out_conv(x)
+        x_mu, x_sigma = torch.split(x, split_size_or_sections=x.shape[1] // 2, dim=1)
+        # x_mu = x_mu.view(x_mu.shape[0], -1)
+        # x_sigma = x_sigma.view(x_sigma.shape[0], -1)
+        return x_mu, F.softplus(x_sigma)

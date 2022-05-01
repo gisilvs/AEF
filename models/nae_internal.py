@@ -126,6 +126,8 @@ class InternalLatentAutoEncoder(GaussianAutoEncoder):
             mask[0, 12:16, 12:16] = 1
         elif self.core_size == 32:
             mask[0, 10:18, 12:16] = 1
+        elif self.core_size == 64:
+            mask[0, 10:18, 10:18] = 1
         else:
             print('NOT IMPLEMENTED YET')
             exit(1)

@@ -40,7 +40,7 @@ class GaussianDecoder(GaussianCoder):
         self.output_shape = output_shape
 
 
-class ConvolutionalEncoder(GaussianEncoder):
+class ConvolutionalEncoderSmall(GaussianEncoder):
     def __init__(self, hidden_channels: int, input_shape: List, latent_ndims: int):
         '''
         Default convolutional encoder class.
@@ -48,7 +48,7 @@ class ConvolutionalEncoder(GaussianEncoder):
         :param input_shape: [C,H,W]
         :param latent_ndims:
         '''
-        super(ConvolutionalEncoder, self).__init__(input_shape=input_shape, latent_ndims=latent_ndims)
+        super(ConvolutionalEncoderSmall, self).__init__(input_shape=input_shape, latent_ndims=latent_ndims)
         self.conv1 = nn.Conv2d(in_channels=input_shape[0],
                                out_channels=hidden_channels,
                                kernel_size=3,
@@ -86,9 +86,9 @@ class ConvolutionalEncoder(GaussianEncoder):
 
         return z_mu, z_sigma
 
-class ConvolutionalDecoder(GaussianDecoder):
+class ConvolutionalDecoderSmall(GaussianDecoder):
     def __init__(self, hidden_channels: int, output_shape: List, latent_ndims: int):
-        super(ConvolutionalDecoder, self).__init__(output_shape=output_shape, latent_ndims=latent_ndims)
+        super(ConvolutionalDecoderSmall, self).__init__(output_shape=output_shape, latent_ndims=latent_ndims)
 
         self.hidden_channels = hidden_channels
 
@@ -111,12 +111,12 @@ class ConvolutionalDecoder(GaussianDecoder):
         self.activation = nn.ReLU()
 
 
-class LatentDependentDecoder(ConvolutionalDecoder):
+class LatentDependentDecoderSmall(ConvolutionalDecoderSmall):
     def __init__(self, hidden_channels: int, output_shape: List, latent_ndims: int):
         """
         Convolutional decoder where sigma is not dependent on z (but is learned).
         """
-        super(LatentDependentDecoder, self).__init__(hidden_channels, output_shape, latent_ndims)
+        super(LatentDependentDecoderSmall, self).__init__(hidden_channels, output_shape, latent_ndims)
         #  Our last convolutional layer encodes both mu and sigma
         self.conv1 = nn.ConvTranspose2d(in_channels=hidden_channels,
                                         out_channels=output_shape[0] * 2,
@@ -140,9 +140,9 @@ class LatentDependentDecoder(ConvolutionalDecoder):
         return x_mu, x_sigma
 
 
-class IndependentVarianceDecoder(ConvolutionalDecoder):
+class IndependentVarianceDecoderSmall(ConvolutionalDecoderSmall):
     def __init__(self, hidden_channels: int, output_shape: List, latent_ndims: int):
-        super(IndependentVarianceDecoder, self).__init__(hidden_channels, output_shape, latent_ndims)
+        super(IndependentVarianceDecoderSmall, self).__init__(hidden_channels, output_shape, latent_ndims)
 
         self.pre_sigma = nn.Parameter(torch.zeros(output_shape))
 
@@ -159,9 +159,10 @@ class IndependentVarianceDecoder(ConvolutionalDecoder):
 
         return x_mu, sigma
 
-class FixedVarianceDecoder(ConvolutionalDecoder):
+
+class FixedVarianceDecoderSmall(ConvolutionalDecoderSmall):
     def __init__(self, hidden_channels: int, output_shape: List, latent_ndims: int):
-        super(FixedVarianceDecoder, self).__init__(hidden_channels, output_shape, latent_ndims)
+        super(FixedVarianceDecoderSmall, self).__init__(hidden_channels, output_shape, latent_ndims)
 
     def forward(self, z: torch.Tensor):
         """

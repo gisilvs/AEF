@@ -1,7 +1,9 @@
 import torch
 from torch import nn, Tensor, distributions
 
-from models.autoencoder import GaussianDecoder, GaussianEncoder
+from nflows.transforms import Transform, IdentityTransform
+
+from models.autoencoder import GaussianEncoder, GaussianDecoder
 
 
 class AutoEncoder(nn.Module):
@@ -57,3 +59,11 @@ class GaussianAutoEncoder(AutoEncoder):
             # Putting loc and scale to device gives nans for some reason
             self.prior = distributions.normal.Normal(torch.zeros(self.latent_ndims).to(self.device),
                                                      torch.ones(self.latent_ndims).to(self.device))
+
+class ExtendedGaussianAutoEncoder(GaussianAutoEncoder):
+    def __init__(self, encoder: GaussianEncoder, decoder: GaussianDecoder, 
+                 posterior_bijector: Transform = IdentityTransform(), prior_bijector: Transform = IdentityTransform()):
+        super(ExtendedGaussianAutoEncoder, self).__init__(encoder, decoder)
+        self.posterior_bijector = posterior_bijector
+        self.prior_bijector = prior_bijector
+        

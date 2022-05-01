@@ -5,9 +5,12 @@ import torch
 import matplotlib.pyplot as plt
 from torch.distributions.normal import Normal
 import wandb
-from models.models import get_model
+
 import os
 import torchvision
+
+from models.model_database import get_model
+
 
 def get_avg_loss_over_iterations(iteration_losses: np.array, window_size: int, cur_iteration: int):
     low_window = max(0, cur_iteration - window_size)
