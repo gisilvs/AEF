@@ -10,7 +10,7 @@ from datasets import get_train_val_dataloaders, get_test_dataloader
 from models.model_database import get_model, get_model_denoising
 
 from util import make_averager, dequantize, vae_log_prob, plot_image_grid, bits_per_pixel, count_parameters
-
+from visualize import plot_reconstructions, plot_noisy_reconstructions
 
 parser = argparse.ArgumentParser(description='NAE Experiments')
 
@@ -49,6 +49,7 @@ learning_rate = args.lr
 use_gpu = True
 validate_every_n_iterations = args.val_iters
 save_every_n_iterations = args.save_iters
+noise_level = args.noise_level
 
 args.runs = [int(item) for item in args.runs.split(',')]
 
@@ -71,7 +72,7 @@ for run_nr in args.runs:
         "n_iterations": n_iterations,
         "batch_size": batch_size,
         "seed": args.seed,
-        "noise_level": args.noise_level
+        "noise_level": noise_level
     }
 
     device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
@@ -80,6 +81,8 @@ for run_nr in args.runs:
     train_dataloader, validation_dataloader, image_dim, alpha = get_train_val_dataloaders(dataset, batch_size,
                                                                                           p_validation, seed=args.seed)
     test_dataloader = get_test_dataloader(dataset, batch_size)
+    reconstruction_dataloader = get_test_dataloader(dataset, batch_size, shuffle=True)
+
     n_pixels = np.prod(image_dim)
 
     model = get_model_denoising(model_name=model_name, decoder=args.decoder,
@@ -109,14 +112,16 @@ for run_nr in args.runs:
         while not stop:
             for image_batch, _ in train_dataloader:
                 image_batch = dequantize(image_batch)
-                image_batch += torch.normal(0, 1) * args.noise_level
-                image_batch = torch.clamp(image_batch, 0., 1.)
+                image_batch_noisy = torch.clone(image_batch).detach()
+                image_batch_noisy += torch.normal(0, 1) * noise_level
+                image_batch_noisy = torch.clamp(image_batch_noisy, 0., 1.)
                 image_batch = image_batch.to(device)
+                image_batch_noisy = image_batch_noisy.to(device)
 
                 if model_name == 'maf':
                     image_batch = image_batch.view(-1, torch.prod(torch.tensor(image_dim)))
 
-                loss = torch.mean(model.loss_function(image_batch))
+                loss = torch.mean(model.loss_function(image_batch_noisy, image_batch))
                 iteration_losses[n_iterations_done] = loss.item()
                 metrics = {
                     'train_loss': loss
@@ -138,8 +143,14 @@ for run_nr in args.runs:
                         samples = samples.cpu().detach()
                         if model_name == 'maf':
                             samples = samples.view(-1, image_dim[0], image_dim[1], image_dim[2])
-                        plot_image_grid(samples, cols=4)
-                        image_dict = {'samples': plt}
+                        #plot_image_grid(samples, cols=4)
+                        sample_fig = plot_image_grid(samples, cols=4)
+                        image_dict = {'samples': sample_fig}
+
+                        if model_name != 'maf':
+                            reconstruction_fig = plot_noisy_reconstructions(model, reconstruction_dataloader, device,
+                                                                      image_dim, n_rows=4, noise_level=noise_level)
+                            reconstruction_dict = {'reconstructions': reconstruction_fig}
 
                         for validation_batch, _ in validation_dataloader:
                             validation_batch = dequantize(validation_batch)
@@ -176,7 +187,7 @@ for run_nr in args.runs:
                             histograms['Weights/' + tag] = wandb.Histogram(value.data.cpu())
                             histograms['Gradients/' + tag] = wandb.Histogram(value.grad.data.cpu())
 
-                        wandb.log({**metrics, **val_metrics, **image_dict, **histograms})
+                        wandb.log({**metrics, **val_metrics, **image_dict, **histograms, **reconstruction_dict})
                         plt.close("all")
                 else:
                     wandb.log(metrics)
@@ -235,8 +246,8 @@ for run_nr in args.runs:
             samples = samples.cpu().detach()
             if model_name == 'maf':
                 samples = samples.view(-1, image_dim[0], image_dim[1], image_dim[2])
-            plot_image_grid(samples, cols=4)
-            image_dict = {'final_samples': plt}
+            fig = plot_image_grid(samples, cols=4)
+            image_dict = {'final_samples': fig}
             run.log(image_dict)
 
     artifact_best = wandb.Artifact(f'{run_name}_best', type='model')

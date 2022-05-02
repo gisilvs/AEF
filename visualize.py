@@ -166,6 +166,57 @@ def plot_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoader, de
     return fig
 
 
+def plot_noisy_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoader, device: torch.device,
+                         img_shape: List = [1, 28, 28], n_rows: int = 4, noise_level: float = 0.2, hires=False):
+
+    '''
+    Function to plot a grid (size n_rows x n_rows) of reconstructions given a model. Each roww of original samples is
+    followed by a row of reconstructions.
+    '''
+    n_cols = n_rows
+    n_images = n_rows * n_cols
+    arr = torch.zeros((n_images, *img_shape))
+
+    cur_row = 0
+    iter_test_loader = iter(test_loader)
+
+    n_images_filled = 0
+
+    while cur_row < n_rows:
+        image_batch, _ = next(iter_test_loader)
+        batch_idx = 0
+        n_imgs_in_batch_left = image_batch.shape[0]
+        while n_imgs_in_batch_left >= n_cols and cur_row < n_rows:
+            n_imgs_in_batch_left -= n_cols # We use the first n_cols images of the batch
+            row_batch = image_batch[batch_idx:batch_idx+n_cols]
+            row_batch += torch.normal(0, 1) * noise_level
+            row_batch = torch.clamp(row_batch, 0., 1.)
+            arr[n_images_filled:n_images_filled+n_cols] = row_batch
+            batch_idx += n_cols
+            n_images_filled += n_cols
+            #row_batch = util.dequantize(row_batch)
+
+            row_batch = row_batch.to(device)
+            with torch.no_grad():
+                z, _ = model.encode(row_batch)
+                reconstruction = model.decode(z)
+                # NAE returns a single value, VAEs will return mu and sigma
+                if isinstance(reconstruction, tuple):
+                    reconstruction = reconstruction[0]
+                reconstruction = reconstruction.cpu().detach()
+            arr[n_images_filled:n_images_filled+n_cols] = reconstruction
+            n_images_filled += n_cols
+            cur_row += 2 # We filled two rows
+    if hires:
+        fig = plt.figure(figsize=(10, 10), dpi=300)
+    else:
+        fig = plt.figre(figsize=(10, 10), dpi=150)
+    grid_img = torchvision.utils.make_grid(arr, padding=1, pad_value=0., nrow=n_rows)
+    plt.imshow(grid_img.permute(1, 2, 0))
+    plt.axis("off")
+    return fig
+
+
 def generate_visualizations_single_run():
     run_name = 'visualizations_XXX'
     project_name = 'phase1'

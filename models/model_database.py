@@ -201,9 +201,9 @@ def get_model_denoising(model_name: str, decoder: str, latent_dims: int, img_sha
 
     vae_channels = 64
     decoder = decoder_dict[decoder](hidden_channels=vae_channels, output_shape=img_shape,
-                                             latent_ndims=latent_dims)
+                                             latent_dims=latent_dims)
     encoder = ConvolutionalEncoderSmall(hidden_channels=vae_channels, input_shape=img_shape,
-                                        latent_ndims=latent_dims)
+                                        latent_dims=latent_dims)
 
     model_dict = {'nae-center': InternalLatentAutoEncoder,
                   'nae-corner': InternalLatentAutoEncoder,
