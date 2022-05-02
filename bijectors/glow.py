@@ -1,7 +1,102 @@
 import normflow as nf
+import torch
 from torch import nn
+import torch.nn.functional as F
+from bijectors.actnorm import ActNorm
 
-class SimpleGlow(nn.Module):
+def compute_same_pad(kernel_size, stride):
+    if isinstance(kernel_size, int):
+        kernel_size = [kernel_size]
+
+    if isinstance(stride, int):
+        stride = [stride]
+
+    assert len(stride) == len(
+        kernel_size
+    ), "Pass kernel size and stride both as int, or both as equal length iterable"
+
+    return [((k - 1) * s + 1) // 2 for k, s in zip(kernel_size, stride)]
+
+def get_block(in_channels, out_channels, hidden_channels):
+    block = nn.Sequential(
+        Conv2d(in_channels, hidden_channels),
+        nn.ReLU(inplace=False),
+        Conv2d(hidden_channels, hidden_channels, kernel_size=(1, 1)),
+        nn.ReLU(inplace=False),
+        Conv2dZeros(hidden_channels, out_channels),
+    )
+    return block
+
+class Conv2d(nn.Module):
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        kernel_size=(3, 3),
+        stride=(1, 1),
+        padding="same",
+        do_actnorm=False,
+        weight_std=0.05,
+    ):
+        super().__init__()
+
+        if padding == "same":
+            padding = compute_same_pad(kernel_size, stride)
+        elif padding == "valid":
+            padding = 0
+
+        self.conv = nn.Conv2d(
+            in_channels,
+            out_channels,
+            kernel_size,
+            stride,
+            padding,
+            bias=(not do_actnorm),
+        )
+
+        # init weight with std
+        self.conv.weight.data.normal_(mean=0.0, std=weight_std)
+
+        self.conv.bias.data.zero_()
+
+        self.do_actnorm = do_actnorm
+
+    def forward(self, input):
+        x = self.conv(input)
+        if self.do_actnorm:
+            x, _ = self.actnorm(x)
+        return x
+
+class Conv2dZeros(nn.Module):
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        kernel_size=(3, 3),
+        stride=(1, 1),
+        padding="same",
+        logscale_factor=3,
+    ):
+        super().__init__()
+
+        if padding == "same":
+            padding = compute_same_pad(kernel_size, stride)
+        elif padding == "valid":
+            padding = 0
+
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding)
+
+        self.conv.weight.data.zero_()
+        self.conv.bias.data.zero_()
+
+        self.logscale_factor = logscale_factor
+        self.logs = nn.Parameter(torch.zeros(out_channels, 1, 1))
+
+    def forward(self, input):
+        output = self.conv(input)
+        return output * torch.exp(self.logs * self.logscale_factor)
+
+'''class SimpleGlow(nn.Module):
     def __init__(self, K, n_channels, hidden_channels):
         super(SimpleGlow, self).__init__()
         self.bijectors = nn.ModuleList([nf.flows.GlowBlock(n_channels, hidden_channels, split_mode='checkerboard') for _ in range(K)])
@@ -19,38 +114,84 @@ class SimpleGlow(nn.Module):
         for i in range(1, len(self.bijectors)):
             x, log_j = self.bijectors[i].inverse(x)
             log_j_final += log_j
-        return x, log_j_final
+        return x, log_j_final'''
 
-'''import math
+class InvertibleConv1x1(nn.Module):
+    def __init__(self, num_channels, LU_decomposed):
+        super().__init__()
+        w_shape = [num_channels, num_channels]
+        w_init = torch.linalg.qr(torch.randn(*w_shape))[0]
 
-import torch
-import torch.nn as nn
+        if not LU_decomposed:
+            self.weight = nn.Parameter(torch.Tensor(w_init))
+        else:
+            p, lower, upper = torch.lu_unpack(*torch.lu(w_init))
+            s = torch.diag(upper)
+            sign_s = torch.sign(s)
+            log_s = torch.log(torch.abs(s))
+            upper = torch.triu(upper, 1)
+            l_mask = torch.tril(torch.ones(w_shape), -1)
+            eye = torch.eye(*w_shape)
 
-from glow_modules import (
-    Conv2d,
-    Conv2dZeros,
-    ActNorm2d,
-    InvertibleConv1x1,
-    Permute2d,
-    LinearZeros,
-    SqueezeLayer,
-    Split2d,
-    gaussian_likelihood,
-    gaussian_sample,
-)
-from glow_utils import split_feature, uniform_binning_correction
+            self.register_buffer("p", p)
+            self.register_buffer("sign_s", sign_s)
+            self.lower = nn.Parameter(lower)
+            self.log_s = nn.Parameter(log_s)
+            self.upper = nn.Parameter(upper)
+            self.l_mask = l_mask
+            self.eye = eye
 
+        self.w_shape = w_shape
+        self.LU_decomposed = LU_decomposed
 
-def get_block(in_channels, out_channels, hidden_channels):
-    block = nn.Sequential(
-        Conv2d(in_channels, hidden_channels),
-        nn.ReLU(inplace=False),
-        Conv2d(hidden_channels, hidden_channels, kernel_size=(1, 1)),
-        nn.ReLU(inplace=False),
-        Conv2dZeros(hidden_channels, out_channels),
-    )
-    return block
+    def get_weight(self, input, reverse):
+        b, c, h, w = input.shape
 
+        if not self.LU_decomposed:
+            dlogdet = torch.slogdet(self.weight)[1] * h * w
+            if reverse:
+                weight = torch.inverse(self.weight)
+            else:
+                weight = self.weight
+        else:
+            self.l_mask = self.l_mask.to(input.device)
+            self.eye = self.eye.to(input.device)
+
+            lower = self.lower * self.l_mask + self.eye
+
+            u = self.upper * self.l_mask.transpose(0, 1).contiguous()
+            u += torch.diag(self.sign_s * torch.exp(self.log_s))
+
+            dlogdet = torch.sum(self.log_s) * h * w
+
+            if reverse:
+                u_inv = torch.inverse(u)
+                l_inv = torch.inverse(lower)
+                p_inv = torch.inverse(self.p)
+
+                weight = torch.matmul(u_inv, torch.matmul(l_inv, p_inv))
+            else:
+                weight = torch.matmul(self.p, torch.matmul(lower, u))
+
+        return weight.view(self.w_shape[0], self.w_shape[1], 1, 1), dlogdet
+
+    def forward(self, input, logdet=None, reverse=False):
+        """
+        log-det = log|abs(|W|)| * pixels
+        """
+        weight, dlogdet = self.get_weight(input, reverse=False)
+
+        z = F.conv2d(input, weight)
+        return z, dlogdet
+
+    def inverse(self, input, logdet=None):
+        """
+        log-det = log|abs(|W|)| * pixels
+        """
+        weight, dlogdet = self.get_weight(input, reverse=True)
+
+        z = F.conv2d(input, weight)
+        return z, -dlogdet
 
 class FlowStep(nn.Module):
     def __init__(
@@ -65,36 +206,19 @@ class FlowStep(nn.Module):
         super().__init__()
         self.flow_coupling = flow_coupling
 
-        self.actnorm = ActNorm2d(in_channels, actnorm_scale)
+        self.actnorm = ActNorm(in_channels)
 
         # 2. permute
-        if flow_permutation == "invconv":
-            self.invconv = InvertibleConv1x1(in_channels, LU_decomposed=LU_decomposed)
-            self.flow_permutation = lambda z, logdet, rev: self.invconv(z, logdet, rev)
-        elif flow_permutation == "shuffle":
-            self.shuffle = Permute2d(in_channels, shuffle=True)
-            self.flow_permutation = lambda z, logdet, rev: (
-                self.shuffle(z, rev),
-                logdet,
-            )
-        else:
-            self.reverse = Permute2d(in_channels, shuffle=False)
-            self.flow_permutation = lambda z, logdet, rev: (
-                self.reverse(z, rev),
-                logdet,
-            )
+        self.invconv = InvertibleConv1x1(in_channels, LU_decomposed=LU_decomposed)
+        self.flow_permutation = lambda z, logdet, rev: self.invconv(z, logdet, rev)
 
-        # 3. coupling
-        if flow_coupling == "additive":
-            self.block = get_block(in_channels // 2, in_channels // 2, hidden_channels)
-        elif flow_coupling == "affine":
-            self.block = get_block(in_channels // 2, in_channels, hidden_channels)
+        self.block = get_block(in_channels // 2, in_channels, hidden_channels)
 
-    def forward(self, input, logdet=None, reverse=False):
-        if not reverse:
-            return self.normal_flow(input, logdet)
-        else:
-            return self.reverse_flow(input, logdet)
+    def forward(self, input):
+        return self.normal_flow(input)
+
+    def inverse(self, input):
+        return self.reverse_flow(input)
 
     def normal_flow(self, input, logdet):
         assert input.size(1) % 2 == 0
@@ -143,185 +267,3 @@ class FlowStep(nn.Module):
         z, logdet = self.actnorm(z, logdet=logdet, reverse=True)
 
         return z, logdet
-
-
-class FlowNet(nn.Module):
-    def __init__(
-        self,
-        image_shape,
-        hidden_channels,
-        K,
-        L,
-        actnorm_scale,
-        flow_permutation,
-        flow_coupling,
-        LU_decomposed,
-    ):
-        super().__init__()
-
-        self.layers = nn.ModuleList()
-        self.output_shapes = []
-
-        self.K = K
-        self.L = L
-
-        H, W, C = image_shape
-
-        for i in range(L):
-            # 1. Squeeze
-            C, H, W = C * 4, H // 2, W // 2
-            self.layers.append(SqueezeLayer(factor=2))
-            self.output_shapes.append([-1, C, H, W])
-
-            # 2. K FlowStep
-            for _ in range(K):
-                self.layers.append(
-                    FlowStep(
-                        in_channels=C,
-                        hidden_channels=hidden_channels,
-                        actnorm_scale=actnorm_scale,
-                        flow_permutation=flow_permutation,
-                        flow_coupling=flow_coupling,
-                        LU_decomposed=LU_decomposed,
-                    )
-                )
-                self.output_shapes.append([-1, C, H, W])
-
-            # 3. Split2d
-            if i < L - 1:
-                self.layers.append(Split2d(num_channels=C))
-                self.output_shapes.append([-1, C // 2, H, W])
-                C = C // 2
-
-    def forward(self, input, logdet=0.0, reverse=False, temperature=None):
-        if reverse:
-            return self.decode(input, temperature)
-        else:
-            return self.encode(input, logdet)
-
-    def encode(self, z, logdet=0.0):
-        for layer, shape in zip(self.layers, self.output_shapes):
-            z, logdet = layer(z, logdet, reverse=False)
-        return z, logdet
-
-    def decode(self, z, temperature=None):
-        for layer in reversed(self.layers):
-            if isinstance(layer, Split2d):
-                z, logdet = layer(z, logdet=0, reverse=True, temperature=temperature)
-            else:
-                z, logdet = layer(z, logdet=0, reverse=True)
-        return z
-
-
-class Glow(nn.Module):
-    def __init__(
-        self,
-        image_shape,
-        hidden_channels,
-        K,
-        L,
-        actnorm_scale,
-        flow_permutation,
-        flow_coupling,
-        LU_decomposed,
-        y_classes,
-        learn_top,
-        y_condition,
-    ):
-        super().__init__()
-        self.flow = FlowNet(
-            image_shape=image_shape,
-            hidden_channels=hidden_channels,
-            K=K,
-            L=L,
-            actnorm_scale=actnorm_scale,
-            flow_permutation=flow_permutation,
-            flow_coupling=flow_coupling,
-            LU_decomposed=LU_decomposed,
-        )
-        self.y_classes = y_classes
-        self.y_condition = y_condition
-
-        self.learn_top = learn_top
-
-        # learned prior
-        if learn_top:
-            C = self.flow.output_shapes[-1][1]
-            self.learn_top_fn = Conv2dZeros(C * 2, C * 2)
-
-        if y_condition:
-            C = self.flow.output_shapes[-1][1]
-            self.project_ycond = LinearZeros(y_classes, 2 * C)
-            self.project_class = LinearZeros(C, y_classes)
-
-        self.register_buffer(
-            "prior_h",
-            torch.zeros(
-                [
-                    1,
-                    self.flow.output_shapes[-1][1] * 2,
-                    self.flow.output_shapes[-1][2],
-                    self.flow.output_shapes[-1][3],
-                ]
-            ),
-        )
-
-    def prior(self, data, y_onehot=None):
-        if data is not None:
-            h = self.prior_h.repeat(data.shape[0], 1, 1, 1)
-        else:
-            # Hardcoded a batch size of 32 here
-            h = self.prior_h.repeat(32, 1, 1, 1)
-
-        channels = h.size(1)
-
-        if self.learn_top:
-            h = self.learn_top_fn(h)
-
-        if self.y_condition:
-            assert y_onehot is not None
-            yp = self.project_ycond(y_onehot)
-            h += yp.view(h.shape[0], channels, 1, 1)
-
-        return split_feature(h, "split")
-
-    def forward(self, x=None, y_onehot=None, z=None, temperature=None, reverse=False):
-        if reverse:
-            return self.reverse_flow(z, y_onehot, temperature)
-        else:
-            return self.normal_flow(x, y_onehot)
-
-    def normal_flow(self, x, y_onehot):
-        b, c, h, w = x.shape
-
-        x, logdet = uniform_binning_correction(x)
-
-        z, objective = self.flow(x, logdet=logdet, reverse=False)
-
-        mean, logs = self.prior(x, y_onehot)
-        objective += gaussian_likelihood(mean, logs, z)
-
-        if self.y_condition:
-            y_logits = self.project_class(z.mean(2).mean(2))
-        else:
-            y_logits = None
-
-        # Full objective - converted to bits per dimension
-        bpd = (-objective) / (math.log(2.0) * c * h * w)
-
-        return z, bpd, y_logits
-
-    def reverse_flow(self, z, y_onehot, temperature):
-        with torch.no_grad():
-            if z is None:
-                mean, logs = self.prior(z, y_onehot)
-                z = gaussian_sample(mean, logs, temperature)
-            x = self.flow(z, temperature=temperature, reverse=True)
-        return x
-
-    def set_actnorm_init(self):
-        for name, m in self.named_modules():
-            if isinstance(m, ActNorm2d):
-                m.inited = True
-'''
-

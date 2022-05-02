@@ -76,8 +76,8 @@ for run_nr in args.runs:
         latent_size_str = f"_latent_size_{args.latent_dims}" if model_name in AE_like_models else ""
         decoder_str = f"_decoder_{args.decoder}" if model_name in AE_like_models else ""
         architecture_str = f"_{architecture_size}" if model_name in AE_like_models else ""
-        post_flow_str = f"_post_{posterior_flow}" if posterior_flow is not None else ""
-        prior_flow_str = f"_prior_{prior_flow}" if prior_flow is not None else ""
+        post_flow_str = f"_post_{posterior_flow}" if posterior_flow is not 'none' else ""
+        prior_flow_str = f"_prior_{prior_flow}" if prior_flow is not 'none' else ""
         run_name = f'{args.model}{architecture_str}_{args.dataset}_run_{run_nr}{latent_size_str}{decoder_str}{post_flow_str}{prior_flow_str}'
         if use_glow:
             run_name += '_glow'
@@ -145,7 +145,7 @@ for run_nr in args.runs:
 
                 optimizer.zero_grad()
                 loss.backward()
-
+                torch.nn.utils.clip_grad_norm(model.parameters(), 200.)
                 optimizer.step()
 
                 # We validate first iteration, every n iterations, and at the last iteration

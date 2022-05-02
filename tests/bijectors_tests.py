@@ -4,7 +4,7 @@ from bijectors.actnorm import ActNorm
 from bijectors.realnvp import get_realnvp_bijector
 from bijectors.masked_autoregressive_transform import get_masked_autoregressive_transform
 from flows.maf import MaskedAutoregressiveFlow
-from bijectors.glow import SimpleGlow
+from bijectors.glow import InvertibleConv1x1
 
 
 
@@ -46,7 +46,8 @@ def main():
     print('Tests on 4D data')
     image_bijectors = {
         'ActNorm': ActNorm(3),
-        'Glow': SimpleGlow(8,3,256)
+        'OneByOneConv': InvertibleConv1x1(3, None)
+        #'Glow': SimpleGlow(8,3,256)
     }
     for name, bijector in image_bijectors.items():
         if test_image_bijector(bijector):
