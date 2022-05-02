@@ -1,43 +1,25 @@
 from typing import List
 
 import torch
+from nflows.transforms import IdentityTransform, Transform
 from torch import Tensor, distributions
 
-from models.autoencoder_base import GaussianAutoEncoder
 from models.autoencoder import GaussianEncoder, GaussianDecoder
+from models.autoencoder_base import GaussianAutoEncoder, ExtendedGaussianAutoEncoder
 
 
 class VAE(GaussianAutoEncoder):
     def __init__(self, encoder: GaussianEncoder, decoder: GaussianDecoder):
         super().__init__(encoder, decoder)
 
-        self.latent_dim = encoder.latent_dim
-        self.eps = 1e-5
-        self.prior = distributions.normal.Normal(torch.zeros(self.latent_dim), torch.ones(self.latent_dim))
-        self.device = None
-
-    def encode(self, x: Tensor):
-        return self.encoder(x) # Encoder returns mu and log(sigma)
-
-    def decode(self, z: Tensor):
-        decoded_mu, decoded_sigma = self.decoder(z)
-        return decoded_mu, decoded_sigma
-
-    def sample(self, num_samples: int = 1, temperature=1, z: Tensor = None):
-        # multiplying by the temperature works like the reparametrization trick,
-        # only if the prior is N(0,1)
-        if z is None:
-            z = self.prior.sample((num_samples, )).to(self.get_device()) * temperature
-
-        return self.decode(z)[0]
-
     def forward(self, x: Tensor):
         z_mu, z_sigma = self.encode(x)
-        z = distributions.normal.Normal(z_mu, z_sigma+self.eps).rsample().to(self.get_device())
+        z = distributions.normal.Normal(z_mu, z_sigma+self.eps).rsample()
         x_mu, x_sigma = self.decode(z)
         return x_mu, x_sigma, z_mu, z_sigma
 
     def loss_function(self, x: Tensor):
+        self.set_device()
         x_mu, x_sigma, z_mu, z_sigma = self.forward(x)
         reconstruction_loss = torch.distributions.normal.Normal(x_mu, x_sigma+self.eps).log_prob(x).sum([1,2,3])
         q_z = distributions.normal.Normal(z_mu, z_sigma+self.eps)
@@ -45,9 +27,25 @@ class VAE(GaussianAutoEncoder):
         kl_div = distributions.kl.kl_divergence(q_z, self.prior).sum(1)
         return -(reconstruction_loss - kl_div)
 
-    def get_device(self):
-        if self.device is None:
-            self.device = next(self.encoder.parameters()).device
-            self.prior = distributions.normal.Normal(torch.zeros(self.latent_dim).to(self.device),
-                                                     torch.ones(self.latent_dim).to(self.device))
-        return self.device
+
+class ExtendedVAE(ExtendedGaussianAutoEncoder):
+    def __init__(self, encoder: GaussianEncoder, decoder: GaussianDecoder,
+                 posterior_bijector: Transform = IdentityTransform(), prior_bijector: Transform = IdentityTransform()):
+        super(ExtendedVAE, self).__init__(encoder, decoder, posterior_bijector, prior_bijector)
+
+    def forward(self, x: Tensor):
+        self.set_device()
+        z_mu, z_sigma = self.encode(x)
+        z0 = distributions.normal.Normal(z_mu, z_sigma + self.eps).rsample()
+        z, log_j_q = self.posterior_bijector.forward(z0)
+        x_mu, x_sigma = self.decode(z)
+        return x_mu, x_sigma, z_mu, z_sigma, z0, log_j_q, z
+
+    def loss_function(self, x: Tensor):
+        self.set_device()
+        x_mu, x_sigma, z_mu, z_sigma, z0, log_j_q, z = self.forward(x)
+        reconstruction_loss = torch.distributions.normal.Normal(x_mu, x_sigma + self.eps).log_prob(x).sum([1, 2, 3])
+        q_z = distributions.normal.Normal(z_mu, z_sigma + self.eps).log_prob(z0).sum(-1) - log_j_q
+        z_inv, log_j_p = self.prior_bijector.inverse(z)
+        p_z = self.prior.log_prob(z_inv).sum(-1) + log_j_p
+        return -(reconstruction_loss + p_z - q_z)
