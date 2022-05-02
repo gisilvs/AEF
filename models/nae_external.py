@@ -17,7 +17,7 @@ class ExternalLatentAutoEncoder(GaussianAutoEncoder):
                  external_net: nn.Module = None, preprocessing_layers=[]):
         super(ExternalLatentAutoEncoder, self).__init__(encoder, decoder)
 
-        self.core_size = self.encoder.latent_ndims
+        self.core_size = self.encoder.latent_dim
         self.image_shape = self.encoder.input_shape
         self.core_flow_pre = core_flow_pre
         self.core_flow_post = core_flow_post
@@ -27,7 +27,7 @@ class ExternalLatentAutoEncoder(GaussianAutoEncoder):
         if external_net is None:
             self.dense = nn.Sequential(
           nn.Flatten(),
-          nn.utils.weight_norm(nn.Linear(np.prod(self.image_shape), self.core_size)))
+          nn.Linear(np.prod(self.image_shape), self.core_size))
         else:
             self.dense = external_net
 
@@ -67,10 +67,11 @@ class ExternalLatentAutoEncoder(GaussianAutoEncoder):
         x = self.forward(z, deviations)
         return x
 
-    def sample(self, num_samples=1, sample_deviations=False, temperature=1.):
+    def sample(self, num_samples=1, sample_deviations=False, temperature=1., z: Tensor = None):
         device = self.get_device()
-        z = torch.normal(torch.zeros(num_samples, self.core_size),
-                         torch.ones(num_samples, self.core_size) * temperature).to(device)
+        if z is None:
+            z = torch.normal(torch.zeros(num_samples, self.core_size),
+                             torch.ones(num_samples, self.core_size) * temperature).to(device)
         if sample_deviations:
             deviations = torch.normal(torch.zeros_like(self.mask),
                                       torch.ones_like(self.mask) * temperature).to(device)

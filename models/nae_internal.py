@@ -16,7 +16,7 @@ class InternalLatentAutoEncoder(GaussianAutoEncoder):
                  preprocessing_layers=[], center_mask=True):
         super(InternalLatentAutoEncoder, self).__init__(encoder, decoder)
 
-        self.core_size = self.encoder.latent_ndims
+        self.core_size = self.encoder.latent_dim
         self.image_shape = self.encoder.input_shape
         self.core_flow_pre = core_flow_pre
         self.core_flow_post = core_flow_post
@@ -77,16 +77,16 @@ class InternalLatentAutoEncoder(GaussianAutoEncoder):
         x = self.inverse_partition(core, shell)
         return x
 
-    def sample(self, num_samples=1, sample_deviations=False, temperature=1.):
+    def sample(self, num_samples: int = 1, sample_deviations: bool = False, temperature: float = 1, z: Tensor = None):
         device = self.get_device()
-        z = torch.normal(torch.zeros(num_samples, self.core_size),
-                         torch.ones(num_samples, self.core_size) * temperature).to(device)
-        if sample_deviations:
-            deviations = torch.normal(torch.zeros_like(self.mask),
-                                      torch.ones_like(self.mask) * temperature).to(device)
-        else:
-            deviations = None
 
+        deviations = None
+        if z is None:
+            z = torch.normal(torch.zeros(num_samples, self.core_size),
+                             torch.ones(num_samples, self.core_size)*temperature).to(device)
+            if sample_deviations:
+                deviations = torch.normal(torch.zeros_like(self.mask),
+                                          torch.ones_like(self.mask)*temperature).to(device)
         core, shell = self.forward(z, deviations)
         y = self.inverse_partition(core, shell)
         for i in range(len(self.preprocessing_layers) - 1, -1, -1):

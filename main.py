@@ -8,7 +8,7 @@ from nflows.transforms.standard import AffineTransform
 import wandb
 from datasets import get_train_val_dataloaders, get_test_dataloader
 from bijectors.actnorm import ActNorm
-from models.autoencoder import ConvolutionalEncoder, IndependentVarianceDecoder
+from models.autoencoder import ConvolutionalEncoder, IndependentVarianceDecoderSmall
 from models.normalizing_autoencoder import NormalizingAutoEncoder
 from util import make_averager, dequantize, plot_image_grid
 
@@ -44,8 +44,8 @@ def main():
     test_dataloader = get_test_dataloader('mnist', batch_size)
 
     preprocessing_layers = [InverseTransform(AffineTransform(alpha, 1 - 2 * alpha)), Sigmoid(), ActNorm(1)]
-    encoder = ConvolutionalEncoder(hidden_channels=64, input_shape=image_dim, latent_dim=latent_dims)
-    decoder = IndependentVarianceDecoder(hidden_channels=64, output_shape=image_dim, latent_dim=latent_dims)
+    encoder = ConvolutionalEncoder(hidden_channels=64, input_shape=image_dim, latent_ndims=latent_dims)
+    decoder = IndependentVarianceDecoderSmall(hidden_channels=64, output_shape=image_dim, latent_ndims=latent_dims)
     model = NormalizingAutoEncoder(encoder, decoder,
                                    preprocessing_layers=preprocessing_layers)
     optimizer = torch.optim.Adam(params=model.parameters(), lr=learning_rate)

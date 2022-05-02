@@ -7,20 +7,19 @@ import torch
 
 import wandb
 from datasets import get_train_val_dataloaders, get_test_dataloader
-from models.model_database import get_model
+from models.model_database import get_model, get_model_denoising
 
 from util import make_averager, dequantize, vae_log_prob, plot_image_grid, bits_per_pixel, count_parameters
-from visualize import plot_reconstructions
+from visualize import plot_reconstructions, plot_noisy_reconstructions
 
 parser = argparse.ArgumentParser(description='NAE Experiments')
-parser.add_argument('--wandb-type', type=str, help='phase1 | phase2 | prototyping | visualization')
+
 parser.add_argument('--model', type=str, help='nae-center | nae-corner | nae-external | vae | iwae | vae-iaf | maf')
-parser.add_argument('--architecture', type=str, default='small', help='big | small (default)')
-parser.add_argument('--post-flow', type=str, default='none', help='none (default) | maf | iaf')
-parser.add_argument('--prior-flow', type=str, default='none', help='none (default) | maf | iaf')
 parser.add_argument('--dataset', type=str, help='mnist | kmnist | fashionmnist | cifar10')
 parser.add_argument('--latent-dims', type=int, help='size of the latent space')
-parser.add_argument('--runs', type=str, help='run numbers in string format, e.g. "0,1,2,3"')
+parser.add_argument('--noise-level', type=float, default=0.25,
+                    help='amount of noise to add (std of gaussian noise is sampled from) (default = 0.25)')
+parser.add_argument('--runs', type=str, default="0", help='run numbers in string format, e.g. "0,1,2,3"')
 parser.add_argument('--iterations', type=int, default=100000, help='amount of iterations to train (default: 100,000)')
 parser.add_argument('--val-iters', type=int, default=500, help='validate every x iterations (default: 500')
 parser.add_argument('--save-iters', type=int, default=2000,
@@ -33,19 +32,11 @@ parser.add_argument('--custom-name', type=str, help='custom name for wandb track
 parser.add_argument('--batch-size', type=int, default=128,
                     help='input batch size for training and testing (default: 128)')
 
-
 args = parser.parse_args()
 
-assert args.wandb_type in ['phase1', 'phase2', 'prototyping', 'visualization']
-assert args.model in ['nae-center', 'nae-corner', 'vae', 'iwae', 'vae-iaf', 'maf', 'nae-external']
-assert args.post_flow in ['none', 'maf', 'iaf']
-assert args.prior_flow in ['none', 'maf', 'iaf']
+assert args.model in ['nae-center', 'nae-corner', 'vae', 'iwae', 'vae-iaf', 'nae-external'] # 'maf', 
 assert args.dataset in ['mnist', 'kmnist', 'emnist', 'fashionmnist', 'cifar10', 'cifar']
 assert args.decoder in ['fixed', 'independent', 'dependent']
-assert args.architecture in ['small', 'big']
-
-if args.architecture == 'big':
-    assert args.dataset in ['cifar', 'cifar10']
 
 model_name = args.model
 decoder = args.decoder
@@ -57,13 +48,12 @@ learning_rate = args.lr
 use_gpu = True
 validate_every_n_iterations = args.val_iters
 save_every_n_iterations = args.save_iters
-architecture_size = args.architecture
-posterior_flow = args.post_flow
-prior_flow = args.prior_flow
+noise_level = args.noise_level
 
 args.runs = [int(item) for item in args.runs.split(',')]
 
 AE_like_models = ['nae-center', 'nae-corner', 'nae-external', 'vae', 'iwae', 'vae-iaf']
+flow_like_models = ['nae-center', 'nae-corner', 'nae-external', 'maf']
 
 for run_nr in args.runs:
     if args.custom_name is not None:
@@ -71,10 +61,7 @@ for run_nr in args.runs:
     else:
         latent_size_str = f"_latent_size_{args.latent_dims}" if model_name in AE_like_models else ""
         decoder_str = f"_decoder_{args.decoder}" if model_name in AE_like_models else ""
-        architecture_str = f"_{architecture_size}" if model_name in AE_like_models else ""
-        post_flow_str = f"_post_{posterior_flow}" if posterior_flow is not 'none' else ""
-        prior_flow_str = f"_prior_{prior_flow}" if prior_flow is not 'none' else ""
-        run_name = f'{args.model}{architecture_str}_{args.dataset}_run_{run_nr}{latent_size_str}{decoder_str}{post_flow_str}{prior_flow_str}'
+        run_name = f'{args.model}_{args.dataset}_run_{run_nr}{latent_size_str}{decoder_str}'
 
     config = {
         "model": model_name,
@@ -85,9 +72,7 @@ for run_nr in args.runs:
         "n_iterations": n_iterations,
         "batch_size": batch_size,
         "seed": args.seed,
-        "architecture_size": architecture_size,
-        "posterior_flow": posterior_flow,
-        "prior_flow": prior_flow,
+        "noise_level": noise_level
     }
 
     device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
@@ -95,13 +80,13 @@ for run_nr in args.runs:
     p_validation = 0.1
     train_dataloader, validation_dataloader, image_dim, alpha = get_train_val_dataloaders(dataset, batch_size,
                                                                                           p_validation, seed=args.seed)
-    reconstruction_dataloader = get_test_dataloader(dataset, batch_size, shuffle=True)
     test_dataloader = get_test_dataloader(dataset, batch_size)
+    reconstruction_dataloader = get_test_dataloader(dataset, batch_size, shuffle=True)
+
     n_pixels = np.prod(image_dim)
 
-    model = get_model(model_name=model_name, architecture_size=architecture_size, decoder=args.decoder,
-                      latent_dims=latent_dims, img_shape=image_dim, alpha=alpha,
-                      posterior_flow_name=posterior_flow, prior_flow_name=prior_flow)
+    model = get_model_denoising(model_name=model_name, decoder=args.decoder,
+                                latent_dims=latent_dims, img_shape=image_dim, alpha=alpha)
     optimizer = torch.optim.Adam(params=model.parameters(), lr=learning_rate)
 
     model = model.to(device)
@@ -109,7 +94,7 @@ for run_nr in args.runs:
     if not os.path.isdir('./checkpoints'):
         os.mkdir('./checkpoints')
 
-    run = wandb.init(project=args.wandb_type, entity="nae",
+    run = wandb.init(project="denoising", entity="nae",
                      name=run_name, config=config)
 
     print('Training ...')
@@ -121,18 +106,27 @@ for run_nr in args.runs:
     validation_losses = []
     validation_iterations = []
 
-
+    noise_distribution = torch.distributions.normal.Normal(torch.zeros(batch_size, *image_dim),
+                                                           noise_level * torch.ones(batch_size, *image_dim))
 
     for it in range(n_iterations):
         while not stop:
             for image_batch, _ in train_dataloader:
                 image_batch = dequantize(image_batch)
+                image_batch_noisy = torch.clone(image_batch).detach()
+                image_batch_noisy += noise_distribution.sample()[:image_batch.shape[0]]
+                image_batch_noisy = torch.clamp(image_batch_noisy, 0., 1.)
                 image_batch = image_batch.to(device)
+                image_batch_noisy = image_batch_noisy.to(device)
 
                 if model_name == 'maf':
                     image_batch = image_batch.view(-1, torch.prod(torch.tensor(image_dim)))
+                    image_batch_noisy = image_batch_noisy.view(-1, torch.prod(torch.tensor(image_dim)))
 
-                loss = torch.mean(model.loss_function(image_batch))
+                if model_name in flow_like_models:
+                    loss = torch.mean(model.loss_function(image_batch_noisy))
+                else:
+                    loss = torch.mean(model.loss_function(image_batch_noisy, image_batch))
                 iteration_losses[n_iterations_done] = loss.item()
                 metrics = {
                     'train_loss': loss
@@ -154,21 +148,25 @@ for run_nr in args.runs:
                         samples = samples.cpu().detach()
                         if model_name == 'maf':
                             samples = samples.view(-1, image_dim[0], image_dim[1], image_dim[2])
-                        #plot_image_grid(samples, cols=4)
+                        # plot_image_grid(samples, cols=4)
                         sample_fig = plot_image_grid(samples, cols=4)
                         image_dict = {'samples': sample_fig}
 
-                        if model_name != 'maf':
-                            reconstruction_fig = plot_reconstructions(model, reconstruction_dataloader, device,
-                                                                      image_dim, n_rows=4)
-                            reconstruction_dict = {'reconstructions': reconstruction_fig}
+                        #if model_name != 'maf':
+                        reconstruction_fig = plot_noisy_reconstructions(model, reconstruction_dataloader, device,
+                                                                            noise_distribution, image_dim, n_rows=4)
+                        reconstruction_dict = {'reconstructions': reconstruction_fig}
 
                         for validation_batch, _ in validation_dataloader:
                             validation_batch = dequantize(validation_batch)
                             validation_batch = validation_batch.to(device)
                             if model_name == 'maf':
                                 validation_batch = validation_batch.view(-1, torch.prod(torch.tensor(image_dim)))
-                            loss = torch.mean(model.loss_function(validation_batch))
+                            if model_name in flow_like_models:
+                                loss = torch.mean(model.loss_function(validation_batch))
+                            else:
+                                loss = torch.mean(model.loss_function(validation_batch, validation_batch))
+
                             val_loss_averager(loss.item())
 
                         validation_losses.append(val_loss_averager(None))
@@ -226,7 +224,11 @@ for run_nr in args.runs:
             test_batch = test_batch.to(device)
             if model_name == 'maf':
                 test_batch = test_batch.view(-1, torch.prod(torch.tensor(image_dim)))
-            loss = torch.mean(model.loss_function(test_batch))
+            if model_name in flow_like_models:
+                loss = torch.mean(model.loss_function(test_batch))
+            else:
+                loss = torch.mean(model.loss_function(test_batch, test_batch))
+
             test_loss_averager(loss.item())
         test_loss = test_loss_averager(None)
 
@@ -238,7 +240,10 @@ for run_nr in args.runs:
                 test_batch = test_batch.to(device)
                 for iw_iter in range(20):
                     log_likelihood = vae_log_prob(model, test_batch, n_samples=128)
-                    loss = torch.mean(model.loss_function(test_batch))
+                    if model_name in flow_like_models:
+                        loss = torch.mean(model.loss_function(test_batch))
+                    else:
+                        loss = torch.mean(model.loss_function(test_batch, test_batch))
                     test_ll_averager(loss.item())
             test_ll = test_ll_averager(None)
             wandb.summary['test_log_likelihood'] = test_ll
@@ -276,7 +281,7 @@ for run_nr in args.runs:
     plt.close("all")
 
     # Clean up older artifacts
-    api = wandb.Api(overrides={"project": args.wandb_type, "entity": "nae"})
+    api = wandb.Api(overrides={"project": 'denoising', "entity": "nae"})
     artifact_type, artifact_name = 'model', f'{run_name}_latest'
     for version in api.artifact_versions(artifact_type, artifact_name):
         if len(version.aliases) == 0:

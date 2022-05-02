@@ -10,7 +10,7 @@ from models.autoencoder_base import GaussianAutoEncoder, ExtendedGaussianAutoEnc
 
 class VAE(GaussianAutoEncoder):
     def __init__(self, encoder: GaussianEncoder, decoder: GaussianDecoder):
-        super().__init__(encoder, decoder)
+        super(VAE, self).__init__(encoder, decoder)
 
     def forward(self, x: Tensor):
         z_mu, z_sigma = self.encode(x)
@@ -49,3 +49,18 @@ class ExtendedVAE(ExtendedGaussianAutoEncoder):
         z_inv, log_j_p = self.prior_bijector.inverse(z)
         p_z = self.prior.log_prob(z_inv).sum(-1) + log_j_p
         return -(reconstruction_loss + p_z - q_z)
+
+class DenoisingVAE(VAE):
+    def __init__(self, encoder: GaussianEncoder, decoder: GaussianDecoder):
+        super(DenoisingVAE, self).__init__(encoder, decoder)
+
+
+    def loss_function(self, x_noisy: Tensor, x_original: Tensor):
+        self.set_device()
+        x_mu, x_sigma, z_mu, z_sigma = self.forward(x_noisy)
+        reconstruction_loss = torch.distributions.normal.Normal(x_mu, x_sigma+self.eps).log_prob(x_original).sum([1,2,3])
+        q_z = distributions.normal.Normal(z_mu, z_sigma+self.eps)
+
+        kl_div = distributions.kl.kl_divergence(q_z, self.prior).sum(1)
+        return -(reconstruction_loss - kl_div)
+
