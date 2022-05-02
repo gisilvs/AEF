@@ -41,7 +41,7 @@ def get_model(model_name: str, architecture_size: str, decoder: str,
         else:
             flow_features = 512
             num_layers = 8
-        model = MaskedAutoregressiveFlow(np.prod(img_shape), hidden_features=flow_features,  # TODO: dont hardcode
+        model = MaskedAutoregressiveFlow(int(np.prod(img_shape)), hidden_features=flow_features,  # TODO: dont hardcode
                                        num_layers=num_layers, num_blocks_per_layer=2,
                                        preprocessing_layers=preprocessing_layers,
                                        act_norm_between_layers=True)
@@ -192,7 +192,7 @@ def get_model_denoising(model_name: str, decoder: str, latent_dims: int, img_sha
         flow_features = 256
         num_layers = 4
 
-        model = MaskedAutoregressiveFlow(np.prod(img_shape), hidden_features=flow_features,  # TODO: dont hardcode
+        model = MaskedAutoregressiveFlow(int(np.prod(img_shape)), hidden_features=flow_features,  # TODO: dont hardcode
                                        num_layers=num_layers, num_blocks_per_layer=2,
                                        preprocessing_layers=preprocessing_layers,
                                        act_norm_between_layers=True)
