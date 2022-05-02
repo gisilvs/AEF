@@ -4,6 +4,17 @@ from torch import nn
 import torch.nn.functional as F
 from bijectors.actnorm import ActNorm
 
+
+def split_feature(tensor, type="split"):
+    """
+    type = ["split", "cross"]
+    """
+    C = tensor.size(1)
+    if type == "split":
+        return tensor[:, : C // 2, ...], tensor[:, C // 2 :, ...]
+    elif type == "cross":
+        return tensor[:, 0::2, ...], tensor[:, 1::2, ...]
+
 def compute_same_pad(kernel_size, stride):
     if isinstance(kernel_size, int):
         kernel_size = [kernel_size]
@@ -198,8 +209,6 @@ class FlowStep(nn.Module):
         self,
         in_channels,
         hidden_channels,
-        actnorm_scale,
-        flow_permutation,
         flow_coupling,
         LU_decomposed,
     ):
@@ -210,60 +219,53 @@ class FlowStep(nn.Module):
 
         # 2. permute
         self.invconv = InvertibleConv1x1(in_channels, LU_decomposed=LU_decomposed)
-        self.flow_permutation = lambda z, logdet, rev: self.invconv(z, logdet, rev)
 
         self.block = get_block(in_channels // 2, in_channels, hidden_channels)
 
     def forward(self, input):
-        return self.normal_flow(input)
-
-    def inverse(self, input):
         return self.reverse_flow(input)
 
-    def normal_flow(self, input, logdet):
+    def inverse(self, input):
+        return self.normal_flow(input)
+
+    def normal_flow(self, input):
         assert input.size(1) % 2 == 0
 
         # 1. actnorm
-        z, logdet = self.actnorm(input, logdet=logdet, reverse=False)
+        z, logdet = self.actnorm.forward(input)
 
         # 2. permute
         z, logdet = self.flow_permutation(z, logdet, False)
 
         # 3. coupling
         z1, z2 = split_feature(z, "split")
-        if self.flow_coupling == "additive":
-            z2 = z2 + self.block(z1)
-        elif self.flow_coupling == "affine":
-            h = self.block(z1)
-            shift, scale = split_feature(h, "cross")
-            scale = torch.sigmoid(scale + 2.0)
-            z2 = z2 + shift
-            z2 = z2 * scale
-            logdet = torch.sum(torch.log(scale), dim=[1, 2, 3]) + logdet
+        h = self.block(z1)
+        shift, scale = split_feature(h, "cross")
+        scale = torch.sigmoid(scale + 2.0)
+        z2 = z2 + shift
+        z2 = z2 * scale
+        logdet = torch.sum(torch.log(scale), dim=[1, 2, 3]) + logdet
         z = torch.cat((z1, z2), dim=1)
 
         return z, logdet
 
-    def reverse_flow(self, input, logdet):
+    def reverse_flow(self, input):
         assert input.size(1) % 2 == 0
 
         # 1.coupling
         z1, z2 = split_feature(input, "split")
-        if self.flow_coupling == "additive":
-            z2 = z2 - self.block(z1)
-        elif self.flow_coupling == "affine":
-            h = self.block(z1)
-            shift, scale = split_feature(h, "cross")
-            scale = torch.sigmoid(scale + 2.0)
-            z2 = z2 / scale
-            z2 = z2 - shift
-            logdet = -torch.sum(torch.log(scale), dim=[1, 2, 3]) + logdet
+        h = self.block(z1)
+        shift, scale = split_feature(h, "cross")
+        scale = torch.sigmoid(scale + 2.0)
+        z2 = z2 / scale
+        z2 = z2 - shift
+        logdet = -torch.sum(torch.log(scale), dim=[1, 2, 3])
         z = torch.cat((z1, z2), dim=1)
 
         # 2. permute
-        z, logdet = self.flow_permutation(z, logdet, True)
+        z, logdet_0 = self.flow_permutation(z, logdet, True)
 
         # 3. actnorm
-        z, logdet = self.actnorm(z, logdet=logdet, reverse=True)
+        z, logdet_1 = self.actnorm(z, logdet=logdet, reverse=True)
 
-        return z, logdet
+        return z, logdet + logdet_0 + logdet_1
