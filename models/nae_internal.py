@@ -15,7 +15,7 @@ class InternalLatentAutoEncoder(GaussianAutoEncoder):
                  preprocessing_layers=[], center_mask=True):
         super(InternalLatentAutoEncoder, self).__init__(encoder, decoder)
 
-        self.core_size = self.encoder.latent_dim
+        self.core_size = self.encoder.latent_ndims
         self.image_shape = self.encoder.input_shape
         self.core_flow_pre = core_flow_pre
         self.core_flow_post = core_flow_post
@@ -126,6 +126,8 @@ class InternalLatentAutoEncoder(GaussianAutoEncoder):
             mask[0, 12:16, 12:16] = 1
         elif self.core_size == 32:
             mask[0, 10:18, 12:16] = 1
+        elif self.core_size == 64:
+            mask[0, 10:18, 10:18] = 1
         else:
             print('NOT IMPLEMENTED YET')
             exit(1)
