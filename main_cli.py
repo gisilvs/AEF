@@ -10,12 +10,12 @@ from datasets import get_train_val_dataloaders, get_test_dataloader
 from models.model_database import get_model
 
 from util import make_averager, dequantize, vae_log_prob, plot_image_grid, bits_per_pixel, count_parameters
-
+from visualize import plot_reconstructions
 
 parser = argparse.ArgumentParser(description='NAE Experiments')
 parser.add_argument('--wandb-type', type=str, help='phase1 | phase2 | prototyping | visualization')
 parser.add_argument('--model', type=str, help='nae-center | nae-corner | nae-external | vae | iwae | vae-iaf | maf')
-parser.add_argument('--architecture', type=str, help='big | small (default)')
+parser.add_argument('--architecture', type=str, default='small', help='big | small (default)')
 parser.add_argument('--post-flow', type=str, default='none', help='none (default) | maf | iaf')
 parser.add_argument('--prior-flow', type=str, default='none', help='none (default) | maf | iaf')
 parser.add_argument('--dataset', type=str, help='mnist | kmnist | fashionmnist | cifar10')
@@ -72,8 +72,8 @@ for run_nr in args.runs:
         latent_size_str = f"_latent_size_{args.latent_dims}" if model_name in AE_like_models else ""
         decoder_str = f"_decoder_{args.decoder}" if model_name in AE_like_models else ""
         architecture_str = f"_{architecture_size}" if model_name in AE_like_models else ""
-        post_flow_str = f"_post_{posterior_flow}" if posterior_flow is not None else ""
-        prior_flow_str = f"_prior_{prior_flow}" if prior_flow is not None else ""
+        post_flow_str = f"_post_{posterior_flow}" if posterior_flow is not 'none' else ""
+        prior_flow_str = f"_prior_{prior_flow}" if prior_flow is not 'none' else ""
         run_name = f'{args.model}{architecture_str}_{args.dataset}_run_{run_nr}{latent_size_str}{decoder_str}{post_flow_str}{prior_flow_str}'
 
     config = {
@@ -95,6 +95,7 @@ for run_nr in args.runs:
     p_validation = 0.1
     train_dataloader, validation_dataloader, image_dim, alpha = get_train_val_dataloaders(dataset, batch_size,
                                                                                           p_validation, seed=args.seed)
+    reconstruction_dataloader = get_test_dataloader(dataset, batch_size, shuffle=True)
     test_dataloader = get_test_dataloader(dataset, batch_size)
     n_pixels = np.prod(image_dim)
 
@@ -153,8 +154,14 @@ for run_nr in args.runs:
                         samples = samples.cpu().detach()
                         if model_name == 'maf':
                             samples = samples.view(-1, image_dim[0], image_dim[1], image_dim[2])
-                        plot_image_grid(samples, cols=4)
-                        image_dict = {'samples': plt}
+                        #plot_image_grid(samples, cols=4)
+                        sample_fig = plot_image_grid(samples, cols=4)
+                        image_dict = {'samples': sample_fig}
+
+                        if model_name != 'maf':
+                            reconstruction_fig = plot_reconstructions(model, reconstruction_dataloader, device,
+                                                                      image_dim, n_rows=4)
+                            reconstruction_dict = {'reconstructions': reconstruction_fig}
 
                         for validation_batch, _ in validation_dataloader:
                             validation_batch = dequantize(validation_batch)
@@ -191,7 +198,7 @@ for run_nr in args.runs:
                             histograms['Weights/' + tag] = wandb.Histogram(value.data.cpu())
                             histograms['Gradients/' + tag] = wandb.Histogram(value.grad.data.cpu())
 
-                        wandb.log({**metrics, **val_metrics, **image_dict, **histograms})
+                        wandb.log({**metrics, **val_metrics, **image_dict, **histograms, **reconstruction_dict})
                         plt.close("all")
                 else:
                     wandb.log(metrics)
@@ -250,8 +257,8 @@ for run_nr in args.runs:
             samples = samples.cpu().detach()
             if model_name == 'maf':
                 samples = samples.view(-1, image_dim[0], image_dim[1], image_dim[2])
-            plot_image_grid(samples, cols=4)
-            image_dict = {'final_samples': plt}
+            fig = plot_image_grid(samples, cols=4)
+            image_dict = {'final_samples': fig}
             run.log(image_dict)
 
     artifact_best = wandb.Artifact(f'{run_name}_best', type='model')

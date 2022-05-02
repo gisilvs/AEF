@@ -129,36 +129,44 @@ def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
-def download_wandb_artifact(run, project_name, model_name, version='latest'):
-    artifact = run.use_artifact(f'nae/{project_name}/{model_name}:{version}', type='model')
+def download_wandb_artifact(run, project_name, experiment_name, version='latest'):
+    artifact = run.use_artifact(f'nae/{project_name}/{experiment_name}_best:{version}', type='model')
     artifact_dir = artifact.download()
     return artifact_dir
 
 
-def download_best_model_and_get_path(run, project_name, model_name, version='latest'):
-    artifact_dir = download_wandb_artifact(run, project_name, model_name, version)
+def download_best_model_and_get_path(run, project_name, experiment_name, version='latest'):
+    artifact_dir = download_wandb_artifact(run, project_name, experiment_name, version)
     return artifact_dir + '/' + os.listdir(artifact_dir)[0]
 
 
-def load_best_model(run, project_name, model_name, experiment_name, device, decoder, latent_dims, image_dim, alpha, use_center_pixels, version='latest'):
 
-    model = get_model(model_name, decoder, latent_dims, image_dim, alpha, use_center_pixels)
+def load_best_model(run, project_name, model_name, experiment_name, device, latent_dims, image_dim, alpha,
+                    decoder, architecture_size, prior_flow, posterior_flow, version='latest'):
+    model = get_model(model_name, architecture_size, decoder, latent_dims, image_dim, alpha, posterior_flow, prior_flow)
+    model.sample(10) # needed as some components such as actnorm need to be initialized
     model.loss_function(model.sample(10)) # needed as some components such as actnorm need to be initialized
+
     model_path = download_best_model_and_get_path(run, project_name, experiment_name, version)
     model.load_state_dict(torch.load(model_path, map_location=device))
-
+    model = model.to(device)
     return model
 
 
-def plot_image_grid(samples, cols, padding=2, title=None):
+def plot_image_grid(samples, cols, padding=2, title=None, hires=False):
     '''
     Samples should be a torch aray with dimensions BxCxWxH
     '''
+    if hires:
+        fig = plt.figure(figsize=(10, 10), dpi=300)
+    else:
+        fig = plt.figure()
     grid_img = torchvision.utils.make_grid(samples, padding=padding, pad_value=1., nrow=cols)
     plt.imshow(grid_img.permute(1, 2, 0))
     plt.axis("off")
     if title:
         plt.suptitle(title)
+    return fig
 
         
 def bits_per_pixel(neg_log_prob, n_pixels, adjust_value=None):

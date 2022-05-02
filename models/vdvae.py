@@ -112,23 +112,23 @@ class Block(nn.Module):
 
 
 class ConvolutionalEncoderBig(GaussianEncoder):
-    def __init__(self, input_shape: List, latent_ndims: int, size: str = None):
-        super(ConvolutionalEncoderBig, self).__init__(input_shape, latent_ndims)
+    def __init__(self, input_shape: List, latent_dims: int, size: str = None):
+        super(ConvolutionalEncoderBig, self).__init__(input_shape, latent_dims)
 
-        enc_str = get_encoder_string(input_shape, latent_ndims, size)
-        self.in_conv = get_3x3(input_shape[0], latent_ndims)
+        enc_str = get_encoder_string(input_shape, latent_dims, size)
+        self.in_conv = get_3x3(input_shape[0], latent_dims)
         enc_blocks = []
         blockstr = parse_layer_string(enc_str)
-        squeeze_dim = max(1, int(latent_ndims * BOTTLENECK_MULTIPLE))
+        squeeze_dim = max(1, int(latent_dims * BOTTLENECK_MULTIPLE))
         for res, down_rate in blockstr[:-1]:
             use_3x3 = res > 2  # Don't use 3x3s for 1x1, 2x2 patches
-            enc_blocks.append(Block(latent_ndims, squeeze_dim,
-                                    latent_ndims, down_rate=down_rate, residual=True, use_3x3=use_3x3))
+            enc_blocks.append(Block(latent_dims, squeeze_dim,
+                                    latent_dims, down_rate=down_rate, residual=True, use_3x3=use_3x3))
 
         res, down_rate = blockstr[-1]
         use_3x3 = res > 2
-        enc_blocks.append(Block(latent_ndims, squeeze_dim,
-                                latent_ndims*2, down_rate=down_rate, residual=False, use_3x3=use_3x3))
+        enc_blocks.append(Block(latent_dims, squeeze_dim,
+                                latent_dims * 2, down_rate=down_rate, residual=False, use_3x3=use_3x3))
         n_blocks = len(blockstr)
         for b in enc_blocks:
             b.c4.weight.data *= np.sqrt(1 / n_blocks)
@@ -164,24 +164,24 @@ class DecBlock(nn.Module):
 
 
 class ConvolutionalDecoderBig(GaussianDecoder):
-    def __init__(self, output_shape: List, latent_ndims: int, size: str = None):
-        super(ConvolutionalDecoderBig, self).__init__(output_shape, latent_ndims)
+    def __init__(self, output_shape: List, latent_dims: int, size: str = None):
+        super(ConvolutionalDecoderBig, self).__init__(output_shape, latent_dims)
 
         dec_blocks = []
-        dec_str = get_decoder_string(output_shape, latent_ndims, size)
+        dec_str = get_decoder_string(output_shape, latent_dims, size)
         blocks = parse_layer_string(dec_str)
         for idx, (res, mixin) in enumerate(blocks):
-            dec_blocks.append(DecBlock(res, mixin, n_blocks=len(blocks), width=latent_ndims))
+            dec_blocks.append(DecBlock(res, mixin, n_blocks=len(blocks), width=latent_dims))
         self.dec_blocks = nn.ModuleList(dec_blocks)
-        self.gain = nn.Parameter(torch.ones(1, latent_ndims, 1, 1))
-        self.bias = nn.Parameter(torch.zeros(1, latent_ndims, 1, 1))
+        self.gain = nn.Parameter(torch.ones(1, latent_dims, 1, 1))
+        self.bias = nn.Parameter(torch.zeros(1, latent_dims, 1, 1))
         self.final_fn = lambda x: x * self.gain + self.bias
-        self.out_conv = get_conv(latent_ndims, output_shape[0], kernel_size=1, stride=1, padding=0)
+        self.out_conv = get_conv(latent_dims, output_shape[0], kernel_size=1, stride=1, padding=0)
 
 
 class FixedVarianceDecoderBig(ConvolutionalDecoderBig):
-    def __init__(self, output_shape: List, latent_ndims: int, size: str = None):
-        super(FixedVarianceDecoderBig, self).__init__(output_shape, latent_ndims, size)
+    def __init__(self, output_shape: List, latent_dims: int, size: str = None):
+        super(FixedVarianceDecoderBig, self).__init__(output_shape, latent_dims, size)
 
     def forward(self, x):
         x = x.view(x.shape[0], x.shape[1], 1, 1)
@@ -193,8 +193,8 @@ class FixedVarianceDecoderBig(ConvolutionalDecoderBig):
 
 
 class IndependentVarianceDecoderBig(ConvolutionalDecoderBig):
-    def __init__(self, output_shape: List, latent_ndims: int, size: str = None):
-        super(IndependentVarianceDecoderBig, self).__init__(output_shape, latent_ndims, size)
+    def __init__(self, output_shape: List, latent_dims: int, size: str = None):
+        super(IndependentVarianceDecoderBig, self).__init__(output_shape, latent_dims, size)
         self.pre_sigma = nn.Parameter(torch.ones(output_shape))
 
     def forward(self, z):
@@ -208,20 +208,20 @@ class IndependentVarianceDecoderBig(ConvolutionalDecoderBig):
 
 
 class LatentDependentDecoderBig(GaussianDecoder):
-    def __init__(self, output_shape: List, latent_ndims: int, size: str = None):
-        super(LatentDependentDecoderBig, self).__init__(output_shape, latent_ndims)
+    def __init__(self, output_shape: List, latent_dims: int, size: str = None):
+        super(LatentDependentDecoderBig, self).__init__(output_shape, latent_dims)
 
         dec_blocks = []
-        dec_str = get_decoder_string(output_shape, latent_ndims, size)
+        dec_str = get_decoder_string(output_shape, latent_dims, size)
         blocks = parse_layer_string(dec_str)
         for idx, (res, mixin) in enumerate(blocks):
-            dec_blocks.append(DecBlock(res, mixin, n_blocks=len(blocks), width=latent_ndims))
+            dec_blocks.append(DecBlock(res, mixin, n_blocks=len(blocks), width=latent_dims))
 
         self.dec_blocks = nn.ModuleList(dec_blocks)
-        self.gain = nn.Parameter(torch.ones(1, latent_ndims, 1, 1))
-        self.bias = nn.Parameter(torch.zeros(1, latent_ndims, 1, 1))
+        self.gain = nn.Parameter(torch.ones(1, latent_dims, 1, 1))
+        self.bias = nn.Parameter(torch.zeros(1, latent_dims, 1, 1))
         self.final_fn = lambda x: x * self.gain + self.bias
-        self.out_conv = get_conv(latent_ndims, output_shape[0]*2, kernel_size=1, stride=1, padding=0)
+        self.out_conv = get_conv(latent_dims, output_shape[0] * 2, kernel_size=1, stride=1, padding=0)
 
     def forward(self, z):
         x = z.view(z.shape[0], z.shape[1], 1, 1)

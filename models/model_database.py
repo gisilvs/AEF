@@ -10,8 +10,9 @@ from .autoencoder import IndependentVarianceDecoderSmall, LatentDependentDecoder
     FixedVarianceDecoderSmall, ConvolutionalEncoderSmall
 from .iwae import IWAE, ExtendedIWAE, DenoisingIWAE
 from .nae_internal import InternalLatentAutoEncoder
+
 from .vae import VAE, ExtendedVAE, DenoisingVAE
-from .vae_iaf import VAEIAF, DenoisingVAEIAF
+from .vae_iaf import VAEIAF, ExtendedVAEIAF, DenoisingVAEIAF
 from .nae_external import ExternalLatentAutoEncoder
 import numpy as np
 
@@ -49,16 +50,16 @@ def get_model(model_name: str, architecture_size: str, decoder: str,
     if architecture_size == 'small':
         vae_channels = 64
         decoder = decoder_dict[decoder]['small'](hidden_channels=vae_channels, output_shape=img_shape,
-                                                 latent_ndims=latent_dims)
+                                                 latent_dims=latent_dims)
         encoder = ConvolutionalEncoderSmall(hidden_channels=vae_channels, input_shape=img_shape,
-                                            latent_ndims=latent_dims)
+                                            latent_dims=latent_dims)
     else:
         if test:
-            decoder = decoder_dict[decoder]['big'](output_shape=img_shape, latent_ndims=latent_dims, size='test')
-            encoder = ConvolutionalEncoderBig(input_shape=img_shape, latent_ndims=latent_dims, size='test')
+            decoder = decoder_dict[decoder]['big'](output_shape=img_shape, latent_dims=latent_dims, size='test')
+            encoder = ConvolutionalEncoderBig(input_shape=img_shape, latent_dims=latent_dims, size='test')
         else:
-            decoder = decoder_dict[decoder]['big'](output_shape=img_shape, latent_ndims=latent_dims)
-            encoder = ConvolutionalEncoderBig(input_shape=img_shape, latent_ndims=latent_dims)
+            decoder = decoder_dict[decoder]['big'](output_shape=img_shape, latent_dims=latent_dims)
+            encoder = ConvolutionalEncoderBig(input_shape=img_shape, latent_dims=latent_dims)
 
     if architecture_size == 'big':
         model_dict = {'nae-center': InternalLatentAutoEncoder,
@@ -66,7 +67,7 @@ def get_model(model_name: str, architecture_size: str, decoder: str,
          'nae-external': ExternalLatentAutoEncoder,
          'vae': ExtendedVAE,
          'iwae': ExtendedIWAE,
-         'vae-iaf': VAEIAF,
+         'vae-iaf': ExtendedVAEIAF,
          }
         # TODO: check right size for flows big/small
         flow_features = 256
@@ -187,12 +188,10 @@ def get_model_denoising(model_name: str, decoder: str, latent_dims: int, img_sha
 
     if model_name == 'maf':
 
-        if architecture_size == 'small':
-            flow_features = 256
-            num_layers = 4
-        else:
-            flow_features = 512
-            num_layers = 8
+
+        flow_features = 256
+        num_layers = 4
+
         model = MaskedAutoregressiveFlow(np.prod(img_shape), hidden_features=flow_features,  # TODO: dont hardcode
                                        num_layers=num_layers, num_blocks_per_layer=2,
                                        preprocessing_layers=preprocessing_layers,

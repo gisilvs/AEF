@@ -30,13 +30,13 @@ class GaussianAutoEncoder(AutoEncoder):
     def __init__(self, encoder: GaussianEncoder, decoder: GaussianDecoder):
         super(GaussianAutoEncoder, self).__init__()
 
-        assert encoder.latent_ndims == decoder.latent_ndims
+        assert encoder.latent_dim == decoder.latent_dim
 
         self.encoder = encoder
         self.decoder = decoder
-        self.latent_ndims = encoder.latent_ndims
-        self.prior = distributions.normal.Normal(torch.zeros(self.latent_ndims),
-                                                 torch.ones(self.latent_ndims))
+        self.latent_dims = encoder.latent_dim
+        self.prior = distributions.normal.Normal(torch.zeros(self.latent_dims),
+                                                 torch.ones(self.latent_dims))
         self.eps = 1e-6
         self.device = None
 
@@ -46,10 +46,10 @@ class GaussianAutoEncoder(AutoEncoder):
     def decode(self, z: Tensor):
         return self.decoder(z)
 
-    def sample(self, num_samples: int = 1, temperature: int = 1, z: Tensor = None):
+    def sample(self, num_samples: int = 1, temperature: int = 1):
         self.set_device()
-        if z is None:
-            z = self.prior.sample((num_samples, )) * temperature
+
+        z = self.prior.sample((num_samples, )) * temperature
         return self.decode(z)[0]
 
     def set_device(self):
@@ -57,8 +57,8 @@ class GaussianAutoEncoder(AutoEncoder):
         if self.device is None:
             self.device = next(self.encoder.parameters()).device
             # Putting loc and scale to device gives nans for some reason
-            self.prior = distributions.normal.Normal(torch.zeros(self.latent_ndims).to(self.device),
-                                                     torch.ones(self.latent_ndims).to(self.device))
+            self.prior = distributions.normal.Normal(torch.zeros(self.latent_dims).to(self.device),
+                                                     torch.ones(self.latent_dims).to(self.device))
 
 class ExtendedGaussianAutoEncoder(GaussianAutoEncoder):
     def __init__(self, encoder: GaussianEncoder, decoder: GaussianDecoder, 
@@ -66,4 +66,10 @@ class ExtendedGaussianAutoEncoder(GaussianAutoEncoder):
         super(ExtendedGaussianAutoEncoder, self).__init__(encoder, decoder)
         self.posterior_bijector = posterior_bijector
         self.prior_bijector = prior_bijector
+
+    def sample(self, num_samples: int = 1, temperature: float = 1):
+        self.set_device()
+        z0 = self.prior.sample((num_samples,)) * temperature
+        z, _ = self.prior_flow.forward(z0)
+        return self.decode(z)[0]
         

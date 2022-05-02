@@ -40,7 +40,7 @@ AE_like_models = ['nae-center', 'nae-corner', 'nae-external', 'vae', 'iwae', 'va
 config = {
     "model": model_name,
     "dataset": dataset,
-    "latent_dims": latent_dims,
+    "latent_dim": latent_dims,
     "decoder": decoder,
     "learning_rate": learning_rate,
     "n_iterations": n_iterations,
@@ -60,11 +60,11 @@ n_pixels = np.prod(image_dim)
 
 vae_channels = 64
 # decoder = FixedVarianceDecoderBig(output_shape=image_dim,
-#                                     latent_ndims=latent_dims)
+#                                     latent_ndims=latent_dim)
 decoder = IndependentVarianceDecoderBig(output_shape=image_dim,
-                                    latent_ndims=latent_dims)
+                                        latent_dims=latent_dims)
 
-encoder = ConvolutionalEncoderBig(input_shape=image_dim, latent_ndims=latent_dims)
+encoder = ConvolutionalEncoderBig(input_shape=image_dim, latent_dims=latent_dims)
 #model = VAE(encoder, decoder)
 preprocessing_layers = [InverseTransform(AffineTransform(alpha, 1 - 2 * alpha)), Sigmoid(), ActNorm(image_dim[0])]
 
