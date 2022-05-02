@@ -5,7 +5,7 @@ from bijectors.realnvp import get_realnvp_bijector
 from bijectors.masked_autoregressive_transform import get_masked_autoregressive_transform
 from flows.maf import MaskedAutoregressiveFlow
 from bijectors.glow import SimpleGlow
-from models.autoencoder import ConvolutionalEncoder, IndependentVarianceDecoder
+
 
 
 def test_flat_bijector(bijector):

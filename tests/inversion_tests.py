@@ -2,11 +2,11 @@ from typing import List
 
 import torch
 
-from models.autoencoder import ConvolutionalEncoder, IndependentVarianceDecoder
-from models.normalizing_autoencoder import NormalizingAutoEncoder
+from models.autoencoder import ConvolutionalEncoderSmall, IndependentVarianceDecoderSmall
+from models.nae_internal import InternalLatentAutoEncoder
 
 
-def test_inverse_nae(nae: NormalizingAutoEncoder, img_dim: List, eps: float = 1e-6):
+def test_inverse_nae(nae: InternalLatentAutoEncoder, img_dim: List, eps: float = 1e-6):
     input = torch.rand(4, *img_dim)
     z, deviations, _ = nae.embedding(input)
     returned_core, returned_shell = nae.forward(z, deviations)
@@ -14,7 +14,7 @@ def test_inverse_nae(nae: NormalizingAutoEncoder, img_dim: List, eps: float = 1e
     return torch.allclose(input, returned_input, atol=eps)
 
 
-def test_forward_nae(nae: NormalizingAutoEncoder, img_dim: List, eps: float = 1e-6):
+def test_forward_nae(nae: InternalLatentAutoEncoder, img_dim: List, eps: float = 1e-6):
     input = torch.rand(4, *img_dim)
     z, deviations = nae.partition(input)
     core, shell = nae.forward(z, deviations)
@@ -27,8 +27,8 @@ def test_forward_nae(nae: NormalizingAutoEncoder, img_dim: List, eps: float = 1e
 num_channels = 3
 core_size = 4
 img_dim = [3, 28, 28]
-encoder = ConvolutionalEncoder(32, img_dim, 2)
-decoder = IndependentVarianceDecoder(32, img_dim, 2)
-nae = NormalizingAutoEncoder(encoder, decoder)
+encoder = ConvolutionalEncoderSmall(32, img_dim, 2)
+decoder = IndependentVarianceDecoderSmall(32, img_dim, 2)
+nae = InternalLatentAutoEncoder(encoder, decoder)
 print(f"NAE (inverse -> forward) returns input: {test_inverse_nae(nae, img_dim)}")
 print(f"NAE (forward -> inverse) returns input: {test_forward_nae(nae, img_dim)}")

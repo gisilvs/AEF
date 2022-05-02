@@ -9,7 +9,7 @@ import util
 
 import wandb
 from datasets import get_train_val_dataloaders, get_test_dataloader
-from models.models import get_model
+from models.model_database import get_model
 
 from util import make_averager, dequantize, vae_log_prob, plot_image_grid, bits_per_pixel
 
@@ -17,6 +17,7 @@ from util import make_averager, dequantize, vae_log_prob, plot_image_grid, bits_
 parser = argparse.ArgumentParser(description='NAE Experiments')
 parser.add_argument('--wandb-type', type=str, help='phase1 | phase2 | prototyping | visualization')
 parser.add_argument('--model', type=str, help='nae-center | nae-corner | nae-external | vae | iwae | vae-iaf | maf')
+parser.add_argument('--architecture', type=str, help='big | small (default)')
 parser.add_argument('--dataset', type=str, help='mnist | kmnist | fashionmnist | cifar10')
 parser.add_argument('--latent-dims', type=int, help='size of the latent space')
 parser.add_argument('--runs', type=str, help='run numbers in string format, e.g. "0,1,2,3"')
@@ -42,6 +43,7 @@ assert args.wandb_type in ['phase1', 'phase2', 'prototyping', 'visualization']
 assert args.model in ['nae-center', 'nae-corner', 'vae', 'iwae', 'vae-iaf', 'maf', 'nae-external']
 assert args.dataset in ['mnist', 'kmnist', 'emnist', 'fashionmnist', 'cifar10']
 assert args.decoder in ['fixed', 'independent', 'dependent']
+assert args.architecture in ['small', 'big']
 
 model_name = args.model
 decoder = args.decoder
@@ -54,6 +56,7 @@ use_gpu = True
 validate_every_n_iterations = args.val_iters
 save_every_n_iterations = args.save_iters
 use_glow = args.use_glow == 1
+architecture_size = args.architecture
 
 args.runs = [int(item) for item in args.runs.split(',')]
 
@@ -65,9 +68,12 @@ for run_nr in args.runs:
     else:
         latent_size_str = f"_latent_size_{args.latent_dims}" if model_name in AE_like_models else ""
         decoder_str = f"_decoder_{args.decoder}" if model_name in AE_like_models else ""
-        run_name = f'{args.model}_{args.dataset}_run_{run_nr}{latent_size_str}{decoder_str}'
-    if use_glow:
-        run_name += '_glow'
+        architecture_str = f"_{architecture_size}" if model_name in AE_like_models else ""
+        run_name = f'{args.model}{architecture_str}_{args.dataset}_run_{run_nr}{latent_size_str}{decoder_str}'
+        if use_glow:
+            run_name += '_glow'
+
+
     config = {
         "model": model_name,
         "dataset": dataset,
@@ -77,9 +83,8 @@ for run_nr in args.runs:
         "n_iterations": n_iterations,
         "batch_size": batch_size,
         "seed": args.seed,
+        "architecture_size": architecture_size
     }
-    run = wandb.init(project=args.wandb_type, entity="nae",
-                     name=run_name, config=config)
 
     device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
 
@@ -89,13 +94,17 @@ for run_nr in args.runs:
     test_dataloader = get_test_dataloader(dataset, batch_size)
     n_pixels = np.prod(image_dim)
 
-    model = get_model(model_name, args.decoder, latent_dims, image_dim, alpha, use_glow)
+    #TODO: add core_flow selection for NAE
+    model = get_model(model_name, architecture_size, args.decoder, latent_dims, image_dim, alpha, use_glow)
     optimizer = torch.optim.Adam(params=model.parameters(), lr=learning_rate)
 
     model = model.to(device)
 
     if not os.path.isdir('./checkpoints'):
         os.mkdir('./checkpoints')
+
+    run = wandb.init(project=args.wandb_type, entity="nae",
+                     name=run_name, config=config)
 
     print('Training ...')
 
@@ -105,6 +114,8 @@ for run_nr in args.runs:
     iteration_losses = np.zeros((n_iterations,))
     validation_losses = []
     validation_iterations = []
+
+
 
     for it in range(n_iterations):
         while not stop:

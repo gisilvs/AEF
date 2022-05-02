@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -15,7 +16,7 @@ class InternalLatentAutoEncoder(GaussianAutoEncoder):
                  preprocessing_layers=[], center_mask=True):
         super(InternalLatentAutoEncoder, self).__init__(encoder, decoder)
 
-        self.core_size = self.encoder.latent_dim
+        self.core_size = self.encoder.latent_ndims
         self.image_shape = self.encoder.input_shape
         self.core_flow_pre = core_flow_pre
         self.core_flow_post = core_flow_post
@@ -116,19 +117,55 @@ class InternalLatentAutoEncoder(GaussianAutoEncoder):
 
     def _get_center_mask(self):
         mask = torch.zeros(self.image_shape)
-        if self.core_size == 2:
-            mask[0, 13:15, 13] = 1
-        elif self.core_size == 4:
-            mask[0, 13:15, 13:15] = 1
-        elif self.core_size == 8:
-            mask[0, 12:16, 13:15] = 1
-        elif self.core_size == 16:
-            mask[0, 12:16, 12:16] = 1
-        elif self.core_size == 32:
-            mask[0, 10:18, 12:16] = 1
-        else:
-            print('NOT IMPLEMENTED YET')
-            exit(1)
+        # for compatibility with phase1 models
+        if self.image_shape[0] == 1:
+            if self.core_size == 2:
+                mask[0, 13:15, 13] = 1
+            elif self.core_size == 4:
+                mask[0, 13:15, 13:15] = 1
+            elif self.core_size == 8:
+                mask[0, 12:16, 13:15] = 1
+            elif self.core_size == 16:
+                mask[0, 12:16, 12:16] = 1
+            elif self.core_size == 32:
+                mask[0, 10:18, 12:16] = 1
+            else:
+                print('NOT IMPLEMENTED YET')
+                exit(1)
+            return mask
+        width = self.image_shape[1]
+        height = self.image_shape[2]
+        n_channels = self.image_shape[0]
+        counter = 0
+        row = width // 2 - 1
+        column = height // 2 - 1
+        row_dir = 1
+        col_dir = 0
+        n_steps = 1
+        steps_counter = 0
+        stop = False
+        while 1:
+            for i in range(n_steps):
+                for c in range(n_channels):
+                    mask[c, row, column] = 1
+                    counter += 1
+                    if counter == self.core_size:
+                        stop = True
+                        break
+                if stop:
+                    break
+                row += row_dir
+                column += col_dir
+            if stop:
+                break
+            row_dir_temp = -col_dir
+            col_dir = row_dir
+            row_dir = row_dir_temp
+            steps_counter +=1
+            if steps_counter == 2:
+                steps_counter = 0
+                n_steps+=1
+
         return mask
 
     def _get_corner_mask(self):
@@ -172,14 +209,17 @@ class InternalLatentAutoEncoder(GaussianAutoEncoder):
                 elif row > column:
                     column = row
                     row = base_number_rows
-                    if column > height // 2:
+                    if column >= height // 2:
                         base_number_cols += 1
-                        column = 0
+                        base_number_rows += 1
+                        row = base_number_rows
+                        column = base_number_cols
                 elif column > row:
                     row = column + 1
                     column = base_number_cols
-                    if row > width // 2:
+                    if row >= width // 2:
                         base_number_rows += 1
                         base_number_cols += 1
-                        row = 0
+                        row = base_number_rows
+                        column = base_number_cols
         return mask
