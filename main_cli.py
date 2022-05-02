@@ -79,7 +79,7 @@ for run_nr in args.runs:
     config = {
         "model": model_name,
         "dataset": dataset,
-        "latent_dim": latent_dims,
+        "latent_dims": latent_dims,
         "decoder": args.decoder,
         "learning_rate": learning_rate,
         "n_iterations": n_iterations,
