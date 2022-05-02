@@ -4,17 +4,20 @@ import torch.distributions
 import torchvision
 
 import numpy as np
+from torch.utils.data import DataLoader
 
 from datasets import get_test_dataloader
 import util
 import wandb
-from models.autoencoder_base import AutoEncoder
+from models.autoencoder_base import AutoEncoder, GaussianAutoEncoder
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 
 from util import load_best_model
 
 from datetime import date
+
+import traceback
 
 
 def get_z_values(n_vals: int = 20, border: float = 0.15, latent_dims: int = 2):
@@ -117,6 +120,52 @@ def plot_samples(model: AutoEncoder, img_shape: List = [1, 28, 28], n_rows: int 
     plt.axis("off")
     return fig
 
+def plot_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoader, device: torch.device, img_shape: List = [1, 28, 28], n_rows: int = 4):
+
+    '''
+    Function to plot a grid (size n_rows x n_rows) of reconstructions given a model. Each roww of original samples is
+    followed by a row of reconstructions.
+    '''
+    n_cols = n_rows
+    n_images = n_rows * n_cols
+    arr = torch.zeros((n_images, *img_shape))
+
+    cur_row = 0
+    iter_test_loader = iter(test_loader)
+
+    n_images_filled = 0
+
+    while cur_row < n_rows:
+        image_batch, _ = next(iter_test_loader)
+        batch_idx = 0
+        n_imgs_in_batch_left = image_batch.shape[0]
+        while n_imgs_in_batch_left >= n_cols and cur_row < n_rows:
+            n_imgs_in_batch_left -= n_cols # We use the first n_cols images of the batch
+            row_batch = image_batch[batch_idx:batch_idx+n_cols]
+            arr[n_images_filled:n_images_filled+n_cols] = row_batch
+            batch_idx += n_cols
+            n_images_filled += n_cols
+            row_batch = util.dequantize(row_batch)
+
+            row_batch = row_batch.to(device)
+            with torch.no_grad():
+                z, _ = model.encode(row_batch)
+                reconstruction = model.decode(z)
+                # NAE returns a single value, VAEs will return mu and sigma
+                if isinstance(reconstruction, tuple):
+                    reconstruction = reconstruction[0]
+                reconstruction = reconstruction.cpu().detach()
+            arr[n_images_filled:n_images_filled+n_cols] = reconstruction
+            n_images_filled += n_cols
+            cur_row += 2 # We filled two rows
+
+    fig = plt.figure(figsize=(10, 10), dpi=300)
+    grid_img = torchvision.utils.make_grid(arr, padding=1, pad_value=0., nrow=n_rows)
+    plt.imshow(grid_img.permute(1, 2, 0))
+    plt.axis("off")
+    return fig
+
+
 def generate_visualizations_single_run():
     run_name = 'visualizations_XXX'
     project_name = 'phase1'
@@ -169,9 +218,10 @@ def generate_visualizations_single_run():
 
 
 def generate_visualizations_separately():
-    generate_visualizations(False, True, False, False, 0, custom_name="2D latent space plots")
-    generate_visualizations(False, False, True, False, 0, custom_name="Latent grid plots")
-    generate_visualizations(False, False, False, True, 5, custom_name="Samples")
+    # generate_visualizations(False, True, False, False, 0, custom_name="2D latent space plots")
+    # generate_visualizations(False, False, True, False, 0, custom_name="Latent grid plots")
+    # generate_visualizations(False, False, False, True, 5, custom_name="Samples")
+    generate_visualizations(False, False, False, False, 5, True, 1, custom_name="Reconstructions")
 
 
 def generate_visualizations(do_plot_latent_space_greater_than_2 = False,
@@ -179,6 +229,8 @@ def generate_visualizations(do_plot_latent_space_greater_than_2 = False,
                             do_plot_samples_from_latent_space_grid = True,
                             do_plot_samples = True,
                             n_times_to_sample = 5,
+                            do_plot_reconstructions = True,
+                            n_times_to_reconstruct = 5,
                             custom_name = None): # Number of plots to create for each run):
     '''
     Function to create all plots for all runs of a certain phase. These will all be under a single wandb run.
@@ -189,8 +241,8 @@ def generate_visualizations(do_plot_latent_space_greater_than_2 = False,
     '''
     today = date.today()
     project_name = 'phase1'
-    image_dim = [1, 28, 28]
-    latent_sizes = [2] #[2, 4, 8, 16]
+
+    latent_sizes = [2, 4, 8, 16]
 
     alpha = 1e-6
     use_gpu = True
@@ -203,9 +255,22 @@ def generate_visualizations(do_plot_latent_space_greater_than_2 = False,
 
     run_name = f"{today}_all" if custom_name is None else custom_name
 
+    n_reconstruction_rows = 10
+
+    architecture_size = 'small'
+    prior_flow = 'none'
+    posterior_flow = 'none'
+
     run = wandb.init(project='visualizations', entity="nae", name=run_name)
     for run_nr in range(5):
         for dataset in datasets:
+            if 'mnist' in dataset:
+                image_dim = [1, 28, 28]
+            elif dataset == 'cifar' or dataset == 'cifar10':
+                image_dim = [3, 32, 32]
+            else:
+                print("Unknown dataset. Quitting.")
+                return
             for latent_size in latent_sizes:
                 latent_dims = latent_size
                 for model_name in models:
@@ -227,9 +292,10 @@ def generate_visualizations(do_plot_latent_space_greater_than_2 = False,
 
                     try:
                         model = load_best_model(run, project_name, model_name, experiment_name, device, latent_dims, image_dim,
-                                                alpha, decoder, version='latest')
+                                                alpha, decoder, architecture_size, posterior_flow, prior_flow, version='latest')
                     except Exception as E:
                         print(E)
+                        traceback.print_exc()
                         continue
                     model = model.to(device)
 
@@ -258,6 +324,12 @@ def generate_visualizations(do_plot_latent_space_greater_than_2 = False,
                         for i in range(n_times_to_sample):
                             fig = plot_samples(model, image_dim)
                             wandb.log({f"samples {latent_size} {dataset} {model_name} run {run_nr} plot {i}": wandb.Image(fig)})
+                    if do_plot_reconstructions:
+                        test_loader = get_test_dataloader(dataset, shuffle=True)
+                        for i in range(n_times_to_reconstruct):
+                            fig = plot_reconstructions(model, test_loader, device, image_dim, n_reconstruction_rows)
+                            wandb.log({f"Reconstructions {latent_size} {dataset} {model_name} run {run_nr} plot {i}": wandb.Image(fig)})
+                    plt.close('all')
     run.finish()
 
 
@@ -283,7 +355,7 @@ def generate_loss_over_latentdims():
     #n_recorded = np.zeros((len(latent_sizes)))
     for idx, latent_size in enumerate(latent_sizes):
         runs = api.runs(path="nae/phase1", filters={"config.dataset": dataset,
-                                                    "config.latent_dims": latent_size,
+                                                    "config.latent_dim": latent_size,
                                                     "config.model": model_name,
                                                     "config.decoder": decoder,
                                                     })

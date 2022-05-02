@@ -142,8 +142,8 @@ def download_best_model_and_get_path(run, project_name, experiment_name, version
 
 
 def load_best_model(run, project_name, model_name, experiment_name, device, latent_dims, image_dim, alpha,
-                    decoder, version='latest'):
-    model = get_model(model_name, decoder, latent_dims, image_dim, alpha)
+                    decoder, architecture_size, prior_flow, posterior_flow, version='latest'):
+    model = get_model(model_name, architecture_size, decoder, latent_dims, image_dim, alpha, posterior_flow, prior_flow)
     model.sample(10) # needed as some components such as actnorm need to be initialized
     model.loss_function(model.sample(10)) # needed as some components such as actnorm need to be initialized
 
@@ -159,11 +159,14 @@ def plot_image_grid(samples, cols, padding=2, title=None, hires=False):
     '''
     if hires:
         fig = plt.figure(figsize=(10, 10), dpi=300)
+    else:
+        fig = plt.figure()
     grid_img = torchvision.utils.make_grid(samples, padding=padding, pad_value=1., nrow=cols)
     plt.imshow(grid_img.permute(1, 2, 0))
     plt.axis("off")
     if title:
         plt.suptitle(title)
+    return fig
 
         
 def bits_per_pixel(neg_log_prob, n_pixels, adjust_value=None):

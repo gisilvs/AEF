@@ -11,7 +11,7 @@ from .autoencoder import IndependentVarianceDecoderSmall, LatentDependentDecoder
 from .iwae import IWAE, ExtendedIWAE
 from .nae_internal import InternalLatentAutoEncoder
 from .vae import VAE, ExtendedVAE
-from .vae_iaf import VAEIAF
+from .vae_iaf import VAEIAF, ExtendedVAEIAF
 from .nae_external import ExternalLatentAutoEncoder
 import numpy as np
 
@@ -49,16 +49,16 @@ def get_model(model_name: str, architecture_size: str, decoder: str,
     if architecture_size == 'small':
         vae_channels = 64
         decoder = decoder_dict[decoder]['small'](hidden_channels=vae_channels, output_shape=img_shape,
-                                                 latent_ndims=latent_dims)
+                                                 latent_dims=latent_dims)
         encoder = ConvolutionalEncoderSmall(hidden_channels=vae_channels, input_shape=img_shape,
-                                            latent_ndims=latent_dims)
+                                            latent_dims=latent_dims)
     else:
         if test:
-            decoder = decoder_dict[decoder]['big'](output_shape=img_shape, latent_ndims=latent_dims, size='test')
-            encoder = ConvolutionalEncoderBig(input_shape=img_shape, latent_ndims=latent_dims, size='test')
+            decoder = decoder_dict[decoder]['big'](output_shape=img_shape, latent_dims=latent_dims, size='test')
+            encoder = ConvolutionalEncoderBig(input_shape=img_shape, latent_dims=latent_dims, size='test')
         else:
-            decoder = decoder_dict[decoder]['big'](output_shape=img_shape, latent_ndims=latent_dims)
-            encoder = ConvolutionalEncoderBig(input_shape=img_shape, latent_ndims=latent_dims)
+            decoder = decoder_dict[decoder]['big'](output_shape=img_shape, latent_dims=latent_dims)
+            encoder = ConvolutionalEncoderBig(input_shape=img_shape, latent_dims=latent_dims)
 
     if architecture_size == 'big':
         model_dict = {'nae-center': InternalLatentAutoEncoder,
@@ -66,7 +66,7 @@ def get_model(model_name: str, architecture_size: str, decoder: str,
          'nae-external': ExternalLatentAutoEncoder,
          'vae': ExtendedVAE,
          'iwae': ExtendedIWAE,
-         'vae-iaf': VAEIAF,
+         'vae-iaf': ExtendedVAEIAF,
          }
         # TODO: check right size for flows big/small
         flow_features = 256

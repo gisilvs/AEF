@@ -77,7 +77,7 @@ def get_train_val_dataloaders(dataset: str = 'mnist', batch_size: int = 128, p_v
     return return_tuple
 
 
-def get_test_dataloader(dataset: str = 'mnist', batch_size: int = 128):
+def get_test_dataloader(dataset: str = 'mnist', batch_size: int = 128, shuffle=False):
 
     img_transform = get_transform(dataset)
 
@@ -92,5 +92,5 @@ def get_test_dataloader(dataset: str = 'mnist', batch_size: int = 128):
     elif dataset.lower() == 'cifar10' or dataset.lower() == 'cifar':
         test_dataset = CIFAR10(root='./data/CIFAR', download=True, train=False, transform=img_transform)
 
-    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=shuffle)
     return test_dataloader

@@ -16,7 +16,7 @@ class InternalLatentAutoEncoder(GaussianAutoEncoder):
                  preprocessing_layers=[], center_mask=True):
         super(InternalLatentAutoEncoder, self).__init__(encoder, decoder)
 
-        self.core_size = self.encoder.latent_ndims
+        self.core_size = self.encoder.latent_dim
         self.image_shape = self.encoder.input_shape
         self.core_flow_pre = core_flow_pre
         self.core_flow_post = core_flow_post
