@@ -100,6 +100,7 @@ def plot_latent_space_2d(model: AutoEncoder, test_loader, device, max_val=5):
     plt.xlim((max(cur_min_y, -max_val), min(cur_max_y, max_val)))
     return fig
 
+
 def plot_samples(model: AutoEncoder, img_shape: List = [1, 28, 28], n_rows: int = 10, n_cols: int = 10,
                  batch_size: int = 100, temperature: int = 1):
     '''
@@ -111,7 +112,7 @@ def plot_samples(model: AutoEncoder, img_shape: List = [1, 28, 28], n_rows: int 
     while n_filled < n_samples:
         n_to_sample = min(batch_size, n_samples - n_filled)
         with torch.no_grad():
-            arr[n_filled:n_filled+n_to_sample] = model.sample(n_to_sample, temperature=temperature).cpu().detach()
+            arr[n_filled:n_filled + n_to_sample] = model.sample(n_to_sample, temperature=temperature).cpu().detach()
         n_filled += n_to_sample
 
     fig = plt.figure(figsize=(10, 10), dpi=300)
@@ -120,8 +121,9 @@ def plot_samples(model: AutoEncoder, img_shape: List = [1, 28, 28], n_rows: int 
     plt.axis("off")
     return fig
 
-def plot_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoader, device: torch.device, img_shape: List = [1, 28, 28], n_rows: int = 4):
 
+def plot_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoader, device: torch.device,
+                         img_shape: List = [1, 28, 28], n_rows: int = 4):
     '''
     Function to plot a grid (size n_rows x n_rows) of reconstructions given a model. Each roww of original samples is
     followed by a row of reconstructions.
@@ -140,9 +142,9 @@ def plot_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoader, de
         batch_idx = 0
         n_imgs_in_batch_left = image_batch.shape[0]
         while n_imgs_in_batch_left >= n_cols and cur_row < n_rows:
-            n_imgs_in_batch_left -= n_cols # We use the first n_cols images of the batch
-            row_batch = image_batch[batch_idx:batch_idx+n_cols]
-            arr[n_images_filled:n_images_filled+n_cols] = row_batch
+            n_imgs_in_batch_left -= n_cols  # We use the first n_cols images of the batch
+            row_batch = image_batch[batch_idx:batch_idx + n_cols]
+            arr[n_images_filled:n_images_filled + n_cols] = row_batch
             batch_idx += n_cols
             n_images_filled += n_cols
             row_batch = util.dequantize(row_batch)
@@ -155,9 +157,9 @@ def plot_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoader, de
                 if isinstance(reconstruction, tuple):
                     reconstruction = reconstruction[0]
                 reconstruction = reconstruction.cpu().detach()
-            arr[n_images_filled:n_images_filled+n_cols] = reconstruction
+            arr[n_images_filled:n_images_filled + n_cols] = reconstruction
             n_images_filled += n_cols
-            cur_row += 2 # We filled two rows
+            cur_row += 2  # We filled two rows
 
     fig = plt.figure(figsize=(10, 10), dpi=300)
     grid_img = torchvision.utils.make_grid(arr, padding=1, pad_value=0., nrow=n_rows)
@@ -167,8 +169,8 @@ def plot_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoader, de
 
 
 def plot_noisy_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoader, device: torch.device,
-                         img_shape: List = [1, 28, 28], n_rows: int = 4, noise_level: float = 0.2, hires=False):
-
+                               noise_distribution: torch.distributions.Distribution,
+                               img_shape: List = [1, 28, 28], n_rows: int = 4, hires=False):
     '''
     Function to plot a grid (size n_rows x n_rows) of reconstructions given a model. Each roww of original samples is
     followed by a row of reconstructions.
@@ -187,14 +189,15 @@ def plot_noisy_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoad
         batch_idx = 0
         n_imgs_in_batch_left = image_batch.shape[0]
         while n_imgs_in_batch_left >= n_cols and cur_row < n_rows:
-            n_imgs_in_batch_left -= n_cols # We use the first n_cols images of the batch
-            row_batch = image_batch[batch_idx:batch_idx+n_cols]
-            row_batch += torch.normal(0, 1) * noise_level
+            n_imgs_in_batch_left -= n_cols  # We use the first n_cols images of the batch
+            row_batch = image_batch[batch_idx:batch_idx + n_cols]
+            row_batch += noise_distribution.sample()[:n_rows] # What would be faster: this or reinitializing a
+            # distribution each time?
             row_batch = torch.clamp(row_batch, 0., 1.)
-            arr[n_images_filled:n_images_filled+n_cols] = row_batch
+            arr[n_images_filled:n_images_filled + n_cols] = row_batch
             batch_idx += n_cols
             n_images_filled += n_cols
-            #row_batch = util.dequantize(row_batch)
+            # row_batch = util.dequantize(row_batch)
 
             row_batch = row_batch.to(device)
             with torch.no_grad():
@@ -204,18 +207,83 @@ def plot_noisy_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoad
                 if isinstance(reconstruction, tuple):
                     reconstruction = reconstruction[0]
                 reconstruction = reconstruction.cpu().detach()
-            arr[n_images_filled:n_images_filled+n_cols] = reconstruction
+            arr[n_images_filled:n_images_filled + n_cols] = reconstruction
             n_images_filled += n_cols
-            cur_row += 2 # We filled two rows
+            cur_row += 2  # We filled two rows
     if hires:
         fig = plt.figure(figsize=(10, 10), dpi=300)
     else:
-        fig = plt.figre(figsize=(10, 10), dpi=150)
+        fig = plt.figure(figsize=(10, 10), dpi=150)
     grid_img = torchvision.utils.make_grid(arr, padding=1, pad_value=0., nrow=n_rows)
     plt.imshow(grid_img.permute(1, 2, 0))
     plt.axis("off")
     return fig
 
+def generate_all_noisy_reconstructions():
+    today = date.today()
+    project_name = 'denoising'
+
+    latent_sizes = [2, 4, 8, 16]
+
+    alpha = 1e-6
+    use_gpu = True
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+
+    datasets = ['mnist', 'fashionmnist']
+
+    models = ['nae-center', 'nae-corner', 'nae-external', 'vae', 'vae-iaf', 'iwae']
+
+    run_name = f"denoising_{today}_all"
+
+    architecture_size = 'small'
+    prior_flow = 'none'
+    posterior_flow = 'none'
+
+    n_plots = 5
+    n_reconstruction_rows = 10
+    batch_size = 50
+
+
+    run = wandb.init(project='visualizations', entity="nae", name=run_name)
+    for run_nr in range(5):
+        for dataset in datasets:
+            reconstruction_dataloader = get_test_dataloader(dataset, batch_size, shuffle=True)
+            if 'mnist' in dataset:
+                image_dim = [1, 28, 28]
+            elif dataset == 'cifar' or dataset == 'cifar10':
+                image_dim = [3, 32, 32]
+            else:
+                print("Unknown dataset. Quitting.")
+                return
+            for latent_size in latent_sizes:
+                latent_dims = latent_size
+                for model_name in models:
+
+                    if 'nae' in model_name:
+                        experiment_name = f'{model_name}_{dataset}_run_{run_nr}_latent_size_{latent_size}_decoder_independent'
+                        decoder = 'independent'
+                    else:
+                        experiment_name = f'{model_name}_{dataset}_run_{run_nr}_latent_size_{latent_size}_decoder_fixed'
+                        decoder = 'fixed'
+
+                    try:
+                        model = load_best_model(run, project_name, model_name, experiment_name, device, latent_dims,
+                                                image_dim,
+                                                alpha, decoder, architecture_size, posterior_flow, prior_flow,
+                                                version='latest')
+                    except Exception as E:
+                        print(E)
+                        traceback.print_exc()
+                        continue
+                    model = model.to(device)
+
+                    for i in range(n_plots):
+                        fig = plot_noisy_reconstructions(model, reconstruction_dataloader, device, image_dim, n_reconstruction_rows)
+                        wandb.log({
+                                    f"Reconstructions {latent_size} {dataset} {model_name} run {run_nr} plot {i}": wandb.Image(
+                                        fig)})
+                        plt.close('all')
+    run.finish()
 
 def generate_visualizations_single_run():
     run_name = 'visualizations_XXX'
@@ -255,7 +323,6 @@ def generate_visualizations_single_run():
         fig = plot_latent_space(model, test_loader, device)
         wandb.log({f"latent dims {latent_dims} {dataset} {model_name}": wandb.Image(fig)})
 
-
     # Don't do these for >2d latent space, doesn't add that much since very dependent on TSNE.
     if do_plot_latent_space_greater_than_2:
         test_loader = get_test_dataloader(dataset)
@@ -267,7 +334,6 @@ def generate_visualizations_single_run():
             wandb.log({f"samples {latent_dims} {dataset} {model_name} plot {i}": wandb.Image(fig)})
 
 
-
 def generate_visualizations_separately():
     # generate_visualizations(False, True, False, False, 0, custom_name="2D latent space plots")
     # generate_visualizations(False, False, True, False, 0, custom_name="Latent grid plots")
@@ -275,14 +341,14 @@ def generate_visualizations_separately():
     generate_visualizations(False, False, False, False, 5, True, 1, custom_name="Reconstructions")
 
 
-def generate_visualizations(do_plot_latent_space_greater_than_2 = False,
-                            do_plot_latent_space_equal_to_2 = True,
-                            do_plot_samples_from_latent_space_grid = True,
-                            do_plot_samples = True,
-                            n_times_to_sample = 5,
-                            do_plot_reconstructions = True,
-                            n_times_to_reconstruct = 5,
-                            custom_name = None): # Number of plots to create for each run):
+def generate_visualizations(do_plot_latent_space_greater_than_2=False,
+                            do_plot_latent_space_equal_to_2=True,
+                            do_plot_samples_from_latent_space_grid=True,
+                            do_plot_samples=True,
+                            n_times_to_sample=5,
+                            do_plot_reconstructions=True,
+                            n_times_to_reconstruct=5,
+                            custom_name=None):  # Number of plots to create for each run):
     '''
     Function to create all plots for all runs of a certain phase. These will all be under a single wandb run.
     For latent grid search: latent grid {dataset} {model_name} run {run_nr}
@@ -342,8 +408,10 @@ def generate_visualizations(do_plot_latent_space_greater_than_2 = False,
                         decoder = 'fixed'
 
                     try:
-                        model = load_best_model(run, project_name, model_name, experiment_name, device, latent_dims, image_dim,
-                                                alpha, decoder, architecture_size, posterior_flow, prior_flow, version='latest')
+                        model = load_best_model(run, project_name, model_name, experiment_name, device, latent_dims,
+                                                image_dim,
+                                                alpha, decoder, architecture_size, posterior_flow, prior_flow,
+                                                version='latest')
                     except Exception as E:
                         print(E)
                         traceback.print_exc()
@@ -364,22 +432,28 @@ def generate_visualizations(do_plot_latent_space_greater_than_2 = False,
                         if do_plot_latent_space_equal_to_2:
                             test_loader = get_test_dataloader(dataset)
                             fig = plot_latent_space(model, test_loader, device)
-                            wandb.log({f"latent dims {latent_size} {dataset} {model_name} run {run_nr}": wandb.Image(fig)})
+                            wandb.log(
+                                {f"latent dims {latent_size} {dataset} {model_name} run {run_nr}": wandb.Image(fig)})
                     else:
                         # Don't do these for >2d latent space, doesn't add that much since very dependent on TSNE.
                         if do_plot_latent_space_greater_than_2:
                             test_loader = get_test_dataloader(dataset)
                             fig = plot_latent_space(model, test_loader, device)
-                            wandb.log({f"latent dims {latent_size} {dataset} {model_name} run {run_nr}": wandb.Image(fig)})
+                            wandb.log(
+                                {f"latent dims {latent_size} {dataset} {model_name} run {run_nr}": wandb.Image(fig)})
                     if do_plot_samples:
                         for i in range(n_times_to_sample):
                             fig = plot_samples(model, image_dim)
-                            wandb.log({f"samples {latent_size} {dataset} {model_name} run {run_nr} plot {i}": wandb.Image(fig)})
+                            wandb.log({
+                                          f"samples {latent_size} {dataset} {model_name} run {run_nr} plot {i}": wandb.Image(
+                                              fig)})
                     if do_plot_reconstructions:
                         test_loader = get_test_dataloader(dataset, shuffle=True)
                         for i in range(n_times_to_reconstruct):
                             fig = plot_reconstructions(model, test_loader, device, image_dim, n_reconstruction_rows)
-                            wandb.log({f"Reconstructions {latent_size} {dataset} {model_name} run {run_nr} plot {i}": wandb.Image(fig)})
+                            wandb.log({
+                                          f"Reconstructions {latent_size} {dataset} {model_name} run {run_nr} plot {i}": wandb.Image(
+                                              fig)})
                     plt.close('all')
     run.finish()
 
@@ -403,7 +477,7 @@ def generate_loss_over_latentdims():
     nae_type = 'corner'
 
     scores = np.zeros((n_runs, len(latent_sizes)))
-    #n_recorded = np.zeros((len(latent_sizes)))
+    # n_recorded = np.zeros((len(latent_sizes)))
     for idx, latent_size in enumerate(latent_sizes):
         runs = api.runs(path="nae/phase1", filters={"config.dataset": dataset,
                                                     "config.latent_dim": latent_size,
@@ -420,12 +494,12 @@ def generate_loss_over_latentdims():
             scores[n_recorded, idx] = run.summary['test_loss']
             n_recorded += 1
     scores[scores == np.inf] = np.nan
-    best_scores = -1 * np.nanmin(scores, axis=0) # TODO: change to mean once inf/positive runs are gone
+    best_scores = -1 * np.nanmin(scores, axis=0)  # TODO: change to mean once inf/positive runs are gone
     fig = plt.figure(dpi=300)
     plt.scatter(np.arange(len(latent_sizes)), best_scores)
     plt.ylabel('Log-likelihood')
     plt.xlabel('Dimensionality of latent space')
-    plt.xticks(np.arange(len(latent_sizes)), labels=[f'$2^{i+1}$' for i in range(len(latent_sizes))])
+    plt.xticks(np.arange(len(latent_sizes)), labels=[f'$2^{i + 1}$' for i in range(len(latent_sizes))])
 
     # GET MAF likelihood
     scores_maf = np.zeros((n_runs,))
@@ -446,4 +520,4 @@ def generate_loss_over_latentdims():
 
 if __name__ == "__main__":
     generate_visualizations_separately()
-    #generate_loss_over_latentdims()
+    # generate_loss_over_latentdims()
