@@ -194,7 +194,7 @@ def generate_visualizations_single_run():
         z_vals = z_vals.to(device)
 
         with torch.no_grad():
-            output = model.sample(z=z_vals).detach().cpu()
+            output = model.decode(z=z_vals).detach().cpu()
 
         util.plot_image_grid(output, cols=latent_grid_size, padding=0, hires=True)
         image_dict = {f'latent grid {dataset} {model_name}': plt}
@@ -305,7 +305,7 @@ def generate_visualizations(do_plot_latent_space_greater_than_2 = False,
                             z_vals = z_vals.to(device)
 
                             with torch.no_grad():
-                                output = model.sample(z=z_vals).detach().cpu()
+                                output = model.decode(z_vals)[0].detach().cpu()
 
                             util.plot_image_grid(output, cols=latent_grid_size, padding=0, hires=True)
                             image_dict = {f'latent grid {dataset} {model_name} run {run_nr}': plt}
