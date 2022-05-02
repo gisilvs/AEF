@@ -46,10 +46,10 @@ class GaussianAutoEncoder(AutoEncoder):
     def decode(self, z: Tensor):
         return self.decoder(z)
 
-    def sample(self, num_samples: int = 1, temperature: int = 1, z: Tensor = None):
+    def sample(self, num_samples: int = 1, temperature: int = 1):
         self.set_device()
-        if z is None:
-            z = self.prior.sample((num_samples, )) * temperature
+
+        z = self.prior.sample((num_samples, )) * temperature
         return self.decode(z)[0]
 
     def set_device(self):
@@ -66,4 +66,10 @@ class ExtendedGaussianAutoEncoder(GaussianAutoEncoder):
         super(ExtendedGaussianAutoEncoder, self).__init__(encoder, decoder)
         self.posterior_bijector = posterior_bijector
         self.prior_bijector = prior_bijector
+
+    def sample(self, num_samples: int = 1, temperature: float = 1):
+        self.set_device()
+        z0 = self.prior.sample((num_samples,)) * temperature
+        z, _ = self.prior_flow.forward(z0)
+        return self.decode(z)[0]
         
