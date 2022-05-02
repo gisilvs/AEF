@@ -94,30 +94,5 @@ def approximate_log_likelihood():
     print(log_prob)
 
 
-
-
 if __name__ == '__main__':
     approximate_log_likelihood()
-# api = wandb.Api(timeout=19)
-#
-# project_name = 'phase1'
-# image_dim = [1, 28, 28]
-#
-# alpha = 1e-6
-# use_center_pixels = False
-# use_gpu = False
-#
-# dataset = 'mnist'
-# model_name = 'nae'
-# latent_sizes = [2, 4, 8, 16, 32]
-# n_runs = 5
-# decoder = 'independent'
-# nae_type = 'corner'
-#
-# runs = api.runs(path="nae/phase1")
-# for run in runs:
-#     if 'test_bpp_adjusted' not in run.summary.keys():
-#         continue
-#
-#     if float(run.summary['test_loss']) > -1000 and 'nae' in run.name:
-#         print(run.name, run.summary['test_loss'])
