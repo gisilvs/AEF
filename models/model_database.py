@@ -72,8 +72,8 @@ def get_model(model_name: str, architecture_size: str, decoder: str,
          'vae-iaf': ExtendedVAEIAF,
          }
         # TODO: check right size for flows big/small
-        flow_features = 256
-        num_layers = 4
+        flow_features = 512
+        num_layers = 8
         posterior_flow, prior_flow = get_flows(latent_dims, model_name, posterior_flow_name, prior_flow_name,
                                                flow_features, num_layers)
 
