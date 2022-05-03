@@ -161,7 +161,7 @@ def plot_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoader, de
             n_images_filled += n_cols
             cur_row += 2  # We filled two rows
 
-    fig = plt.figure(figsize=(10, 10), dpi=300)
+    fig = plt.figure(figsize=(10, 10))
     grid_img = torchvision.utils.make_grid(arr, padding=1, pad_value=0., nrow=n_rows)
     plt.imshow(grid_img.permute(1, 2, 0))
     plt.axis("off")
