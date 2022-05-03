@@ -15,6 +15,7 @@ from visualize import plot_reconstructions, plot_noisy_reconstructions
 
 parser = argparse.ArgumentParser(description='NAE Experiments')
 
+
 parser.add_argument('--model', type=str, help='ae | nae-center | nae-corner | nae-external | vae | iwae | vae-iaf | maf')
 parser.add_argument('--dataset', type=str, help='mnist | kmnist | fashionmnist | cifar10')
 parser.add_argument('--latent-dims', type=int, help='size of the latent space')
@@ -205,7 +206,7 @@ for run_nr in args.runs:
                                 validation_batch_reconstructed, _ = decode_output
                             else:
                                 validation_batch_reconstructed = decode_output
-                            
+
                             rce = torch.mean(F.mse_loss(validation_batch_reconstructed, validation_batch, reduction='none'))
                             val_reconstruction_averager(rce.item())
                         validation_reconstruction_errors.append(val_reconstruction_averager(None))
@@ -260,6 +261,7 @@ for run_nr in args.runs:
     with torch.no_grad():
 
         for test_batch, _ in test_dataloader:
+
             test_batch = dequantize(test_batch)
             test_batch = test_batch.to(device)
             if model_name == 'maf':
@@ -283,11 +285,17 @@ for run_nr in args.runs:
             test_batch = test_batch.to(device)
             test_batch_noisy = test_batch_noisy.to(device)
 
-            z, _ = model.encode(test_batch_noisy)
-            if model_name in flow_like_models:
-                test_batch_reconstructed = model.decode(z)
+            encode_output = model.encode(test_batch_noisy)
+            if isinstance(encode_output, tuple):
+                z, _ = encode_output
             else:
-                test_batch_reconstructed, _ = model.decode(z)
+                z = encode_output
+            decode_output = model.decode(z)
+            if isinstance(decode_output, tuple):
+                test_batch_reconstructed, _ = decode_output
+            else:
+                test_batch_reconstructed = decode_output
+            
             rce = torch.mean(F.mse_loss(test_batch_reconstructed, test_batch, reduction='none'))
             val_reconstruction_averager(rce.item())
         test_rce = test_reconstruction_averager(None)
