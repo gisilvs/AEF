@@ -51,7 +51,7 @@ def plot_latent_space(model, test_loader, device):
     embedded = TSNE(learning_rate='auto', init='pca', perplexity=50).fit_transform(
         arr)  # TSNE(learning_rate='auto', perplexity=50, n_iter=2000, init='pca').fit_transform(arr)
 
-    fig = plt.figure(figsize=(10, 10), dpi=150)
+    fig = plt.figure(figsize=(10, 10))
     plt.style.use('seaborn')
     scat = plt.scatter(embedded[:, 0], embedded[:, 1], s=10, c=labels, cmap=plt.get_cmap('tab10'))
     cb = plt.colorbar(scat, spacing='proportional')
@@ -90,7 +90,7 @@ def plot_latent_space_2d(model: AutoEncoder, test_loader, device, max_val=5):
         arr[n_added:n_added + len(image_batch), 2] = image_labels
         n_added += len(image_batch)
 
-    fig = plt.figure(figsize=(10, 10), dpi=150)
+    fig = plt.figure(figsize=(10, 10))
     plt.style.use('seaborn')
     scat = plt.scatter(arr[:, 0], arr[:, 1], s=10, c=arr[:, 2], cmap=plt.get_cmap('tab10'))
     cb = plt.colorbar(scat, spacing='uniform')
@@ -115,7 +115,7 @@ def plot_samples(model: AutoEncoder, img_shape: List = [1, 28, 28], n_rows: int 
             arr[n_filled:n_filled + n_to_sample] = model.sample(n_to_sample, temperature=temperature).cpu().detach()
         n_filled += n_to_sample
 
-    fig = plt.figure(figsize=(10, 10), dpi=300)
+    fig = plt.figure(figsize=(10, 10))
     grid_img = torchvision.utils.make_grid(arr, padding=1, pad_value=0., nrow=n_rows)
     plt.imshow(grid_img.permute(1, 2, 0))
     plt.axis("off")
@@ -236,9 +236,9 @@ def plot_noisy_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoad
 
             cur_row += 3  # We filled three rows
     if hires:
-        fig = plt.figure(figsize=(10, 10), dpi=300)
+        fig = plt.figure(figsize=(10, 10))
     else:
-        fig = plt.figure(figsize=(10, 10), dpi=150)
+        fig = plt.figure(figsize=(10, 10))
     grid_img = torchvision.utils.make_grid(arr, padding=1, pad_value=0., nrow=n_rows)
     plt.imshow(grid_img.permute(1, 2, 0))
     plt.axis("off")
@@ -520,7 +520,7 @@ def generate_loss_over_latentdims():
             n_recorded += 1
     scores[scores == np.inf] = np.nan
     best_scores = -1 * np.nanmin(scores, axis=0)  # TODO: change to mean once inf/positive runs are gone
-    fig = plt.figure(dpi=300)
+    fig = plt.figure()
     plt.scatter(np.arange(len(latent_sizes)), best_scores)
     plt.ylabel('Log-likelihood')
     plt.xlabel('Dimensionality of latent space')
