@@ -40,12 +40,12 @@ assert args.wandb_type in ['phase1', 'phase2', 'prototyping', 'visualization']
 assert args.model in ['nae-center', 'nae-corner', 'vae', 'iwae', 'vae-iaf', 'maf', 'nae-external']
 assert args.post_flow in ['none', 'maf', 'iaf']
 assert args.prior_flow in ['none', 'maf', 'iaf']
-assert args.dataset in ['mnist', 'kmnist', 'emnist', 'fashionmnist', 'cifar10', 'cifar']
+assert args.dataset in ['mnist', 'kmnist', 'emnist', 'fashionmnist', 'cifar10', 'cifar', 'imagenet']
 assert args.decoder in ['fixed', 'independent', 'dependent']
 assert args.architecture in ['small', 'big']
 
 if args.architecture == 'big':
-    assert args.dataset in ['cifar', 'cifar10']
+    assert args.dataset in ['cifar', 'cifar10', 'imagenet']
 
 model_name = args.model
 decoder = args.decoder
@@ -64,7 +64,9 @@ prior_flow = args.prior_flow
 args.runs = [int(item) for item in args.runs.split(',')]
 
 AE_like_models = ['nae-center', 'nae-corner', 'nae-external', 'vae', 'iwae', 'vae-iaf']
-
+dirs = os.listdir('.')
+for d in dirs:
+    print(d)
 for run_nr in args.runs:
     if args.custom_name is not None:
         run_name = args.custom_name
@@ -72,8 +74,8 @@ for run_nr in args.runs:
         latent_size_str = f"_latent_size_{args.latent_dims}" if model_name in AE_like_models else ""
         decoder_str = f"_decoder_{args.decoder}" if model_name in AE_like_models else ""
         architecture_str = f"_{architecture_size}" if model_name in AE_like_models else ""
-        post_flow_str = f"_post_{posterior_flow}" if posterior_flow is not 'none' else ""
-        prior_flow_str = f"_prior_{prior_flow}" if prior_flow is not 'none' else ""
+        post_flow_str = f"_post_{posterior_flow}" if posterior_flow != 'none' else ""
+        prior_flow_str = f"_prior_{prior_flow}" if prior_flow != 'none' else ""
         run_name = f'{args.model}{architecture_str}_{args.dataset}_run_{run_nr}{latent_size_str}{decoder_str}{post_flow_str}{prior_flow_str}'
 
     config = {
@@ -93,6 +95,8 @@ for run_nr in args.runs:
     device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
 
     p_validation = 0.1
+    if dataset == 'imagenet':
+        p_validation = 0.01
     train_dataloader, validation_dataloader, image_dim, alpha = get_train_val_dataloaders(dataset, batch_size,
                                                                                           p_validation, seed=args.seed)
     reconstruction_dataloader = get_test_dataloader(dataset, batch_size, shuffle=True)
@@ -140,7 +144,7 @@ for run_nr in args.runs:
 
                 optimizer.zero_grad()
                 loss.backward()
-
+                torch.nn.utils.clip_grad_norm(model.parameters(), max_norm=200.)
                 optimizer.step()
 
                 # We validate first iteration, every n iterations, and at the last iteration
