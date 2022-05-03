@@ -4,6 +4,7 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import torch.nn.functional as F
 
 import wandb
 from datasets import get_train_val_dataloaders, get_test_dataloader
@@ -14,7 +15,7 @@ from visualize import plot_reconstructions, plot_noisy_reconstructions
 
 parser = argparse.ArgumentParser(description='NAE Experiments')
 
-parser.add_argument('--model', type=str, help='nae-center | nae-corner | nae-external | vae | iwae | vae-iaf | maf')
+parser.add_argument('--model', type=str, help='ae | nae-center | nae-corner | nae-external | vae | iwae | vae-iaf | maf')
 parser.add_argument('--dataset', type=str, help='mnist | kmnist | fashionmnist | cifar10')
 parser.add_argument('--latent-dims', type=int, help='size of the latent space')
 parser.add_argument('--noise-level', type=float, default=0.25,
@@ -34,7 +35,7 @@ parser.add_argument('--batch-size', type=int, default=128,
 
 args = parser.parse_args()
 
-assert args.model in ['nae-center', 'nae-corner', 'vae', 'iwae', 'vae-iaf', 'nae-external'] # 'maf', 
+assert args.model in ['ae', 'nae-center', 'nae-corner', 'vae', 'iwae', 'vae-iaf', 'nae-external'] # 'maf',
 assert args.dataset in ['mnist', 'kmnist', 'emnist', 'fashionmnist', 'cifar10', 'cifar']
 assert args.decoder in ['fixed', 'independent', 'dependent']
 
@@ -52,7 +53,7 @@ noise_level = args.noise_level
 
 args.runs = [int(item) for item in args.runs.split(',')]
 
-AE_like_models = ['nae-center', 'nae-corner', 'nae-external', 'vae', 'iwae', 'vae-iaf']
+AE_like_models = ['nae-center', 'nae-corner', 'nae-external', 'vae', 'iwae', 'vae-iaf', 'ae']
 flow_like_models = ['nae-center', 'nae-corner', 'nae-external', 'maf']
 
 for run_nr in args.runs:
@@ -105,6 +106,7 @@ for run_nr in args.runs:
     iteration_losses = np.zeros((n_iterations,))
     validation_losses = []
     validation_iterations = []
+    validation_reconstruction_errors = []
 
     noise_distribution = torch.distributions.normal.Normal(torch.zeros(batch_size, *image_dim),
                                                            noise_level * torch.ones(batch_size, *image_dim))
@@ -112,16 +114,13 @@ for run_nr in args.runs:
     for it in range(n_iterations):
         while not stop:
             for image_batch, _ in train_dataloader:
+
                 image_batch = dequantize(image_batch)
                 image_batch_noisy = torch.clone(image_batch).detach()
                 image_batch_noisy += noise_distribution.sample()[:image_batch.shape[0]]
                 image_batch_noisy = torch.clamp(image_batch_noisy, 0., 1.)
                 image_batch = image_batch.to(device)
                 image_batch_noisy = image_batch_noisy.to(device)
-
-                if model_name == 'maf':
-                    image_batch = image_batch.view(-1, torch.prod(torch.tensor(image_dim)))
-                    image_batch_noisy = image_batch_noisy.view(-1, torch.prod(torch.tensor(image_dim)))
 
                 if model_name in flow_like_models:
                     loss = torch.mean(model.loss_function(image_batch_noisy))
@@ -144,24 +143,34 @@ for run_nr in args.runs:
                     with torch.no_grad():
                         val_loss_averager = make_averager()
 
-                        samples = model.sample(16)
-                        samples = samples.cpu().detach()
-                        if model_name == 'maf':
-                            samples = samples.view(-1, image_dim[0], image_dim[1], image_dim[2])
-                        # plot_image_grid(samples, cols=4)
-                        sample_fig = plot_image_grid(samples, cols=4)
-                        image_dict = {'samples': sample_fig}
+
+                        if model_name != 'ae':
+                            samples = model.sample(16)
+                            samples = samples.cpu().detach()
+                            if model_name == 'maf':
+                                samples = samples.view(-1, image_dim[0], image_dim[1], image_dim[2])
+                            # plot_image_grid(samples, cols=4)
+                            sample_fig = plot_image_grid(samples, cols=4)
+                            image_dict = {'samples': sample_fig}
+                        else:
+                            image_dict = {}
+                        training_reconstruction_fig = plot_noisy_reconstructions(model, reconstruction_dataloader,
+                                                                                     device,
+                                                                                     noise_distribution, image_dim,
+                                                                                     n_rows=6,
+                                                                                     image_batch=image_batch)
+                        image_dict = {'training_reconstructions': training_reconstruction_fig}
 
                         #if model_name != 'maf':
                         reconstruction_fig = plot_noisy_reconstructions(model, reconstruction_dataloader, device,
-                                                                            noise_distribution, image_dim, n_rows=4)
-                        reconstruction_dict = {'reconstructions': reconstruction_fig}
+                                                                            noise_distribution, image_dim, n_rows=6)
+                        reconstruction_dict = {'test_reconstructions': reconstruction_fig}
+
 
                         for validation_batch, _ in validation_dataloader:
                             validation_batch = dequantize(validation_batch)
                             validation_batch = validation_batch.to(device)
-                            if model_name == 'maf':
-                                validation_batch = validation_batch.view(-1, torch.prod(torch.tensor(image_dim)))
+
                             if model_name in flow_like_models:
                                 loss = torch.mean(model.loss_function(validation_batch))
                             else:
@@ -173,11 +182,41 @@ for run_nr in args.runs:
                         val_metrics = {
                             'val_loss': validation_losses[-1]
                         }
+
+                        # Reconstruction error on validation set
+                        val_reconstruction_averager = make_averager()
+                        # Not necessary for AE (since loss is reconstruction error, but we do it anyway)
+                        for validation_batch, _ in validation_dataloader:
+                            validation_batch = dequantize(validation_batch)
+                            validation_batch_noisy = torch.clone(validation_batch).detach()
+                            validation_batch_noisy += noise_distribution.sample()[:validation_batch.shape[0]]
+                            validation_batch_noisy = torch.clamp(validation_batch_noisy, 0., 1.)
+                            validation_batch = validation_batch.to(device)
+                            validation_batch_noisy = validation_batch_noisy.to(device)
+
+
+                            encode_output = model.encode(validation_batch_noisy)
+                            if isinstance(encode_output, tuple):
+                                z, _ = encode_output
+                            else:
+                                z = encode_output
+                            decode_output = model.decode(z)
+                            if isinstance(decode_output, tuple):
+                                validation_batch_reconstructed, _ = decode_output
+                            else:
+                                validation_batch_reconstructed = decode_output
+                            
+                            rce = torch.mean(F.mse_loss(validation_batch_reconstructed, validation_batch, reduction='none'))
+                            val_reconstruction_averager(rce.item())
+                        validation_reconstruction_errors.append(val_reconstruction_averager(None))
+
+                        val_metrics['val_rce'] = validation_reconstruction_errors[-1]
+
                         if n_iterations_done == 0:
-                            best_loss = validation_losses[-1]
+                            best_loss = validation_reconstruction_errors[-1]
                             best_it = n_iterations_done
-                        elif validation_losses[-1] < best_loss:
-                            best_loss = validation_losses[-1]
+                        elif validation_reconstruction_errors[-1] < best_loss:
+                            best_loss = validation_reconstruction_errors[-1]
                             torch.save(model.state_dict(), f'checkpoints/{run_name}_best.pt')
                             best_it = n_iterations_done
                         validation_iterations.append(n_iterations_done)
@@ -219,6 +258,7 @@ for run_nr in args.runs:
     model.eval()
     test_loss_averager = make_averager()
     with torch.no_grad():
+
         for test_batch, _ in test_dataloader:
             test_batch = dequantize(test_batch)
             test_batch = test_batch.to(device)
@@ -231,6 +271,27 @@ for run_nr in args.runs:
 
             test_loss_averager(loss.item())
         test_loss = test_loss_averager(None)
+
+        # Test RCE
+        torch.manual_seed(3)
+        test_reconstruction_averager = make_averager()
+        for test_batch, _ in test_dataloader:
+            test_batch = dequantize(test_batch)
+            test_batch_noisy = torch.clone(test_batch).detach()
+            test_batch_noisy += noise_distribution.sample()[:test_batch.shape[0]]
+            test_batch_noisy = torch.clamp(test_batch_noisy, 0., 1.)
+            test_batch = test_batch.to(device)
+            test_batch_noisy = test_batch_noisy.to(device)
+
+            z, _ = model.encode(test_batch_noisy)
+            if model_name in flow_like_models:
+                test_batch_reconstructed = model.decode(z)
+            else:
+                test_batch_reconstructed, _ = model.decode(z)
+            rce = torch.mean(F.mse_loss(test_batch_reconstructed, test_batch, reduction='none'))
+            val_reconstruction_averager(rce.item())
+        test_rce = test_reconstruction_averager(None)
+        wandb.summary['test_rce'] = test_rce
 
         # Approximate log likelihood if model in VAE family
         if model_name in ['vae', 'iwae', 'vae-iaf']:
@@ -257,14 +318,20 @@ for run_nr in args.runs:
         wandb.summary['test_bpp'] = bpp_test
         wandb.summary['test_bpp_adjusted'] = bpp_test_adjusted
 
+        if model_name != 'ae':
+            for i in range(5):
+                samples = model.sample(16)
+                samples = samples.cpu().detach()
+                if model_name == 'maf':
+                    samples = samples.view(-1, image_dim[0], image_dim[1], image_dim[2])
+                fig = plot_image_grid(samples, cols=4)
+                image_dict = {'final_samples': fig}
+                run.log(image_dict)
         for i in range(5):
-            samples = model.sample(16)
-            samples = samples.cpu().detach()
-            if model_name == 'maf':
-                samples = samples.view(-1, image_dim[0], image_dim[1], image_dim[2])
-            fig = plot_image_grid(samples, cols=4)
-            image_dict = {'final_samples': fig}
-            run.log(image_dict)
+            reconstruction_fig = plot_noisy_reconstructions(model, reconstruction_dataloader, device,
+                                                            noise_distribution, image_dim, n_rows=9)
+            reconstruction_dict = {'final_reconstructions_test': reconstruction_fig}
+            run.log(reconstruction_dict)
 
     artifact_best = wandb.Artifact(f'{run_name}_best', type='model')
     artifact_best.add_file(f'checkpoints/{run_name}_best.pt')

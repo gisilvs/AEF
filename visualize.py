@@ -168,12 +168,15 @@ def plot_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoader, de
     return fig
 
 
+
+
 def plot_noisy_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoader, device: torch.device,
                                noise_distribution: torch.distributions.Distribution,
-                               img_shape: List = [1, 28, 28], n_rows: int = 4, hires=False):
+                               img_shape: List = [1, 28, 28], n_rows: int = 6, hires=False,
+                               image_batch=None):
     '''
-    Function to plot a grid (size n_rows x n_rows) of reconstructions given a model. Each roww of original samples is
-    followed by a row of reconstructions.
+    Function to plot a grid (size n_rows x n_rows) of reconstructions given a model. Following row structure:
+    1) image with noise 2) denoised image 3) original image
     '''
     n_cols = n_rows
     n_images = n_rows * n_cols
@@ -184,32 +187,54 @@ def plot_noisy_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoad
 
     n_images_filled = 0
 
+    noise_to_device = image_batch is not None
+
     while cur_row < n_rows:
-        image_batch, _ = next(iter_test_loader)
+        if image_batch is None:
+            image_batch, _ = next(iter_test_loader)
+
         batch_idx = 0
         n_imgs_in_batch_left = image_batch.shape[0]
         while n_imgs_in_batch_left >= n_cols and cur_row < n_rows:
             n_imgs_in_batch_left -= n_cols  # We use the first n_cols images of the batch
+
             row_batch = image_batch[batch_idx:batch_idx + n_cols]
-            row_batch += noise_distribution.sample()[:n_rows] # What would be faster: this or reinitializing a
-            # distribution each time?
-            row_batch = torch.clamp(row_batch, 0., 1.)
-            arr[n_images_filled:n_images_filled + n_cols] = row_batch
             batch_idx += n_cols
+
+            noisy_batch = torch.clone(row_batch).detach()
+            noise = noise_distribution.sample()[:n_rows] # What would be faster: this or reinitializing a
+            # distribution of proper size each time?
+            if noise_to_device:
+                noise = noise.to(device)
+            noisy_batch += noise
+            noisy_batch = torch.clamp(noisy_batch, 0., 1.)
+            # Fill noisy images
+            arr[n_images_filled:n_images_filled + n_cols] = noisy_batch
+
             n_images_filled += n_cols
             # row_batch = util.dequantize(row_batch)
 
-            row_batch = row_batch.to(device)
+            noisy_batch = noisy_batch.to(device)
             with torch.no_grad():
-                z, _ = model.encode(row_batch)
+                encode_output = model.encode(noisy_batch)
+                if isinstance(encode_output, tuple):
+                    z, _ = encode_output
+                else:
+                    z = encode_output
                 reconstruction = model.decode(z)
                 # NAE returns a single value, VAEs will return mu and sigma
                 if isinstance(reconstruction, tuple):
                     reconstruction = reconstruction[0]
                 reconstruction = reconstruction.cpu().detach()
+            # Fill reconstructions
             arr[n_images_filled:n_images_filled + n_cols] = reconstruction
             n_images_filled += n_cols
-            cur_row += 2  # We filled two rows
+
+            # Fill originals
+            arr[n_images_filled:n_images_filled + n_cols] = row_batch
+            n_images_filled += n_cols
+
+            cur_row += 3  # We filled three rows
     if hires:
         fig = plt.figure(figsize=(10, 10), dpi=300)
     else:
