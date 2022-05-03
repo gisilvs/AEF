@@ -295,7 +295,7 @@ for run_nr in args.runs:
                 test_batch_reconstructed, _ = decode_output
             else:
                 test_batch_reconstructed = decode_output
-            
+
             rce = torch.mean(F.mse_loss(test_batch_reconstructed, test_batch, reduction='none'))
             val_reconstruction_averager(rce.item())
         test_rce = test_reconstruction_averager(None)
