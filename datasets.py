@@ -1,8 +1,37 @@
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 from torchvision.datasets import MNIST, EMNIST, FashionMNIST, CIFAR10, KMNIST
+import numpy as np
+import os
 
+class ImageNet(Dataset):
+    def __init__(self, path, transform=None):
+        """
+        Args:
+            csv_file (string): Path to the csv file with annotations.
+            root_dir (string): Directory with all the images.
+            transform (callable, optional): Optional transform to be applied
+                on a sample.
+        """
+        self.path = path
+        self.data = os.listdir(path)
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        sample = np.load(f'{self.path}/{self.data[idx]}')
+        image, label = sample['image'], sample['label']
+
+        if self.transform:
+            image = self.transform(image)
+
+        return image, label
 
 def get_transform(dataset: str = 'mnist'):
     if dataset == 'cifar10':
@@ -23,7 +52,7 @@ def get_list_of_datasets():
 
 
 def get_train_val_dataloaders(dataset: str = 'mnist', batch_size: int = 128, p_validation: float = 0.1, seed: int = 3,
-                              return_img_dim: bool = True, return_alpha: bool = True):
+                              return_img_dim: bool = True, return_alpha: bool = True, data_dir=""):
     '''
     Returns a train dataloader and a validation dataloader if p_validation > 0.
     :param dataset: dataset to retrieve. Either "mnist", "emnist" or "fashionmnist".
@@ -55,6 +84,9 @@ def get_train_val_dataloaders(dataset: str = 'mnist', batch_size: int = 128, p_v
     elif dataset.lower() == 'cifar10' or dataset.lower() == 'cifar':
         train_dataset = CIFAR10(root='./data/CIFAR', download=True, train=True, transform=img_transform)
         alpha = .05
+    elif dataset.lower() == 'imagenet':
+        train_dataset=ImageNet(f'{data_dir}/train', transform=img_transform)
+        alpha = .05
 
     if p_validation > 0:
         size_validation = round(p_validation * len(train_dataset))
@@ -77,7 +109,7 @@ def get_train_val_dataloaders(dataset: str = 'mnist', batch_size: int = 128, p_v
     return return_tuple
 
 
-def get_test_dataloader(dataset: str = 'mnist', batch_size: int = 128, shuffle=False):
+def get_test_dataloader(dataset: str = 'mnist', batch_size: int = 128, shuffle=False, data_dir=""):
 
     img_transform = get_transform(dataset)
 
@@ -91,6 +123,8 @@ def get_test_dataloader(dataset: str = 'mnist', batch_size: int = 128, shuffle=F
         test_dataset = FashionMNIST(root='./data/FashionMNIST', download=True, train=False, transform=img_transform)
     elif dataset.lower() == 'cifar10' or dataset.lower() == 'cifar':
         test_dataset = CIFAR10(root='./data/CIFAR', download=True, train=False, transform=img_transform)
+    elif dataset.lower() == 'imagenet':
+        test_dataset = ImageNet(f'{data_dir}/test', transform=img_transform)
 
     test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=shuffle)
     return test_dataloader
