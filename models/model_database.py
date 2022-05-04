@@ -8,6 +8,8 @@ from bijectors.sigmoid import Sigmoid
 from flows.maf import MaskedAutoregressiveFlow
 from .autoencoder import IndependentVarianceDecoderSmall, LatentDependentDecoderSmall, \
     FixedVarianceDecoderSmall, ConvolutionalEncoderSmall
+from .denoising_ae import DeterministicConvolutionalEncoderSmall, DeterministicConvolutionalDecoderSmall, \
+    DenoisingAutoEncoder
 from .iwae import IWAE, ExtendedIWAE, DenoisingIWAE
 from .nae_internal import InternalLatentAutoEncoder
 
@@ -70,8 +72,8 @@ def get_model(model_name: str, architecture_size: str, decoder: str,
          'vae-iaf': ExtendedVAEIAF,
          }
         # TODO: check right size for flows big/small
-        flow_features = 256
-        num_layers = 4
+        flow_features = 512
+        num_layers = 8
         posterior_flow, prior_flow = get_flows(latent_dims, model_name, posterior_flow_name, prior_flow_name,
                                                flow_features, num_layers)
 
@@ -186,7 +188,13 @@ def get_model_denoising(model_name: str, decoder: str, latent_dims: int, img_sha
     preprocessing_layers = [InverseTransform(AffineTransform(alpha, 1 - 2 * alpha)), Sigmoid(),
                             ActNorm(img_shape[0])]
 
-    if model_name == 'maf':
+    if model_name == 'ae':
+        vae_channels = 64
+        encoder = DeterministicConvolutionalEncoderSmall(vae_channels, input_shape=img_shape, latent_dims=latent_dims)
+        decoder = DeterministicConvolutionalDecoderSmall(vae_channels, output_shape=img_shape, latent_dims=latent_dims)
+        model = DenoisingAutoEncoder(encoder, decoder)
+        return model
+    elif model_name == 'maf':
 
 
         flow_features = 256

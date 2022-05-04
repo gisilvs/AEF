@@ -51,7 +51,7 @@ def plot_latent_space(model, test_loader, device):
     embedded = TSNE(learning_rate='auto', init='pca', perplexity=50).fit_transform(
         arr)  # TSNE(learning_rate='auto', perplexity=50, n_iter=2000, init='pca').fit_transform(arr)
 
-    fig = plt.figure(figsize=(10, 10), dpi=150)
+    fig = plt.figure(figsize=(10, 10))
     plt.style.use('seaborn')
     scat = plt.scatter(embedded[:, 0], embedded[:, 1], s=10, c=labels, cmap=plt.get_cmap('tab10'))
     cb = plt.colorbar(scat, spacing='proportional')
@@ -90,7 +90,7 @@ def plot_latent_space_2d(model: AutoEncoder, test_loader, device, max_val=5):
         arr[n_added:n_added + len(image_batch), 2] = image_labels
         n_added += len(image_batch)
 
-    fig = plt.figure(figsize=(10, 10), dpi=150)
+    fig = plt.figure(figsize=(10, 10))
     plt.style.use('seaborn')
     scat = plt.scatter(arr[:, 0], arr[:, 1], s=10, c=arr[:, 2], cmap=plt.get_cmap('tab10'))
     cb = plt.colorbar(scat, spacing='uniform')
@@ -115,7 +115,7 @@ def plot_samples(model: AutoEncoder, img_shape: List = [1, 28, 28], n_rows: int 
             arr[n_filled:n_filled + n_to_sample] = model.sample(n_to_sample, temperature=temperature).cpu().detach()
         n_filled += n_to_sample
 
-    fig = plt.figure(figsize=(10, 10), dpi=300)
+    fig = plt.figure(figsize=(10, 10))
     grid_img = torchvision.utils.make_grid(arr, padding=1, pad_value=0., nrow=n_rows)
     plt.imshow(grid_img.permute(1, 2, 0))
     plt.axis("off")
@@ -168,12 +168,15 @@ def plot_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoader, de
     return fig
 
 
+
+
 def plot_noisy_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoader, device: torch.device,
                                noise_distribution: torch.distributions.Distribution,
-                               img_shape: List = [1, 28, 28], n_rows: int = 4, hires=False):
+                               img_shape: List = [1, 28, 28], n_rows: int = 6, hires=False,
+                               image_batch=None):
     '''
-    Function to plot a grid (size n_rows x n_rows) of reconstructions given a model. Each roww of original samples is
-    followed by a row of reconstructions.
+    Function to plot a grid (size n_rows x n_rows) of reconstructions given a model. Following row structure:
+    1) image with noise 2) denoised image 3) original image
     '''
     n_cols = n_rows
     n_images = n_rows * n_cols
@@ -184,36 +187,58 @@ def plot_noisy_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoad
 
     n_images_filled = 0
 
+    noise_to_device = image_batch is not None
+
     while cur_row < n_rows:
-        image_batch, _ = next(iter_test_loader)
+        if image_batch is None:
+            image_batch, _ = next(iter_test_loader)
+
         batch_idx = 0
         n_imgs_in_batch_left = image_batch.shape[0]
         while n_imgs_in_batch_left >= n_cols and cur_row < n_rows:
             n_imgs_in_batch_left -= n_cols  # We use the first n_cols images of the batch
+
             row_batch = image_batch[batch_idx:batch_idx + n_cols]
-            row_batch += noise_distribution.sample()[:n_rows] # What would be faster: this or reinitializing a
-            # distribution each time?
-            row_batch = torch.clamp(row_batch, 0., 1.)
-            arr[n_images_filled:n_images_filled + n_cols] = row_batch
             batch_idx += n_cols
+
+            noisy_batch = torch.clone(row_batch).detach()
+            noise = noise_distribution.sample()[:n_rows] # What would be faster: this or reinitializing a
+            # distribution of proper size each time?
+            if noise_to_device:
+                noise = noise.to(device)
+            noisy_batch += noise
+            noisy_batch = torch.clamp(noisy_batch, 0., 1.)
+            # Fill noisy images
+            arr[n_images_filled:n_images_filled + n_cols] = noisy_batch
+
             n_images_filled += n_cols
             # row_batch = util.dequantize(row_batch)
 
-            row_batch = row_batch.to(device)
+            noisy_batch = noisy_batch.to(device)
             with torch.no_grad():
-                z, _ = model.encode(row_batch)
+                encode_output = model.encode(noisy_batch)
+                if isinstance(encode_output, tuple):
+                    z, _ = encode_output
+                else:
+                    z = encode_output
                 reconstruction = model.decode(z)
                 # NAE returns a single value, VAEs will return mu and sigma
                 if isinstance(reconstruction, tuple):
                     reconstruction = reconstruction[0]
                 reconstruction = reconstruction.cpu().detach()
+            # Fill reconstructions
             arr[n_images_filled:n_images_filled + n_cols] = reconstruction
             n_images_filled += n_cols
-            cur_row += 2  # We filled two rows
+
+            # Fill originals
+            arr[n_images_filled:n_images_filled + n_cols] = row_batch
+            n_images_filled += n_cols
+
+            cur_row += 3  # We filled three rows
     if hires:
-        fig = plt.figure(figsize=(10, 10), dpi=300)
+        fig = plt.figure(figsize=(10, 10))
     else:
-        fig = plt.figure(figsize=(10, 10), dpi=150)
+        fig = plt.figure(figsize=(10, 10))
     grid_img = torchvision.utils.make_grid(arr, padding=1, pad_value=0., nrow=n_rows)
     plt.imshow(grid_img.permute(1, 2, 0))
     plt.axis("off")
@@ -495,7 +520,7 @@ def generate_loss_over_latentdims():
             n_recorded += 1
     scores[scores == np.inf] = np.nan
     best_scores = -1 * np.nanmin(scores, axis=0)  # TODO: change to mean once inf/positive runs are gone
-    fig = plt.figure(dpi=300)
+    fig = plt.figure()
     plt.scatter(np.arange(len(latent_sizes)), best_scores)
     plt.ylabel('Log-likelihood')
     plt.xlabel('Dimensionality of latent space')
