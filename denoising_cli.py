@@ -109,10 +109,13 @@ for run_nr in args.runs:
     validation_iterations = []
     validation_reconstruction_errors = []
 
-    noise_distribution = torch.distributions.normal.Normal(torch.zeros(batch_size, *image_dim),
-                                                           noise_level * torch.ones(batch_size, *image_dim))
+
 
     for it in range(n_iterations):
+        torch.seed()  # Random seed since we fix it at test time
+        noise_distribution = torch.distributions.normal.Normal(torch.zeros(batch_size, *image_dim),
+                                                               noise_level * torch.ones(batch_size, *image_dim))
+
         while not stop:
             for image_batch, _ in train_dataloader:
 
@@ -275,7 +278,7 @@ for run_nr in args.runs:
         test_loss = test_loss_averager(None)
 
         # Test RCE
-        torch.manual_seed(3)
+        torch.manual_seed(3) # Seed noise for equal test comparison
         test_reconstruction_averager = make_averager()
         for test_batch, _ in test_dataloader:
             test_batch = dequantize(test_batch)
