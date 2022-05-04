@@ -75,6 +75,8 @@ class InternalLatentAutoEncoder(GaussianAutoEncoder):
     def decode(self, z: Tensor, deviations: Tensor = None):
         core, shell = self.forward(z, deviations)
         x = self.inverse_partition(core, shell)
+        for i in range(len(self.preprocessing_layers) - 1, -1, -1):
+            x, _ = self.preprocessing_layers[i](x)
         return x
 
     def sample(self, num_samples: int = 1, sample_deviations: bool = False, temperature: float = 1, z: Tensor = None):

@@ -65,6 +65,8 @@ class ExternalLatentAutoEncoder(GaussianAutoEncoder):
 
     def decode(self, z: Tensor, deviations: Tensor = None):
         x = self.forward(z, deviations)
+        for i in range(len(self.preprocessing_layers) - 1, -1, -1):
+            x, _ = self.preprocessing_layers[i](x)
         return x
 
     def sample(self, num_samples=1, sample_deviations=False, temperature=1., z: Tensor = None):
