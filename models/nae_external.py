@@ -65,6 +65,8 @@ class ExternalLatentAutoEncoder(GaussianAutoEncoder):
 
     def decode(self, z: Tensor, deviations: Tensor = None):
         x = self.forward(z, deviations)
+        for i in range(len(self.preprocessing_layers) - 1, -1, -1):
+            x, _ = self.preprocessing_layers[i](x)
         return x
 
     def sample(self, num_samples=1, sample_deviations=False, temperature=1., z: Tensor = None):
@@ -94,6 +96,25 @@ class ExternalLatentAutoEncoder(GaussianAutoEncoder):
 
     def loss_function(self, x: Tensor):
         return self.neg_log_likelihood(x)
+
+    def reconstruct(self, x: Tensor):
+        log_j_preprocessing = 0
+        for layer in self.preprocessing_layers:
+            x, log_j_transform = layer.inverse(x)
+            log_j_preprocessing += log_j_transform
+
+        core = self.dense(x)
+        core, log_j_core_pre = self.core_flow_pre.inverse(core)
+        mu_z, sigma_z = self.encoder(x)
+        z = (core - mu_z) / (sigma_z + self.eps)
+
+        z, _ = self.core_flow_post.inverse(z)
+
+        z, _ = self.core_flow_post.forward(z)
+        mu_d, _ = self.decoder(z)
+        x = mu_d
+
+        return x
 
     def get_device(self):
         if self.device is None:
