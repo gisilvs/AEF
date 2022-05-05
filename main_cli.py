@@ -41,12 +41,12 @@ assert args.wandb_type in ['phase1', 'phase2', 'prototyping', 'visualization']
 assert args.model in ['nae-center', 'nae-corner', 'vae', 'iwae', 'vae-iaf', 'maf', 'nae-external']
 assert args.post_flow in ['none', 'maf', 'iaf']
 assert args.prior_flow in ['none', 'maf', 'iaf']
-assert args.dataset in ['mnist', 'kmnist', 'emnist', 'fashionmnist', 'cifar10', 'cifar', 'imagenet']
+assert args.dataset in ['mnist', 'kmnist', 'emnist', 'fashionmnist', 'cifar10', 'cifar', 'imagenet', 'celebahq']
 assert args.decoder in ['fixed', 'independent', 'dependent']
 assert args.architecture in ['small', 'big']
 
 if args.architecture == 'big':
-    assert args.dataset in ['cifar', 'cifar10', 'imagenet']
+    assert args.dataset in ['cifar', 'cifar10', 'imagenet', 'celebahq']
 
 model_name = args.model
 decoder = args.decoder

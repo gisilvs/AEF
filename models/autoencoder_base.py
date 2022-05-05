@@ -70,6 +70,6 @@ class ExtendedGaussianAutoEncoder(GaussianAutoEncoder):
     def sample(self, num_samples: int = 1, temperature: float = 1):
         self.set_device()
         z0 = self.prior.sample((num_samples,)) * temperature
-        z, _ = self.prior_flow.forward(z0)
+        z, _ = self.prior_bijector.forward(z0)
         return self.decode(z)[0]
         

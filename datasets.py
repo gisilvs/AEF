@@ -33,6 +33,35 @@ class ImageNet(Dataset):
 
         return image, label
 
+class CelebAHQ(Dataset):
+    def __init__(self, path, transform=None):
+        """
+        Args:
+            csv_file (string): Path to the csv file with annotations.
+            root_dir (string): Directory with all the images.
+            transform (callable, optional): Optional transform to be applied
+                on a sample.
+        """
+        self.path = path
+        self.data = os.listdir(path)
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        try:
+            image = np.load(f'{self.path}/{self.data[idx]}')['image']
+        except:
+            print(self.data[idx])
+        if self.transform:
+            image = self.transform(image)
+
+        return image, torch.zeros(1)
+
 def get_transform(dataset: str = 'mnist'):
     if dataset == 'cifar10':
         img_transform = transforms.Compose([
@@ -47,7 +76,7 @@ def get_transform(dataset: str = 'mnist'):
 
 
 def get_list_of_datasets():
-    lst = ['mnist', 'kmnist', 'emnist', 'fashionmnist', 'cifar10']
+    lst = ['mnist', 'kmnist', 'emnist', 'fashionmnist', 'cifar10', 'celebahq']
     return lst
 
 
@@ -87,8 +116,16 @@ def get_train_val_dataloaders(dataset: str = 'mnist', batch_size: int = 128, p_v
     elif dataset.lower() == 'imagenet':
         train_dataset=ImageNet(f'{data_dir}/train', transform=img_transform)
         alpha = .05
+    elif dataset.lower() == 'celebahq':
+        train_dataset = CelebAHQ(f'{data_dir}/train', transform=img_transform)
+        valid_dataset = CelebAHQ(f'{data_dir}/valid', transform=img_transform)
+        alpha = .05
 
-    if p_validation > 0:
+    if dataset.lower() == 'celebahq':
+        train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+        validation_dataloader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False)
+        return_tuple = [train_dataloader, validation_dataloader]
+    elif p_validation > 0:
         size_validation = round(p_validation * len(train_dataset))
         size_train = len(train_dataset) - size_validation
         train_subset, val_subset = torch.utils.data.random_split(train_dataset, [size_train, size_validation],
@@ -125,6 +162,8 @@ def get_test_dataloader(dataset: str = 'mnist', batch_size: int = 128, shuffle=F
         test_dataset = CIFAR10(root='./data/CIFAR', download=True, train=False, transform=img_transform)
     elif dataset.lower() == 'imagenet':
         test_dataset = ImageNet(f'{data_dir}/test', transform=img_transform)
+    elif dataset.lower() == 'celebahq':
+        test_dataset = CelebAHQ(f'{data_dir}/test', transform=img_transform)
 
     test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=shuffle)
     return test_dataloader
