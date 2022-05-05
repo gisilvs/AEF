@@ -111,12 +111,14 @@ for run_nr in args.runs:
 
     model = model.to(device)
 
+
+
     if not os.path.isdir('./checkpoints'):
         os.mkdir('./checkpoints')
 
     run = wandb.init(project=args.wandb_type, entity="nae",
                      name=run_name, config=config)
-
+    wandb.summary['n_parameters'] = count_parameters(model)
     print('Training ...')
 
     stop = False
@@ -125,8 +127,6 @@ for run_nr in args.runs:
     iteration_losses = np.zeros((n_iterations,))
     validation_losses = []
     validation_iterations = []
-
-
 
     for it in range(n_iterations):
         while not stop:
