@@ -35,6 +35,7 @@ parser.add_argument('--batch-size', type=int, default=128,
 parser.add_argument('--data-dir', type=str, default="")
 parser.add_argument('--reload', type=int, default=0)
 parser.add_argument('--previous-val-iters', type=int, default=500, help='validate every x iterations (default: 500')
+parser.add_argument('--reload-from-project', type=str, default='prototyping')
 
 
 
@@ -133,9 +134,11 @@ for run_nr in args.runs:
     validation_iterations = []
 
     if reload:
+        '''samples = model.sample(2)
+        model.loss_function(samples)'''
         n_iterations_done, iteration_losses, validation_losses, best_loss, model, optimizer = load_latest_model(
             run,
-            args.wandb_type,
+            args.reload_from_project,
             run_name,
             device,
             model,
@@ -224,12 +227,14 @@ for run_nr in args.runs:
                     wandb.log(metrics)
 
                 if (n_times_validated > 1) and (n_iterations_done % save_every_n_iterations == 0):
-                    artifact_latest = wandb.Artifact(f'{run_name}_latest', type='model')
-                    artifact_latest.add_file(f'checkpoints/{run_name}_latest.pt')
-                    run.log_artifact(artifact_latest)
-                    artifact_best = wandb.Artifact(f'{run_name}_best', type='model')
-                    artifact_best.add_file(f'checkpoints/{run_name}_best.pt')
-                    run.log_artifact(artifact_best)
+                    if os.path.exists(f'{run_name}_latest'):
+                        artifact_latest = wandb.Artifact(f'{run_name}_latest', type='model')
+                        artifact_latest.add_file(f'checkpoints/{run_name}_latest.pt')
+                        run.log_artifact(artifact_latest)
+                    if os.path.exists(f'{run_name}_best'):
+                        artifact_best = wandb.Artifact(f'{run_name}_best', type='model')
+                        artifact_best.add_file(f'checkpoints/{run_name}_best.pt')
+                        run.log_artifact(artifact_best)
 
                 n_iterations_done += 1
                 model.train()

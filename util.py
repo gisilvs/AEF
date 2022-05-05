@@ -161,13 +161,12 @@ def load_latest_model(run, project_name, experiment_name, device, model, optimiz
     iteration_losses = checkpoint['iteration_losses']
     validation_losses = checkpoint['validation_losses']
     best_loss = checkpoint['best_loss']
-    model.loss_function(model.sample(2))
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     j = 0
     for i in range(n_iterations_done):
         log_dict = {'train_loss': iteration_losses[i]}
-        if i % validate_every_n_iterations == 0:
+        if i % validate_every_n_iterations == 0 and j<len(validation_losses):
             log_dict['val_loss'] = validation_losses[j]
             j+=1
         run.log(log_dict)
