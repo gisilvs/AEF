@@ -20,6 +20,11 @@ class VAEIAF(GaussianAutoEncoder):
         x_mu, x_sigma = self.decode(z)
         return x_mu, x_sigma, z_mu, z_sigma, z0, log_j_z, z
 
+    def encode(self, x: Tensor):
+        z0 = self.encoder(x)
+        z = self.iaf.forward(z0)
+        return z
+
     def loss_function(self, x: Tensor):
         self.set_device()
         x_mu, x_sigma, z_mu, z_sigma, z0, log_j_z, z = self.forward(x)
