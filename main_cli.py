@@ -65,9 +65,9 @@ prior_flow = args.prior_flow
 args.runs = [int(item) for item in args.runs.split(',')]
 
 AE_like_models = ['nae-center', 'nae-corner', 'nae-external', 'vae', 'iwae', 'vae-iaf']
-dirs = os.listdir(args.data_dir)
-for d in dirs:
-    print(d)
+# dirs = os.listdir(args.data_dir)
+# for d in dirs:
+#     print(d)
 for run_nr in args.runs:
     if args.custom_name is not None:
         run_name = args.custom_name
@@ -145,7 +145,7 @@ for run_nr in args.runs:
 
                 optimizer.zero_grad()
                 loss.backward()
-                torch.nn.utils.clip_grad_norm(model.parameters(), max_norm=200.)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=200.)
                 optimizer.step()
 
                 # We validate first iteration, every n iterations, and at the last iteration
@@ -242,9 +242,8 @@ for run_nr in args.runs:
                 test_batch = dequantize(test_batch)
                 test_batch = test_batch.to(device)
                 for iw_iter in range(20):
-                    log_likelihood = vae_log_prob(model, test_batch, n_samples=128)
-                    loss = torch.mean(model.loss_function(test_batch))
-                    test_ll_averager(loss.item())
+                    log_likelihood = torch.mean(model.approximate_marginal(test_batch, n_samples=128))
+                    test_ll_averager(log_likelihood.item())
             test_ll = test_ll_averager(None)
             wandb.summary['test_log_likelihood'] = test_ll
             bpp_test = bits_per_pixel(test_ll, n_pixels)

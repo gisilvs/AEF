@@ -96,7 +96,7 @@ for run_nr in args.runs:
     if not os.path.isdir('./checkpoints'):
         os.mkdir('./checkpoints')
 
-    run = wandb.init(project="denoising-experiments", entity="nae",
+    run = wandb.init(project="denoising", entity="nae",
                      name=run_name, config=config)
     wandb.summary['n_parameters'] = count_parameters(model)
     print('Training ...')
@@ -209,6 +209,7 @@ for run_nr in args.runs:
                         if n_iterations_done == 0:
                             best_loss = validation_reconstruction_errors[-1]
                             best_it = n_iterations_done
+                            torch.save(model.state_dict(), f'checkpoints/{run_name}_best.pt')
                         # For VAE-like models we save based on validation likelihood
                         elif validation_losses[-1] < best_loss:
                             best_loss = validation_losses[-1]
@@ -315,12 +316,8 @@ for run_nr in args.runs:
                 test_batch = dequantize(test_batch)
                 test_batch = test_batch.to(device)
                 for iw_iter in range(20):
-                    log_likelihood = vae_log_prob(model, test_batch, n_samples=128)
-                    if model_name in flow_like_models:
-                        loss = torch.mean(model.loss_function(test_batch))
-                    else:
-                        loss = torch.mean(model.loss_function(test_batch, test_batch))
-                    test_ll_averager(loss.item())
+                    log_likelihood = torch.mean(model.approximate_marginal(test_batch, n_samples=128))
+                    test_ll_averager(log_likelihood.item())
             test_ll = test_ll_averager(None)
             wandb.summary['test_log_likelihood'] = test_ll
             bpp_test = bits_per_pixel(test_ll, n_pixels)
@@ -366,7 +363,7 @@ for run_nr in args.runs:
     plt.close("all")
 
     # Clean up older artifacts
-    api = wandb.Api(overrides={"project": 'denoising-experiments', "entity": "nae"})
+    api = wandb.Api(overrides={"project": 'denoising', "entity": "nae"})
     artifact_type, artifact_name = 'model', f'{run_name}_latest'
     for version in api.artifact_versions(artifact_type, artifact_name):
         if len(version.aliases) == 0:

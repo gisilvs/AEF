@@ -13,9 +13,9 @@ class VAE(GaussianAutoEncoder):
         super(VAE, self).__init__(encoder, decoder)
 
     def forward(self, x: Tensor):
-        z_mu, z_sigma = self.encode(x)
+        z_mu, z_sigma = self.encoder(x)
         z = distributions.normal.Normal(z_mu, z_sigma+self.eps).rsample()
-        x_mu, x_sigma = self.decode(z)
+        x_mu, x_sigma = self.decoder(z)
         return x_mu, x_sigma, z_mu, z_sigma
 
     def loss_function(self, x: Tensor):
@@ -35,10 +35,10 @@ class ExtendedVAE(ExtendedGaussianAutoEncoder):
 
     def forward(self, x: Tensor):
         self.set_device()
-        z_mu, z_sigma = self.encode(x)
+        z_mu, z_sigma = self.encoder(x)
         z0 = distributions.normal.Normal(z_mu, z_sigma + self.eps).rsample()
         z, log_j_q = self.posterior_bijector.forward(z0)
-        x_mu, x_sigma = self.decode(z)
+        x_mu, x_sigma = self.decoder(z)
         return x_mu, x_sigma, z_mu, z_sigma, z0, log_j_q, z
 
     def loss_function(self, x: Tensor):

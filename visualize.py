@@ -151,7 +151,10 @@ def plot_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoader, de
 
             row_batch = row_batch.to(device)
             with torch.no_grad():
-                z, _ = model.encode(row_batch)
+
+                z = model.encode(row_batch)
+                if isinstance(z, tuple):
+                    z = z[0]
                 reconstruction = model.decode(z)
                 # NAE returns a single value, VAEs will return mu and sigma
                 if isinstance(reconstruction, tuple):
@@ -363,7 +366,7 @@ def generate_visualizations_separately():
     # generate_visualizations(False, True, False, False, 0, custom_name="2D latent space plots")
     # generate_visualizations(False, False, True, False, 0, custom_name="Latent grid plots")
     # generate_visualizations(False, False, False, True, 5, custom_name="Samples")
-    generate_visualizations(False, False, False, False, 5, True, 1, custom_name="Reconstructions")
+    generate_visualizations(False, False, False, False, 5, True, 1, custom_name="Reconstructions_new")
 
 
 def generate_visualizations(do_plot_latent_space_greater_than_2=False,
