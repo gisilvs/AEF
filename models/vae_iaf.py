@@ -49,7 +49,6 @@ class DenoisingVAEIAF(VAEIAF):
     def __init__(self, encoder: GaussianEncoder, decoder: GaussianDecoder):
         super(DenoisingVAEIAF, self).__init__(encoder, decoder)
 
-
     def loss_function(self, x_noisy: Tensor, x_original: Tensor):
         x_mu, x_sigma, z_mu, z_sigma, z0, log_j_z, z = self.forward(x_noisy)
         reconstruction_loss = torch.distributions.normal.Normal(x_mu, x_sigma + self.eps).log_prob(x_original).sum([1, 2, 3])

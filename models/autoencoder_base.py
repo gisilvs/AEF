@@ -72,4 +72,8 @@ class ExtendedGaussianAutoEncoder(GaussianAutoEncoder):
         z0 = self.prior.sample((num_samples,)) * temperature
         z, _ = self.prior_bijector.forward(z0)
         return self.decode(z)[0]
-        
+
+    def encode(self, x: Tensor):
+        z0 = self.encoder(x)[0]
+        z = self.posterior_bijector.forward(z0)[0]
+        return z
