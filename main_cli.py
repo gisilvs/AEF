@@ -9,7 +9,7 @@ import wandb
 from datasets import get_train_val_dataloaders, get_test_dataloader
 from models.model_database import get_model
 
-from util import make_averager, dequantize, vae_log_prob, plot_image_grid, bits_per_pixel, count_parameters
+from util import make_averager, dequantize, vae_log_prob, plot_image_grid, bits_per_pixel, count_parameters, load_latest_model
 from visualize import plot_reconstructions
 
 parser = argparse.ArgumentParser(description='NAE Experiments')
@@ -33,6 +33,9 @@ parser.add_argument('--custom-name', type=str, help='custom name for wandb track
 parser.add_argument('--batch-size', type=int, default=128,
                     help='input batch size for training and testing (default: 128)')
 parser.add_argument('--data-dir', type=str, default="")
+parser.add_argument('--reload', type=int, default=0)
+parser.add_argument('--previous-val-iters', type=int, default=500, help='validate every x iterations (default: 500')
+
 
 
 args = parser.parse_args()
@@ -61,6 +64,7 @@ save_every_n_iterations = args.save_iters
 architecture_size = args.architecture
 posterior_flow = args.post_flow
 prior_flow = args.prior_flow
+reload = True if args.reload==1 else False
 
 args.runs = [int(item) for item in args.runs.split(',')]
 
@@ -125,10 +129,18 @@ for run_nr in args.runs:
     iteration_losses = np.zeros((n_iterations,))
     validation_losses = []
     validation_iterations = []
-
-
-
-    for it in range(n_iterations):
+    if reload:
+        n_iterations_done, iteration_losses, validation_losses, best_loss, model, optimizer = load_latest_model(
+            run,
+            args.wandb_type,
+            run_name,
+            device,
+            model,
+            optimizer,
+            validate_every_n_iterations=args.previous_val_iters,
+        )
+    model.train()
+    for it in range(n_iterations_done, n_iterations):
         while not stop:
             for image_batch, _ in train_dataloader:
                 image_batch = dequantize(image_batch)
@@ -145,7 +157,7 @@ for run_nr in args.runs:
 
                 optimizer.zero_grad()
                 loss.backward()
-                torch.nn.utils.clip_grad_norm(model.parameters(), max_norm=200.)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=200.)
                 optimizer.step()
 
                 # We validate first iteration, every n iterations, and at the last iteration
