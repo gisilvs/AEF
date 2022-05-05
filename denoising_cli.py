@@ -96,7 +96,7 @@ for run_nr in args.runs:
     if not os.path.isdir('./checkpoints'):
         os.mkdir('./checkpoints')
 
-    run = wandb.init(project="denoising", entity="nae",
+    run = wandb.init(project="denoising-experiments", entity="nae",
                      name=run_name, config=config)
     wandb.summary['n_parameters'] = count_parameters(model)
     print('Training ...')
@@ -363,7 +363,7 @@ for run_nr in args.runs:
     plt.close("all")
 
     # Clean up older artifacts
-    api = wandb.Api(overrides={"project": 'denoising', "entity": "nae"})
+    api = wandb.Api(overrides={"project": 'denoising-experiments', "entity": "nae"})
     artifact_type, artifact_name = 'model', f'{run_name}_latest'
     for version in api.artifact_versions(artifact_type, artifact_name):
         if len(version.aliases) == 0:
