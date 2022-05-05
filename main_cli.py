@@ -115,12 +115,14 @@ for run_nr in args.runs:
 
     model = model.to(device)
 
+
+
     if not os.path.isdir('./checkpoints'):
         os.mkdir('./checkpoints')
 
     run = wandb.init(project=args.wandb_type, entity="nae",
                      name=run_name, config=config)
-
+    wandb.summary['n_parameters'] = count_parameters(model)
     print('Training ...')
 
     stop = False
@@ -129,6 +131,7 @@ for run_nr in args.runs:
     iteration_losses = np.zeros((n_iterations,))
     validation_losses = []
     validation_iterations = []
+
     if reload:
         n_iterations_done, iteration_losses, validation_losses, best_loss, model, optimizer = load_latest_model(
             run,

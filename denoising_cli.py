@@ -98,7 +98,7 @@ for run_nr in args.runs:
 
     run = wandb.init(project="denoising-experiments", entity="nae",
                      name=run_name, config=config)
-
+    wandb.summary['n_parameters'] = count_parameters(model)
     print('Training ...')
 
     stop = False
@@ -110,26 +110,24 @@ for run_nr in args.runs:
     validation_reconstruction_errors = []
 
 
-
     for it in range(n_iterations):
         torch.seed()  # Random seed since we fix it at test time
         noise_distribution = torch.distributions.normal.Normal(torch.zeros(batch_size, *image_dim),
                                                                noise_level * torch.ones(batch_size, *image_dim))
 
         while not stop:
-            for image_batch, _ in train_dataloader:
-
-                image_batch = dequantize(image_batch)
-                image_batch_noisy = torch.clone(image_batch).detach()
-                image_batch_noisy += noise_distribution.sample()[:image_batch.shape[0]]
-                image_batch_noisy = torch.clamp(image_batch_noisy, 0., 1.)
-                image_batch = image_batch.to(device)
-                image_batch_noisy = image_batch_noisy.to(device)
+            for training_batch, _ in train_dataloader:
+                training_batch = dequantize(training_batch)
+                training_batch_noisy = torch.clone(training_batch).detach()
+                training_batch_noisy += noise_distribution.sample()[:training_batch.shape[0]]
+                training_batch_noisy = torch.clamp(training_batch_noisy, 0., 1.)
+                training_batch_noisy = training_batch_noisy.to(device)
+                training_batch = training_batch.to(device)
 
                 if model_name in flow_like_models:
-                    loss = torch.mean(model.loss_function(image_batch_noisy))
+                    loss = torch.mean(model.loss_function(training_batch_noisy))
                 else:
-                    loss = torch.mean(model.loss_function(image_batch_noisy, image_batch))
+                    loss = torch.mean(model.loss_function(training_batch_noisy, training_batch_noisy))
                 iteration_losses[n_iterations_done] = loss.item()
                 metrics = {
                     'train_loss': loss
@@ -145,9 +143,8 @@ for run_nr in args.runs:
                     model.eval()
 
                     with torch.no_grad():
-                        val_loss_averager = make_averager()
 
-
+                        # Create sample plot
                         if model_name != 'ae':
                             samples = model.sample(16)
                             samples = samples.cpu().detach()
@@ -158,69 +155,63 @@ for run_nr in args.runs:
                             image_dict = {'samples': sample_fig}
                         else:
                             image_dict = {}
+
+                        # Create reconstruction plots
                         training_reconstruction_fig = plot_noisy_reconstructions(model, reconstruction_dataloader,
-                                                                                     device,
-                                                                                     noise_distribution, image_dim,
-                                                                                     n_rows=6,
-                                                                                     image_batch=image_batch)
+                                                                                 device,
+                                                                                 noise_distribution, image_dim,
+                                                                                 n_rows=6,
+                                                                                 image_batch=training_batch)
                         image_dict = {'training_reconstructions': training_reconstruction_fig}
 
-                        #if model_name != 'maf':
                         reconstruction_fig = plot_noisy_reconstructions(model, reconstruction_dataloader, device,
                                                                             noise_distribution, image_dim, n_rows=6)
                         reconstruction_dict = {'test_reconstructions': reconstruction_fig}
 
-
-                        for validation_batch, _ in validation_dataloader:
-                            validation_batch = dequantize(validation_batch)
-                            validation_batch = validation_batch.to(device)
-
-                            if model_name in flow_like_models:
-                                loss = torch.mean(model.loss_function(validation_batch))
-                            else:
-                                loss = torch.mean(model.loss_function(validation_batch, validation_batch))
-
-                            val_loss_averager(loss.item())
-
-                        validation_losses.append(val_loss_averager(None))
-                        val_metrics = {
-                            'val_loss': validation_losses[-1]
-                        }
-
-                        # Reconstruction error on validation set
+                        # Validation loss and reconstruction error, in both cases using noisy images
+                        val_loss_averager = make_averager()
                         val_reconstruction_averager = make_averager()
-                        # Not necessary for AE (since loss is reconstruction error, but we do it anyway)
                         for validation_batch, _ in validation_dataloader:
                             validation_batch = dequantize(validation_batch)
                             validation_batch_noisy = torch.clone(validation_batch).detach()
                             validation_batch_noisy += noise_distribution.sample()[:validation_batch.shape[0]]
                             validation_batch_noisy = torch.clamp(validation_batch_noisy, 0., 1.)
-                            validation_batch = validation_batch.to(device)
                             validation_batch_noisy = validation_batch_noisy.to(device)
 
-
-                            encode_output = model.encode(validation_batch_noisy)
-                            if isinstance(encode_output, tuple):
-                                z, _ = encode_output
+                            if model_name in flow_like_models:
+                                loss = torch.mean(model.loss_function(validation_batch_noisy))
                             else:
-                                z = encode_output
-                            decode_output = model.decode(z)
-                            if isinstance(decode_output, tuple):
-                                validation_batch_reconstructed, _ = decode_output
-                            else:
-                                validation_batch_reconstructed = decode_output
+                                loss = torch.mean(model.loss_function(validation_batch_noisy, validation_batch_noisy))
 
-                            rce = torch.mean(F.mse_loss(validation_batch_reconstructed, validation_batch, reduction='none'))
+                            val_loss_averager(loss.item())
+
+                            z = model.encode(validation_batch_noisy)
+                            if isinstance(z, tuple):
+                                z = z[0]
+
+                            validation_batch_reconstructed = model.decode(z)
+                            if isinstance(validation_batch_reconstructed, tuple):
+                                validation_batch_reconstructed = validation_batch_reconstructed[0]
+
+                            rce = torch.mean(
+                                F.mse_loss(validation_batch_reconstructed, validation_batch_noisy, reduction='none'))
+
                             val_reconstruction_averager(rce.item())
-                        validation_reconstruction_errors.append(val_reconstruction_averager(None))
 
-                        val_metrics['val_rce'] = validation_reconstruction_errors[-1]
+                        validation_losses.append(val_loss_averager(None))
+                        validation_reconstruction_errors.append(val_reconstruction_averager(None))
+                        val_metrics = {
+                            'val_loss': validation_losses[-1],
+                            'val_rce': validation_reconstruction_errors[-1]
+                        }
+
 
                         if n_iterations_done == 0:
                             best_loss = validation_reconstruction_errors[-1]
                             best_it = n_iterations_done
-                        elif validation_reconstruction_errors[-1] < best_loss:
-                            best_loss = validation_reconstruction_errors[-1]
+                        # For VAE-like models we save based on validation likelihood
+                        elif validation_losses[-1] < best_loss:
+                            best_loss = validation_losses[-1]
                             torch.save(model.state_dict(), f'checkpoints/{run_name}_best.pt')
                             best_it = n_iterations_done
                         validation_iterations.append(n_iterations_done)
@@ -261,12 +252,20 @@ for run_nr in args.runs:
     model.load_state_dict(torch.load(f'checkpoints/{run_name}_best.pt'))
     model.eval()
     test_loss_averager = make_averager()
+    test_rce_with_noise_averager = make_averager()
+    test_rce_without_noise_averager = make_averager()
+    torch.manual_seed(3)  # Seed noise for equal test comparison
     with torch.no_grad():
-
+        # Test loss and RCE with/without noise (comparing to original)
         for test_batch, _ in test_dataloader:
-
             test_batch = dequantize(test_batch)
+            test_batch_noisy = torch.clone(test_batch).detach()
+            test_batch_noisy += noise_distribution.sample()[:test_batch.shape[0]]
+            test_batch_noisy = torch.clamp(test_batch_noisy, 0., 1.)
+            test_batch_noisy = test_batch_noisy.to(device)
             test_batch = test_batch.to(device)
+
+            # Test loss
             if model_name == 'maf':
                 test_batch = test_batch.view(-1, torch.prod(torch.tensor(image_dim)))
             if model_name in flow_like_models:
@@ -275,34 +274,39 @@ for run_nr in args.runs:
                 loss = torch.mean(model.loss_function(test_batch, test_batch))
 
             test_loss_averager(loss.item())
+
+            # RCE with noise (comparing to original)
+            z = model.encode(test_batch_noisy)
+            if isinstance(z, tuple):
+                z = z[0]
+
+            test_batch_reconstructed = model.decode(z)
+            if isinstance(test_batch_reconstructed, tuple):
+                test_batch_reconstructed = test_batch_reconstructed[0]
+
+            rce_with_noise = torch.mean(F.mse_loss(test_batch_reconstructed, test_batch, reduction='none'))
+            test_rce_with_noise_averager(rce_with_noise.item())
+
+            # RCE without noise (comparing to original)
+            z = model.encode(test_batch)
+            if isinstance(z, tuple):
+                z = z[0]
+
+            test_batch_reconstructed = model.decode(z)
+            if isinstance(test_batch_reconstructed, tuple):
+                test_batch_reconstructed = test_batch_reconstructed[0]
+
+            rce_without_noise = torch.mean(F.mse_loss(test_batch_reconstructed, test_batch, reduction='none'))
+            test_rce_without_noise_averager(rce_without_noise.item())
+
+
         test_loss = test_loss_averager(None)
+        test_rce_with_noise = test_rce_with_noise_averager(None)
+        test_rce_without_noise = test_rce_without_noise_averager(None)
+        wandb.summary['test_loss'] = test_loss
+        wandb.summary['test_rce_without_noise'] = test_rce_without_noise
+        wandb.summary['test_rce_with_noise'] = test_rce_with_noise
 
-        # Test RCE
-        torch.manual_seed(3) # Seed noise for equal test comparison
-        test_reconstruction_averager = make_averager()
-        for test_batch, _ in test_dataloader:
-            test_batch = dequantize(test_batch)
-            test_batch_noisy = torch.clone(test_batch).detach()
-            test_batch_noisy += noise_distribution.sample()[:test_batch.shape[0]]
-            test_batch_noisy = torch.clamp(test_batch_noisy, 0., 1.)
-            test_batch = test_batch.to(device)
-            test_batch_noisy = test_batch_noisy.to(device)
-
-            encode_output = model.encode(test_batch_noisy)
-            if isinstance(encode_output, tuple):
-                z, _ = encode_output
-            else:
-                z = encode_output
-            decode_output = model.decode(z)
-            if isinstance(decode_output, tuple):
-                test_batch_reconstructed, _ = decode_output
-            else:
-                test_batch_reconstructed = decode_output
-
-            rce = torch.mean(F.mse_loss(test_batch_reconstructed, test_batch, reduction='none'))
-            val_reconstruction_averager(rce.item())
-        test_rce = test_reconstruction_averager(None)
-        wandb.summary['test_rce'] = test_rce
 
         # Approximate log likelihood if model in VAE family
         if model_name in ['vae', 'iwae', 'vae-iaf']:
@@ -341,6 +345,10 @@ for run_nr in args.runs:
         for i in range(5):
             reconstruction_fig = plot_noisy_reconstructions(model, reconstruction_dataloader, device,
                                                             noise_distribution, image_dim, n_rows=9)
+            reconstruction_dict = {'final_noisy_reconstructions_test': reconstruction_fig}
+            run.log(reconstruction_dict)
+        for i in range(5):
+            reconstruction_fig = plot_reconstructions(model, test_dataloader, device, image_dim, n_rows=10)
             reconstruction_dict = {'final_reconstructions_test': reconstruction_fig}
             run.log(reconstruction_dict)
 
@@ -351,8 +359,7 @@ for run_nr in args.runs:
     artifact_latest.add_file(f'checkpoints/{run_name}_latest.pt')
     run.log_artifact(artifact_latest)
     wandb.summary['best_iteration'] = best_it
-    wandb.summary['test_loss'] = test_loss
-    wandb.summary['n_parameters'] = count_parameters(model)
+
 
     run.finish()
 
