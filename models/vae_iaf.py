@@ -1,5 +1,6 @@
 import torch
 from torch import Tensor, distributions
+from torch.distributions.normal import Normal
 
 from bijectors.masked_autoregressive_transform import get_masked_autoregressive_transform
 from models.autoencoder import GaussianEncoder, GaussianDecoder
@@ -29,40 +30,21 @@ class VAEIAF(GaussianAutoEncoder):
         self.set_device()
         x_mu, x_sigma, z_mu, z_sigma, z0, log_j_z, z = self.forward(x)
         reconstruction_loss = torch.distributions.normal.Normal(x_mu, x_sigma + self.eps).log_prob(x).sum([1, 2, 3])
-        q_z = distributions.normal.Normal(z_mu, z_sigma + self.eps).log_prob(z0).sum(-1) - log_j_z
-        p_z = distributions.normal.Normal(0, 1).log_prob(z).sum(-1)
+        q_z = Normal(z_mu, z_sigma + self.eps).log_prob(z0).sum(-1) - log_j_z
+        p_z = Normal(0, 1).log_prob(z).sum(-1)
         return -(reconstruction_loss + p_z - q_z)
 
     def approximate_marginal(self, images: Tensor, n_samples: int = 128):
-    #     batch_size = x.shape[0]
-    #     z_mu, z_sigma = self.encoder(x)
-    #     z = Normal(z_mu, z_sigma + self.eps).rsample([self.num_samples]).transpose(1, 0)
-    #     x_mu, x_sigma = self.decoder(z.reshape(batch_size * self.num_samples, -1))
-    #     x_mu, x_sigma = x_mu.view(batch_size, self.num_samples, -1), x_sigma.view(batch_size, self.num_samples, -1)
-    #     return x_mu, x_sigma, z_mu, z_sigma, z
-    #
-    # def loss_function(self, x: Tensor):
-    #     self.set_device()
-    #     batch_size = x.shape[0]
-    #     x_mu, x_sigma, z_mu, z_sigma, z = self.forward(x)
-    #     p_x_z = Normal(x_mu, x_sigma + self.eps).log_prob(x.view(batch_size, 1, -1)).sum([2]).view(batch_size,
-    #                                                                                                self.num_samples)
-    #     p_latent = self.prior.log_prob(z).sum([-1])
-    #     q_latent = Normal(z_mu.unsqueeze(1), z_sigma.unsqueeze(1) + self.eps).log_prob(z).sum([-1])
-    #
-    #     return -torch.mean(
-    #         torch.logsumexp(p_x_z + p_latent - q_latent, [1]) - torch.log(torch.tensor(self.num_samples)))
-
         batch_size = images.shape[0]
         mu_z, sigma_z = self.encoder(images)
-        z0_samples = distributions.normal.Normal(mu_z, sigma_z).sample([n_samples]).transpose(1, 0)
-        z_samples, _ = self.iaf.forward(z0_samples.reshape(batch_size * n_samples, -1))
+        z0_samples = Normal(mu_z, sigma_z).sample([n_samples]).transpose(1, 0)
+        z_samples, log_j_posterior = self.iaf.forward(z0_samples.reshape(batch_size * n_samples, -1))
         mu_x, sigma_x = self.decoder(z_samples)
         z_samples = z_samples.view(batch_size, n_samples, -1)
         mu_x, sigma_x = mu_x.view(batch_size, n_samples, -1), sigma_x.view(batch_size, n_samples, -1)
-        p_x_z = distributions.normal.Normal(mu_x, sigma_x).log_prob(images.view(batch_size, 1, -1)).sum([2]).view(batch_size, n_samples)
-        p_latent = distributions.normal.Normal(0, 1).log_prob(z_samples).sum([-1])
-        q_latent = distributions.normal.Normal(mu_z.unsqueeze(1), sigma_z.unsqueeze(1)).log_prob(z0_samples).sum([-1])
+        p_x_z = Normal(mu_x, sigma_x).log_prob(images.view(batch_size, 1, -1)).sum([2]).view(batch_size, n_samples)
+        p_latent = Normal(0, 1).log_prob(z_samples).sum([-1])
+        q_latent = Normal(mu_z.unsqueeze(1), sigma_z.unsqueeze(1)).log_prob(z0_samples).sum([-1]) - log_j_posterior
 
         return torch.mean(torch.logsumexp(p_x_z + p_latent - q_latent, [1]) - torch.log(torch.tensor(n_samples)))
 
