@@ -129,29 +129,48 @@ def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
-def download_wandb_artifact(run, project_name, experiment_name, version='latest'):
-    artifact = run.use_artifact(f'nae/{project_name}/{experiment_name}_best:{version}', type='model')
+def download_wandb_artifact(run, project_name, experiment_name, download_best=True, version='latest'):
+    if download_best:
+        artifact = run.use_artifact(f'nae/{project_name}/{experiment_name}_best:{version}', type='model')
+    else:
+        artifact = run.use_artifact(f'nae/{project_name}/{experiment_name}_latest:{version}', type='model')
     artifact_dir = artifact.download()
     return artifact_dir
 
 
-def download_best_model_and_get_path(run, project_name, experiment_name, version='latest'):
-    artifact_dir = download_wandb_artifact(run, project_name, experiment_name, version)
+def download_artifact_and_get_path(run, project_name, experiment_name, download_best=True, version='latest'):
+    artifact_dir = download_wandb_artifact(run, project_name, experiment_name, download_best, version)
     return artifact_dir + '/' + os.listdir(artifact_dir)[0]
 
 
 
 def load_best_model(run, project_name, model_name, experiment_name, device, latent_dims, image_dim, alpha,
                     decoder, architecture_size, prior_flow, posterior_flow, version='latest'):
-    model = get_model(model_name, architecture_size, decoder, latent_dims, image_dim, alpha, posterior_flow, prior_flow)
-    model.sample(10) # needed as some components such as actnorm need to be initialized
+    model = get_model(model_name, architecture_size, decoder, latent_dims, image_dim, alpha, posterior_flow, prior_flow) # needed as some components such as actnorm need to be initialized
     model.loss_function(model.sample(10)) # needed as some components such as actnorm need to be initialized
 
-    model_path = download_best_model_and_get_path(run, project_name, experiment_name, version)
+    model_path = download_artifact_and_get_path(run, project_name, experiment_name, download_best=True, version=version)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model = model.to(device)
     return model
 
+def load_latest_model(run, project_name, experiment_name, device, model, optimizer, validate_every_n_iterations, version='latest'):
+    model_path = download_artifact_and_get_path(run, project_name, experiment_name, download_best=False, version=version)
+    checkpoint = torch.load(model_path, map_location=torch.device(device))
+    n_iterations_done = checkpoint['n_iterations_done']
+    iteration_losses = checkpoint['iteration_losses']
+    validation_losses = checkpoint['validation_losses']
+    best_loss = checkpoint['best_loss']
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    j = 0
+    for i in range(n_iterations_done):
+        log_dict = {'train_loss': iteration_losses[i]}
+        if i % validate_every_n_iterations == 0 and j<len(validation_losses):
+            log_dict['val_loss'] = validation_losses[j]
+            j+=1
+        run.log(log_dict)
+    return n_iterations_done, iteration_losses, validation_losses, best_loss, model, optimizer
 
 def plot_image_grid(samples, cols, padding=2, title=None, hires=False):
     '''

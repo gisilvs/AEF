@@ -9,7 +9,7 @@ import wandb
 from datasets import get_train_val_dataloaders, get_test_dataloader
 from models.model_database import get_model
 
-from util import make_averager, dequantize, vae_log_prob, plot_image_grid, bits_per_pixel, count_parameters
+from util import make_averager, dequantize, vae_log_prob, plot_image_grid, bits_per_pixel, count_parameters, load_latest_model
 from visualize import plot_reconstructions
 
 parser = argparse.ArgumentParser(description='NAE Experiments')
@@ -33,6 +33,10 @@ parser.add_argument('--custom-name', type=str, help='custom name for wandb track
 parser.add_argument('--batch-size', type=int, default=128,
                     help='input batch size for training and testing (default: 128)')
 parser.add_argument('--data-dir', type=str, default="")
+parser.add_argument('--reload', type=int, default=0)
+parser.add_argument('--previous-val-iters', type=int, default=500, help='validate every x iterations (default: 500')
+parser.add_argument('--reload-from-project', type=str, default='prototyping')
+
 
 
 args = parser.parse_args()
@@ -61,6 +65,7 @@ save_every_n_iterations = args.save_iters
 architecture_size = args.architecture
 posterior_flow = args.post_flow
 prior_flow = args.prior_flow
+reload = True if args.reload==1 else False
 
 args.runs = [int(item) for item in args.runs.split(',')]
 
@@ -128,7 +133,20 @@ for run_nr in args.runs:
     validation_losses = []
     validation_iterations = []
 
-    for it in range(n_iterations):
+    if reload:
+        '''samples = model.sample(2)
+        model.loss_function(samples)'''
+        n_iterations_done, iteration_losses, validation_losses, best_loss, model, optimizer = load_latest_model(
+            run,
+            args.reload_from_project,
+            run_name,
+            device,
+            model,
+            optimizer,
+            validate_every_n_iterations=args.previous_val_iters,
+        )
+    model.train()
+    for it in range(n_iterations_done, n_iterations):
         while not stop:
             for image_batch, _ in train_dataloader:
                 image_batch = dequantize(image_batch)
@@ -145,7 +163,7 @@ for run_nr in args.runs:
 
                 optimizer.zero_grad()
                 loss.backward()
-                torch.nn.utils.clip_grad_norm(model.parameters(), max_norm=200.)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=200.)
                 optimizer.step()
 
                 # We validate first iteration, every n iterations, and at the last iteration
@@ -209,12 +227,14 @@ for run_nr in args.runs:
                     wandb.log(metrics)
 
                 if (n_times_validated > 1) and (n_iterations_done % save_every_n_iterations == 0):
-                    artifact_latest = wandb.Artifact(f'{run_name}_latest', type='model')
-                    artifact_latest.add_file(f'checkpoints/{run_name}_latest.pt')
-                    run.log_artifact(artifact_latest)
-                    artifact_best = wandb.Artifact(f'{run_name}_best', type='model')
-                    artifact_best.add_file(f'checkpoints/{run_name}_best.pt')
-                    run.log_artifact(artifact_best)
+                    if os.path.exists(f'{run_name}_latest'):
+                        artifact_latest = wandb.Artifact(f'{run_name}_latest', type='model')
+                        artifact_latest.add_file(f'checkpoints/{run_name}_latest.pt')
+                        run.log_artifact(artifact_latest)
+                    if os.path.exists(f'{run_name}_best'):
+                        artifact_best = wandb.Artifact(f'{run_name}_best', type='model')
+                        artifact_best.add_file(f'checkpoints/{run_name}_best.pt')
+                        run.log_artifact(artifact_best)
 
                 n_iterations_done += 1
                 model.train()

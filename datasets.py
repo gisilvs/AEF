@@ -4,6 +4,7 @@ from torchvision import transforms
 from torchvision.datasets import MNIST, EMNIST, FashionMNIST, CIFAR10, KMNIST
 import numpy as np
 import os
+from PIL import Image
 
 class ImageNet(Dataset):
     def __init__(self, path, transform=None):
@@ -53,17 +54,15 @@ class CelebAHQ(Dataset):
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
-        try:
-            image = np.load(f'{self.path}/{self.data[idx]}')['image']
-        except:
-            print(self.data[idx])
+        image = np.load(f'{self.path}/{self.data[idx]}')['image']
+        image = Image.fromarray(image)
         if self.transform:
             image = self.transform(image)
 
         return image, torch.zeros(1)
 
 def get_transform(dataset: str = 'mnist'):
-    if dataset == 'cifar10':
+    if dataset == 'cifar10' or dataset == 'celebahq':
         img_transform = transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor()
