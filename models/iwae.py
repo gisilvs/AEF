@@ -14,9 +14,9 @@ class IWAE(GaussianAutoEncoder):
 
     def forward(self, x: Tensor):
         batch_size = x.shape[0]
-        z_mu, z_sigma = self.encode(x)
+        z_mu, z_sigma = self.encoder(x)
         z = Normal(z_mu, z_sigma + self.eps).rsample([self.num_samples]).transpose(1, 0)
-        x_mu, x_sigma = self.decode(z.reshape(batch_size * self.num_samples, -1))
+        x_mu, x_sigma = self.decoder(z.reshape(batch_size * self.num_samples, -1))
         x_mu, x_sigma = x_mu.view(batch_size, self.num_samples, -1), x_sigma.view(batch_size, self.num_samples, -1)
         return x_mu, x_sigma, z_mu, z_sigma, z
 
@@ -41,11 +41,11 @@ class ExtendedIWAE(ExtendedGaussianAutoEncoder):
     def forward(self, x: Tensor):
         self.set_device()
         batch_size = x.shape[0]
-        z_mu, z_sigma = self.encode(x)
+        z_mu, z_sigma = self.encoder(x)
         z0 = distributions.normal.Normal(z_mu, z_sigma + self.eps).rsample([self.num_samples]).transpose(1, 0)
         z, log_j_q = self.posterior_bijector.forward(z0.reshape(batch_size * self.num_samples, -1))
         log_j_q = log_j_q.view(batch_size, self.num_samples)
-        x_mu, x_sigma = self.decode(z)
+        x_mu, x_sigma = self.decoder(z)
         x_mu, x_sigma = x_mu.view(batch_size, self.num_samples, -1), x_sigma.view(batch_size, self.num_samples, -1)
         return x_mu, x_sigma, z_mu, z_sigma, z0, log_j_q, z
 
