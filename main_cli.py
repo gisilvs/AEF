@@ -232,14 +232,12 @@ for run_nr in args.runs:
                     wandb.log(metrics)
 
                 if (n_times_validated > 1) and (n_iterations_done % save_every_n_iterations == 0):
-                    if os.path.exists(f'{run_name}_latest'):
-                        artifact_latest = wandb.Artifact(f'{run_name}_latest', type='model')
-                        artifact_latest.add_file(f'checkpoints/{run_name}_latest.pt')
-                        run.log_artifact(artifact_latest)
-                    if os.path.exists(f'{run_name}_best'):
-                        artifact_best = wandb.Artifact(f'{run_name}_best', type='model')
-                        artifact_best.add_file(f'checkpoints/{run_name}_best.pt')
-                        run.log_artifact(artifact_best)
+                    artifact_latest = wandb.Artifact(f'{run_name}_latest', type='model')
+                    artifact_latest.add_file(f'checkpoints/{run_name}_latest.pt')
+                    run.log_artifact(artifact_latest)
+                    artifact_best = wandb.Artifact(f'{run_name}_best', type='model')
+                    artifact_best.add_file(f'checkpoints/{run_name}_best.pt')
+                    run.log_artifact(artifact_best)
 
                 n_iterations_done += 1
                 model.train()
