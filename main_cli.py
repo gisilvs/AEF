@@ -135,7 +135,8 @@ for run_nr in args.runs:
     iteration_losses = np.zeros((n_iterations,))
     validation_losses = []
     validation_iterations = []
-
+    n_iterations_without_improvements = 0
+    stop_flag = False
     if reload:
         '''samples = model.sample(2)
         model.loss_function(samples)'''
@@ -206,10 +207,13 @@ for run_nr in args.runs:
                         if n_iterations_done == 0:
                             best_loss = validation_losses[-1]
                             best_it = n_iterations_done
-                        elif validation_losses[-1] < best_loss:
+                        elif validation_losses[-1] < best_loss - 1.:
+                            n_iterations_without_improvements = 0
                             best_loss = validation_losses[-1]
                             torch.save(model.state_dict(), f'checkpoints/{run_name}_best.pt')
                             best_it = n_iterations_done
+                        else:
+                            n_iterations_without_improvements+=validate_every_n_iterations
                         validation_iterations.append(n_iterations_done)
                         torch.save({
                             'n_iterations_done': n_iterations_done,
@@ -226,7 +230,17 @@ for run_nr in args.runs:
                             histograms['Weights/' + tag] = wandb.Histogram(value.data.cpu())
                             histograms['Gradients/' + tag] = wandb.Histogram(value.grad.data.cpu())
 
-                        wandb.log({**metrics, **val_metrics, **image_dict, **histograms, **reconstruction_dict})
+                        if n_iterations_without_improvements > 20000:
+                            stop_flag = True
+                            stop = True
+                            artifact_latest = wandb.Artifact(f'{run_name}_latest', type='model')
+                            artifact_latest.add_file(f'checkpoints/{run_name}_latest.pt')
+                            run.log_artifact(artifact_latest)
+                            artifact_best = wandb.Artifact(f'{run_name}_best', type='model')
+                            artifact_best.add_file(f'checkpoints/{run_name}_best.pt')
+                            run.log_artifact(artifact_best)
+
+                        wandb.log({**metrics, **val_metrics, **image_dict, **histograms, **reconstruction_dict, **{'stop_flag': stop_flag}})
                         plt.close("all")
                 else:
                     wandb.log(metrics)
@@ -244,6 +258,14 @@ for run_nr in args.runs:
                 if n_iterations_done >= n_iterations:
                     stop = True
                     break
+
+
+    artifact_latest = wandb.Artifact(f'{run_name}_latest', type='model')
+    artifact_latest.add_file(f'checkpoints/{run_name}_latest.pt')
+    run.log_artifact(artifact_latest)
+    artifact_best = wandb.Artifact(f'{run_name}_best', type='model')
+    artifact_best.add_file(f'checkpoints/{run_name}_best.pt')
+    run.log_artifact(artifact_best)
 
     model.load_state_dict(torch.load(f'checkpoints/{run_name}_best.pt'))
     model.eval()
