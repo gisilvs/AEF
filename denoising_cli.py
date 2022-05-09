@@ -210,7 +210,7 @@ for run_nr in args.runs:
 
 
                         if n_iterations_done == 0:
-                            best_loss = validation_reconstruction_errors[-1]
+                            best_loss = validation_losses[-1]
                             best_it = n_iterations_done
                             torch.save(model.state_dict(), f'checkpoints/{run_name}_best.pt')
                         # For VAE-like models we save based on validation likelihood
