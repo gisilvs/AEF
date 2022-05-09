@@ -40,6 +40,9 @@ assert args.model in ['ae', 'nae-center', 'nae-corner', 'vae', 'iwae', 'vae-iaf'
 assert args.dataset in ['mnist', 'kmnist', 'emnist', 'fashionmnist', 'cifar10', 'cifar']
 assert args.decoder in ['fixed', 'independent', 'dependent']
 
+if args.dataset == 'cifar10':
+    args.dataset = 'cifar'
+
 model_name = args.model
 decoder = args.decoder
 n_iterations = args.iterations

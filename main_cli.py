@@ -52,6 +52,9 @@ assert args.architecture in ['small', 'big']
 if args.architecture == 'big':
     assert args.dataset in ['cifar', 'cifar10', 'imagenet', 'celebahq', 'celebahq64']
 
+if args.dataset == 'cifar10':
+    args.dataset = 'cifar'
+
 model_name = args.model
 decoder = args.decoder
 n_iterations = args.iterations
