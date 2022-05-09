@@ -45,12 +45,12 @@ assert args.wandb_type in ['phase1', 'phase2', 'prototyping', 'visualization']
 assert args.model in ['nae-center', 'nae-corner', 'vae', 'iwae', 'vae-iaf', 'maf', 'nae-external']
 assert args.post_flow in ['none', 'maf', 'iaf']
 assert args.prior_flow in ['none', 'maf', 'iaf']
-assert args.dataset in ['mnist', 'kmnist', 'emnist', 'fashionmnist', 'cifar10', 'cifar', 'imagenet', 'celebahq']
+assert args.dataset in ['mnist', 'kmnist', 'emnist', 'fashionmnist', 'cifar10', 'cifar', 'imagenet', 'celebahq', 'celebahq64']
 assert args.decoder in ['fixed', 'independent', 'dependent']
 assert args.architecture in ['small', 'big']
 
 if args.architecture == 'big':
-    assert args.dataset in ['cifar', 'cifar10', 'imagenet', 'celebahq']
+    assert args.dataset in ['cifar', 'cifar10', 'imagenet', 'celebahq', 'celebahq64']
 
 if args.dataset == 'cifar10':
     args.dataset = 'cifar'
@@ -166,8 +166,10 @@ for run_nr in args.runs:
 
                 optimizer.zero_grad()
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=200.)
-                optimizer.step()
+                grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=200.)
+
+                if grad_norm < 300. or it < 10000: # skip threshold
+                    optimizer.step()
 
                 # We validate first iteration, every n iterations, and at the last iteration
                 if (n_iterations_done % validate_every_n_iterations) == 0 or (n_iterations_done == n_iterations - 1):

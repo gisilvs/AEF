@@ -75,7 +75,7 @@ def get_transform(dataset: str = 'mnist'):
 
 
 def get_list_of_datasets():
-    lst = ['mnist', 'kmnist', 'emnist', 'fashionmnist', 'cifar10', 'celebahq']
+    lst = ['mnist', 'kmnist', 'emnist', 'fashionmnist', 'cifar10', 'celebahq', 'celebahq64']
     return lst
 
 
@@ -115,12 +115,12 @@ def get_train_val_dataloaders(dataset: str = 'mnist', batch_size: int = 128, p_v
     elif dataset.lower() == 'imagenet':
         train_dataset=ImageNet(f'{data_dir}/train', transform=img_transform)
         alpha = .05
-    elif dataset.lower() == 'celebahq':
+    elif dataset.lower() == 'celebahq' or dataset.lower() == 'celebahq64':
         train_dataset = CelebAHQ(f'{data_dir}/train', transform=img_transform)
         valid_dataset = CelebAHQ(f'{data_dir}/valid', transform=img_transform)
         alpha = .05
 
-    if dataset.lower() == 'celebahq':
+    if dataset.lower() == 'celebahq' or dataset.lower() == 'celebahq64':
         train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
         validation_dataloader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False)
         return_tuple = [train_dataloader, validation_dataloader]
@@ -161,7 +161,7 @@ def get_test_dataloader(dataset: str = 'mnist', batch_size: int = 128, shuffle=F
         test_dataset = CIFAR10(root='./data/CIFAR', download=True, train=False, transform=img_transform)
     elif dataset.lower() == 'imagenet':
         test_dataset = ImageNet(f'{data_dir}/test', transform=img_transform)
-    elif dataset.lower() == 'celebahq':
+    elif dataset.lower() == 'celebahq' or dataset.lower() == 'celebahq64':
         test_dataset = CelebAHQ(f'{data_dir}/test', transform=img_transform)
 
     test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=shuffle)
