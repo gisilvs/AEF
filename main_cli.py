@@ -136,7 +136,6 @@ for run_nr in args.runs:
     validation_losses = []
     validation_iterations = []
     n_iterations_without_improvements = 0
-    stop_flag = False
     if reload:
         '''samples = model.sample(2)
         model.loss_function(samples)'''
@@ -230,7 +229,7 @@ for run_nr in args.runs:
                             histograms['Weights/' + tag] = wandb.Histogram(value.data.cpu())
                             histograms['Gradients/' + tag] = wandb.Histogram(value.grad.data.cpu())
 
-                        wandb.log({**metrics, **val_metrics, **image_dict, **histograms, **reconstruction_dict})
+                        wandb.log({**metrics, **val_metrics, **image_dict, **histograms, **reconstruction_dict, **{'iterations_without_improvement': n_iterations_without_improvements}})
                         plt.close("all")
 
                         if n_iterations_without_improvements >= 20000:
