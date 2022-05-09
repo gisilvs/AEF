@@ -230,18 +230,13 @@ for run_nr in args.runs:
                             histograms['Weights/' + tag] = wandb.Histogram(value.data.cpu())
                             histograms['Gradients/' + tag] = wandb.Histogram(value.grad.data.cpu())
 
-                        if n_iterations_without_improvements > 20000:
-                            stop_flag = True
-                            stop = True
-                            artifact_latest = wandb.Artifact(f'{run_name}_latest', type='model')
-                            artifact_latest.add_file(f'checkpoints/{run_name}_latest.pt')
-                            run.log_artifact(artifact_latest)
-                            artifact_best = wandb.Artifact(f'{run_name}_best', type='model')
-                            artifact_best.add_file(f'checkpoints/{run_name}_best.pt')
-                            run.log_artifact(artifact_best)
-
-                        wandb.log({**metrics, **val_metrics, **image_dict, **histograms, **reconstruction_dict, **{'stop_flag': stop_flag}})
+                        wandb.log({**metrics, **val_metrics, **image_dict, **histograms, **reconstruction_dict})
                         plt.close("all")
+
+                        if n_iterations_without_improvements >= 20000:
+                            stop = True
+                            break
+
                 else:
                     wandb.log(metrics)
 
