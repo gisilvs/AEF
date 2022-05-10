@@ -104,7 +104,7 @@ class ExtendedGaussianAutoEncoder(GaussianAutoEncoder):
         #z_samples = z_samples.view(batch_size, n_samples, -1)
         log_j_posterior = log_j_posterior.view(batch_size, n_samples)
         p_latent = Normal(0, 1).log_prob(z_prior).sum([-1]) + log_j_z_prior
-        p_latent = p_latent.view([batch_size, n_samples])
+        p_latent = p_latent.view(batch_size, n_samples)
         q_latent = Normal(mu_z.unsqueeze(1), sigma_z.unsqueeze(1)).log_prob(z0_samples).sum([-1]) - log_j_posterior
 
         return -(torch.mean(torch.logsumexp(p_x_z + p_latent - q_latent, [1]) - torch.log(torch.tensor(n_samples))))
