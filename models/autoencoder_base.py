@@ -97,12 +97,14 @@ class ExtendedGaussianAutoEncoder(GaussianAutoEncoder):
         z0_samples = Normal(mu_z, sigma_z).sample([n_samples]).transpose(1, 0)
         z_samples, log_j_posterior = self.posterior_bijector.forward(z0_samples.reshape(batch_size * n_samples, -1))
         mu_x, sigma_x = self.decoder(z_samples)
-        z_samples = z_samples.view(batch_size, n_samples, -1)
-        log_j_posterior = log_j_posterior.view(batch_size, n_samples)
+
         mu_x, sigma_x = mu_x.view(batch_size, n_samples, -1), sigma_x.view(batch_size, n_samples, -1)
         p_x_z = Normal(mu_x, sigma_x).log_prob(images.view(batch_size, 1, -1)).sum([2]).view(batch_size, n_samples)
         z_prior, log_j_z_prior = self.prior_bijector.inverse(z_samples)
+        #z_samples = z_samples.view(batch_size, n_samples, -1)
+        log_j_posterior = log_j_posterior.view(batch_size, n_samples)
         p_latent = Normal(0, 1).log_prob(z_prior).sum([-1]) + log_j_z_prior
+        p_latent = p_latent.view([batch_size, n_samples])
         q_latent = Normal(mu_z.unsqueeze(1), sigma_z.unsqueeze(1)).log_prob(z0_samples).sum([-1]) - log_j_posterior
 
         return -(torch.mean(torch.logsumexp(p_x_z + p_latent - q_latent, [1]) - torch.log(torch.tensor(n_samples))))
