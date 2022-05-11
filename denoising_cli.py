@@ -66,7 +66,8 @@ for run_nr in args.runs:
     else:
         latent_size_str = f"_latent_size_{args.latent_dims}" if model_name in AE_like_models else ""
         decoder_str = f"_decoder_{args.decoder}" if model_name in AE_like_models else ""
-        run_name = f'{args.model}_{args.dataset}_run_{run_nr}{latent_size_str}{decoder_str}'
+        noise_level_str = f"_noise_{noise_level}"
+        run_name = f'{args.model}_{args.dataset}_run_{run_nr}{decoder_str}{noise_level_str}'
 
     config = {
         "model": model_name,
@@ -252,6 +253,13 @@ for run_nr in args.runs:
                 if n_iterations_done >= n_iterations:
                     stop = True
                     break
+
+    artifact_latest = wandb.Artifact(f'{run_name}_latest', type='model')
+    artifact_latest.add_file(f'checkpoints/{run_name}_latest.pt')
+    run.log_artifact(artifact_latest)
+    artifact_best = wandb.Artifact(f'{run_name}_best', type='model')
+    artifact_best.add_file(f'checkpoints/{run_name}_best.pt')
+    run.log_artifact(artifact_best)
 
     model.load_state_dict(torch.load(f'checkpoints/{run_name}_best.pt'))
     model.eval()
