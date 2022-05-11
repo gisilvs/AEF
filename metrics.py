@@ -8,7 +8,51 @@ import torch.nn.functional as F
 import util, datasets
 
 
-def calculate_fid(model, dataset, device, n_samples=1024, batch_size=32):
+def calculate_fid(model, dataset, device, n_samples=2048, batch_size=128, temperature=1, incept=None):
+    test_loader = datasets.get_test_dataloader(dataset, batch_size)
+
+    activations_test = np.empty((n_samples, InceptionV3.DEFAULT_DIMS))
+
+    if incept is None:
+        incept = InceptionV3().to(device)
+    incept.eval()
+    start_idx = 0
+    with torch.no_grad():
+        for batch, _ in test_loader:
+            if batch.shape[1] == 1:
+                # HACK: Inception expects three channels so we tile
+                batch = batch.repeat((1, 3, 1, 1))
+                batch = batch.to(device)
+
+                batch_activations = incept(batch)[0].squeeze(3).squeeze(2).cpu().numpy()
+
+            activations_test[start_idx:start_idx + batch_size, :] = batch_activations
+            start_idx = start_idx + batch_size
+            if start_idx >= n_samples:
+                break
+
+    activations_samples = np.empty((n_samples, InceptionV3.DEFAULT_DIMS))
+    n_filled = 0
+    with torch.no_grad():
+        while n_filled < n_samples:
+            samples = model.sample(batch_size, temperature=temperature)
+
+            if samples.shape[1] == 1:
+                # HACK: Inception expects three channels so we tile
+                samples = samples.repeat((1, 3, 1, 1))
+                samples = samples.to(device)
+
+                batch_activations = incept(samples)[0].squeeze(3).squeeze(2).cpu().numpy()
+                activations_samples[n_filled:n_filled + batch_size] = batch_activations
+                n_filled += batch_size
+
+    test_mu, test_cov = get_statistics_numpy(activations_test)
+    samples_mu, samples_cov = get_statistics_numpy(activations_samples)
+
+    fid_test_sample = calculate_frechet_distance(samples_mu, samples_cov, test_mu, test_cov)
+    return fid_test_sample
+
+def calculate_fid_test(model, dataset, device, n_samples=2048, batch_size=32):
 
     test_loader = datasets.get_test_dataloader(dataset, batch_size)
 

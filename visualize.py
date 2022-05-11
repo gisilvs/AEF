@@ -1,3 +1,4 @@
+import os
 from typing import List
 
 import torch.distributions
@@ -13,6 +14,7 @@ from models.autoencoder_base import AutoEncoder, GaussianAutoEncoder
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 
+from models.model_database import get_model
 from util import load_best_model
 
 from datetime import date
@@ -70,7 +72,7 @@ def plot_latent_space(model, test_loader, device):
     return fig
 
 
-def plot_latent_space_2d(model: AutoEncoder, test_loader, device, max_val=5):
+def plot_latent_space_2d(model: AutoEncoder, test_loader, device, equal_axes=True, max_val=None):
     '''
 
     :param model:
@@ -94,10 +96,13 @@ def plot_latent_space_2d(model: AutoEncoder, test_loader, device, max_val=5):
     plt.style.use('seaborn')
     scat = plt.scatter(arr[:, 0], arr[:, 1], s=10, c=arr[:, 2], cmap=plt.get_cmap('tab10'))
     cb = plt.colorbar(scat, spacing='uniform')
-    cur_min_x, cur_max_x = np.min(arr[:, 0]), np.max(arr[:, 0])
-    cur_min_y, cur_max_y = np.min(arr[:, 1]), np.max(arr[:, 1])
-    plt.ylim((max(cur_min_x, -max_val), min(cur_max_x, max_val)))  # Why are these reversed?
-    plt.xlim((max(cur_min_y, -max_val), min(cur_max_y, max_val)))
+    if equal_axes:
+        plt.axis('square')
+    if max_val is not None:
+        cur_min_x, cur_max_x = np.min(arr[:, 0]), np.max(arr[:, 0])
+        cur_min_y, cur_max_y = np.min(arr[:, 1]), np.max(arr[:, 1])
+        plt.ylim((max(cur_min_x, -max_val), min(cur_max_x, max_val)))  # Why are these reversed?
+        plt.xlim((max(cur_min_y, -max_val), min(cur_max_y, max_val)))
     return fig
 
 
@@ -123,7 +128,7 @@ def plot_samples(model: AutoEncoder, img_shape: List = [1, 28, 28], n_rows: int 
 
 
 def plot_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoader, device: torch.device,
-                         img_shape: List = [1, 28, 28], n_rows: int = 4):
+                         img_shape: List = [1, 28, 28], n_rows: int = 4, skip_batches=0):
     '''
     Function to plot a grid (size n_rows x n_rows) of reconstructions given a model. Each roww of original samples is
     followed by a row of reconstructions.
@@ -136,9 +141,11 @@ def plot_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoader, de
     iter_test_loader = iter(test_loader)
 
     n_images_filled = 0
-
+    batches_skipped = 0
     while cur_row < n_rows:
-        image_batch, _ = next(iter_test_loader)
+        while batches_skipped <= skip_batches:
+            image_batch, _ = next(iter_test_loader)
+            batches_skipped += 1
         batch_idx = 0
         n_imgs_in_batch_left = image_batch.shape[0]
         while n_imgs_in_batch_left >= n_cols and cur_row < n_rows:
@@ -169,8 +176,6 @@ def plot_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoader, de
     plt.imshow(grid_img.permute(1, 2, 0))
     plt.axis("off")
     return fig
-
-
 
 
 def plot_noisy_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoader, device: torch.device,
@@ -247,127 +252,256 @@ def plot_noisy_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoad
     plt.axis("off")
     return fig
 
-def generate_all_noisy_reconstructions():
-    today = date.today()
-    project_name = 'denoising'
-
-    latent_sizes = [2, 4, 8, 16]
-
+def generate_2d_grids():
+    datasets = ['mnist', 'fashionmnist', 'kmnist']
+    #model_names = ['vae', 'iwae', 'vae-iaf', 'nae-center', 'nae-corner', 'nae-external']
+    model_names = ['nae-center', 'nae-corner', 'nae-external']
+    latent_dims = 2
+    api = wandb.Api()
+    architecture_size = 'small'
+    img_dim = [1, 28, 28]
     alpha = 1e-6
+    project_name = 'phase1'
+
     use_gpu = True
     device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
 
-    datasets = ['mnist', 'fashionmnist']
+    run_name = 'latent grids 2 latent dims'
 
-    models = ['nae-center', 'nae-corner', 'nae-external', 'vae', 'vae-iaf', 'iwae']
+    latent_grid_size = 20
 
-    run_name = f"denoising_{today}_all"
-
-    architecture_size = 'small'
-    prior_flow = 'none'
-    posterior_flow = 'none'
-
-    n_plots = 5
-    n_reconstruction_rows = 10
-    batch_size = 50
-
-
-    run = wandb.init(project='visualizations', entity="nae", name=run_name)
-    for run_nr in range(5):
-        for dataset in datasets:
-            reconstruction_dataloader = get_test_dataloader(dataset, batch_size, shuffle=True)
-            if 'mnist' in dataset:
-                image_dim = [1, 28, 28]
-            elif dataset == 'cifar' or dataset == 'cifar10':
-                image_dim = [3, 32, 32]
+    visualization_run = wandb.init(project='visualizations', entity="nae", name=run_name)
+    for dataset in datasets:
+        for model_name in model_names:
+            if 'nae' in model_name:
+                decoder = 'independent'
             else:
-                print("Unknown dataset. Quitting.")
-                return
-            for latent_size in latent_sizes:
-                latent_dims = latent_size
-                for model_name in models:
+                decoder = 'fixed'
+            runs = api.runs(path="nae/phase1", filters={"config.dataset": dataset,
+                                                        "config.latent_dims": latent_dims,
+                                                        "config.model": model_name,
+                                                        })
 
-                    if 'nae' in model_name:
-                        experiment_name = f'{model_name}_{dataset}_run_{run_nr}_latent_size_{latent_size}_decoder_independent'
-                        decoder = 'independent'
-                    else:
-                        experiment_name = f'{model_name}_{dataset}_run_{run_nr}_latent_size_{latent_size}_decoder_fixed'
-                        decoder = 'fixed'
+            for run in runs:
+                run_id = run.id
+                experiment_name = run.name
+                try:
 
-                    try:
-                        model = load_best_model(run, project_name, model_name, experiment_name, device, latent_dims,
-                                                image_dim,
-                                                alpha, decoder, architecture_size, posterior_flow, prior_flow,
-                                                version='latest')
-                    except Exception as E:
-                        print(E)
-                        traceback.print_exc()
-                        continue
+                    posterior_flow = 'none'
+                    prior_flow = 'none'
+                    model = get_model(model_name, architecture_size, decoder, latent_dims, img_dim, alpha,
+                                      posterior_flow,
+                                      prior_flow)
+                    run_name = run.name
+                    artifact = api.artifact(
+                        f'nae/{project_name}/{run_name}_best:latest')  # run.restore(f'{run_name}_best:latest', run_path=run.path, root='./artifacts')
+                    artifact_dir = artifact.download()
+                    artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+                    model.load_state_dict(torch.load(artifact_dir, map_location=device))
                     model = model.to(device)
 
-                    for i in range(n_plots):
-                        fig = plot_noisy_reconstructions(model, reconstruction_dataloader, device, image_dim, n_reconstruction_rows)
-                        wandb.log({
-                                    f"Reconstructions {latent_size} {dataset} {model_name} run {run_nr} plot {i}": wandb.Image(
-                                        fig)})
-                        plt.close('all')
-    run.finish()
+                    z_vals = get_z_values(n_vals=latent_grid_size, latent_dims=2)
+                    z_vals = z_vals.to(device)
 
-def generate_visualizations_single_run():
-    run_name = 'visualizations_XXX'
-    project_name = 'phase1'
-    model_name = 'nae-corner'
-    experiment_name = f'nae_mnist_run_3_latent_size_4_decoder_independent_corner'
-    decoder = 'independent'
-    dataset = 'mnist'
-    use_gpu = False
-    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+                    with torch.no_grad():
+                        output = model.decode(z_vals)
+                        if isinstance(output, tuple):
+                            output = output[0]
+                        output = output.detach().cpu()
+
+                    fig = util.plot_image_grid(output, cols=latent_grid_size, padding=0, hires=True)
+                    wandb.log(
+                        {f"latent grid {dataset} {model_name} run {run_id}": wandb.Image(fig)})
+                    plt.close('all')
+                except Exception as E:
+                    print(E)
+                    print(f'Failed to plot latent space of {experiment_name}')
+                    traceback.print_exc()
+                    continue
+    visualization_run.finish()
+
+def generate_samples():
+    datasets = ['mnist', 'fashionmnist', 'kmnist']
+    model_names = ['vae', 'iwae', 'vae-iaf', 'nae-center', 'nae-corner', 'nae-external']
+    latent_dims = [2, 4, 8, 16, 32]
+    api = wandb.Api()
+    architecture_size = 'small'
+    img_dim = [1, 28, 28]
     alpha = 1e-6
-    latent_dims = 4
-    image_dim = [1, 28, 28]
+    project_name = 'phase1'
 
-    run = wandb.init(project='visualizations', entity="nae", name=run_name)
-    model = load_best_model(run, project_name, model_name, experiment_name, device, latent_dims, image_dim,
-                            alpha, decoder, version='latest')
+    use_gpu = True
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
 
-    do_plot_samples_from_latent_space_grid = False
-    do_plot_latent_space_equal_to_2 = False
-    latent_grid_size = 20
-    do_plot_latent_space_greater_than_2 = False
-    do_plot_samples = False
-    n_times_to_sample = 5
-    if do_plot_samples_from_latent_space_grid:
-        z_vals = get_z_values(n_vals=latent_grid_size, latent_dims=2)
-        z_vals = z_vals.to(device)
+    run_name = 'samples'
 
-        with torch.no_grad():
-            output = model.decode(z=z_vals).detach().cpu()
+    visualization_run = wandb.init(project='visualizations', entity="nae", name=run_name)
+    for latent in latent_dims:
+        for dataset in datasets:
+            for model_name in model_names:
+                if 'nae' in model_name:
+                    decoder = 'independent'
+                else:
+                    decoder = 'fixed'
+                runs = api.runs(path="nae/phase1", filters={"config.dataset": dataset,
+                                                            "config.latent_dims": latent,
+                                                            "config.model": model_name,
+                                                            })
 
-        util.plot_image_grid(output, cols=latent_grid_size, padding=0, hires=True)
-        image_dict = {f'latent grid {dataset} {model_name}': plt}
-        wandb.log({**image_dict})
-    if do_plot_latent_space_equal_to_2:
-        test_loader = get_test_dataloader(dataset)
-        fig = plot_latent_space(model, test_loader, device)
-        wandb.log({f"latent dims {latent_dims} {dataset} {model_name}": wandb.Image(fig)})
+                for run in runs:
+                    run_id = run.id
+                    experiment_name = run.name
+                    try:
 
-    # Don't do these for >2d latent space, doesn't add that much since very dependent on TSNE.
-    if do_plot_latent_space_greater_than_2:
-        test_loader = get_test_dataloader(dataset)
-        fig = plot_latent_space(model, test_loader, device)
-        wandb.log({f"latent dims {latent_dims} {dataset} {model_name}": wandb.Image(fig)})
-    if do_plot_samples:
-        for i in range(n_times_to_sample):
-            fig = plot_samples(model, image_dim)
-            wandb.log({f"samples {latent_dims} {dataset} {model_name} plot {i}": wandb.Image(fig)})
+                        posterior_flow = 'none'
+                        prior_flow = 'none'
+                        model = get_model(model_name, architecture_size, decoder, latent, img_dim, alpha,
+                                          posterior_flow,
+                                          prior_flow)
+                        run_name = run.name
+                        artifact = api.artifact(
+                            f'nae/{project_name}/{run_name}_best:latest')  # run.restore(f'{run_name}_best:latest', run_path=run.path, root='./artifacts')
+                        artifact_dir = artifact.download()
+                        artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+                        model.load_state_dict(torch.load(artifact_dir, map_location=device))
+                        model = model.to(device)
+
+                        for i in range(2):
+                            fig = plot_samples(model, img_dim)
+                            wandb.log(
+                                {f"samples {dataset} {model_name} latent dim {latent} run {run_id} plot {i}": wandb.Image(fig)})
+                        plt.close('all')
+                    except Exception as E:
+                        print(E)
+                        print(f'Failed to plot samples of {experiment_name}')
+                        traceback.print_exc()
+                        continue
+    visualization_run.finish()
 
 
 def generate_visualizations_separately():
-    # generate_visualizations(False, True, False, False, 0, custom_name="2D latent space plots")
+    generate_visualizations(False, True, False, False, 0, custom_name="2D latent space plots new")
     # generate_visualizations(False, False, True, False, 0, custom_name="Latent grid plots")
     # generate_visualizations(False, False, False, True, 5, custom_name="Samples")
-    generate_visualizations(False, False, False, False, 5, True, 1, custom_name="Reconstructions_new")
+    #generate_visualizations(False, False, False, False, 5, True, 1, custom_name="Reconstructions_new")
 
+def generate_reconstructions(run_name = None):
+    datasets = ['mnist', 'fashionmnist', 'kmnist']
+    model_names = ['vae', 'iwae', 'vae-iaf', 'nae-center', 'nae-corner', 'nae-external']
+    latent_dims = [2, 4, 8, 16, 32]
+    api = wandb.Api()
+    architecture_size = 'small'
+    img_dim = [1, 28, 28]
+    alpha = 1e-6
+    project_name = 'phase1'
+
+    use_gpu = True
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+
+    run_name = 'reconstructions'
+
+    visualization_run = wandb.init(project='visualizations', entity="nae", name=run_name)
+    for latent in latent_dims:
+        for dataset in datasets:
+            for model_name in model_names:
+                if 'nae' in model_name:
+                    decoder = 'independent'
+                else:
+                    decoder = 'fixed'
+                runs = api.runs(path="nae/phase1", filters={"config.dataset": dataset,
+                                                            "config.latent_dims": latent,
+                                                            "config.model": model_name,
+                                                            })
+
+                for run in runs:
+                    run_id = run.id
+                    experiment_name = run.name
+                    try:
+
+                        posterior_flow = 'none'
+                        prior_flow = 'none'
+                        model = get_model(model_name, architecture_size, decoder, latent_dims, img_dim, alpha,
+                                          posterior_flow,
+                                          prior_flow)
+                        run_name = run.name
+                        artifact = api.artifact(
+                            f'nae/{project_name}/{run_name}_best:latest')  # run.restore(f'{run_name}_best:latest', run_path=run.path, root='./artifacts')
+                        artifact_dir = artifact.download()
+                        artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+                        model.load_state_dict(torch.load(artifact_dir, map_location=device))
+                        model = model.to(device)
+
+
+                        test_loader = get_test_dataloader(dataset)
+                        for i in range(3):
+                            fig = plot_reconstructions(model, test_loader, device, img_dim, n_rows=10, skip_batches=i)
+                            wandb.log(
+                                {f"reconstructions {dataset} {model_name} latent {latent }run {run_id}": wandb.Image(fig)})
+                        plt.close('all')
+                    except Exception as E:
+                        print(E)
+                        print(f'Failed to plot reconstructions of {experiment_name}')
+                        traceback.print_exc()
+                        continue
+    visualization_run.finish()
+
+def generate_2d_latent_spaces(run_name = None):
+    datasets = ['mnist', 'fashionmnist', 'kmnist']
+    model_names = ['vae', 'iwae', 'vae-iaf', 'nae-center', 'nae-corner', 'nae-external']
+    latent_dims = 2
+    api = wandb.Api()
+    architecture_size = 'small'
+    img_dim = [1, 28, 28]
+    alpha = 1e-6
+    project_name = 'phase1'
+
+    use_gpu = True
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+    if run_name is None:
+        run_name = 'latent spaces 2 latent dims'
+
+    visualization_run = wandb.init(project='visualizations', entity="nae", name=run_name)
+    for dataset in datasets:
+        for model_name in model_names:
+            if 'nae' in model_name:
+                decoder = 'independent'
+            else:
+                decoder = 'fixed'
+            runs = api.runs(path="nae/phase1", filters={"config.dataset": dataset,
+                                                        "config.latent_dims": latent_dims,
+                                                        "config.model": model_name,
+                                                        })
+
+            for run in runs:
+                run_id = run.id
+                experiment_name = run.name
+                try:
+
+                    posterior_flow = 'none'
+                    prior_flow = 'none'
+                    model = get_model(model_name, architecture_size, decoder, latent_dims, img_dim, alpha,
+                                      posterior_flow,
+                                      prior_flow)
+                    run_name = run.name
+                    artifact = api.artifact(
+                        f'nae/{project_name}/{run_name}_best:latest')  # run.restore(f'{run_name}_best:latest', run_path=run.path, root='./artifacts')
+                    artifact_dir = artifact.download()
+                    artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+                    model.load_state_dict(torch.load(artifact_dir, map_location=device))
+                    model = model.to(device)
+
+
+                    test_loader = get_test_dataloader(dataset)
+                    fig = plot_latent_space(model, test_loader, device)
+                    wandb.log(
+                        {f"latent space {dataset} {model_name} run {run_id}": wandb.Image(fig)})
+                    plt.close('all')
+                except Exception as E:
+                    print(E)
+                    print(f'Failed to plot latent space of {experiment_name}')
+                    traceback.print_exc()
+                    continue
+    visualization_run.finish()
 
 def generate_visualizations(do_plot_latent_space_greater_than_2=False,
                             do_plot_latent_space_equal_to_2=True,
@@ -377,7 +511,7 @@ def generate_visualizations(do_plot_latent_space_greater_than_2=False,
                             do_plot_reconstructions=True,
                             n_times_to_reconstruct=5,
                             custom_name=None):  # Number of plots to create for each run):
-    '''
+    '''5
     Function to create all plots for all runs of a certain phase. These will all be under a single wandb run.
     For latent grid search: latent grid {dataset} {model_name} run {run_nr}
     For latent space search: latent dims {latent_size} {dataset} {model_name} run {run_nr}
@@ -486,66 +620,8 @@ def generate_visualizations(do_plot_latent_space_greater_than_2=False,
     run.finish()
 
 
-def generate_loss_over_latentdims():
-    api = wandb.Api()
-
-    project_name = 'phase1'
-    image_dim = [1, 28, 28]
-
-    alpha = 1e-6
-    use_center_pixels = False
-    use_gpu = False
-    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
-
-    dataset = 'mnist'
-    model_name = 'nae'
-    latent_sizes = [2, 4, 8, 16, 32]
-    n_runs = 5
-    decoder = 'independent'
-    nae_type = 'corner'
-
-    scores = np.zeros((n_runs, len(latent_sizes)))
-    # n_recorded = np.zeros((len(latent_sizes)))
-    for idx, latent_size in enumerate(latent_sizes):
-        runs = api.runs(path="nae/phase1", filters={"config.dataset": dataset,
-                                                    "config.latent_dim": latent_size,
-                                                    "config.model": model_name,
-                                                    "config.decoder": decoder,
-                                                    })
-        n_recorded = 0
-        for run in runs:
-            if nae_type not in run.name:
-                continue
-            if n_recorded >= n_runs:
-                print(f'Found more than {n_runs} with latent size {latent_size}')
-                break
-            scores[n_recorded, idx] = run.summary['test_loss']
-            n_recorded += 1
-    scores[scores == np.inf] = np.nan
-    best_scores = -1 * np.nanmin(scores, axis=0)  # TODO: change to mean once inf/positive runs are gone
-    fig = plt.figure()
-    plt.scatter(np.arange(len(latent_sizes)), best_scores)
-    plt.ylabel('Log-likelihood')
-    plt.xlabel('Dimensionality of latent space')
-    plt.xticks(np.arange(len(latent_sizes)), labels=[f'$2^{i + 1}$' for i in range(len(latent_sizes))])
-
-    # GET MAF likelihood
-    scores_maf = np.zeros((n_runs,))
-    runs = api.runs(path="nae/phase1", filters={"config.dataset": dataset,
-                                                "config.model": 'maf',
-                                                })
-    n_recorded = 0
-    for run in runs:
-        if n_recorded >= n_runs:
-            print(f'Found more than {n_runs} for maf')
-            break
-        scores_maf[n_recorded] = run.summary['test_loss']
-        n_recorded += 1
-    plt.axhline(y=-1 * np.min(scores_maf), color='k', linestyle='--')
-
-    plt.savefig('./plots/likelihood_for_latents.png', dpi='figure')
-
 
 if __name__ == "__main__":
-    generate_visualizations_separately()
+    generate_samples()
+    #generate_visualizations_separately()
     # generate_loss_over_latentdims()

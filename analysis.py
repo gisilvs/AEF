@@ -3,7 +3,9 @@ import traceback
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 
+import metrics
 import wandb
 import pandas as pd
 
@@ -11,6 +13,7 @@ from models.model_database import get_model
 from util import load_best_model, vae_log_prob, make_averager, dequantize, bits_per_pixel
 from datasets import get_test_dataloader
 import matplotlib.pyplot as plt
+
 
 
 def generate_loss_over_latentdims():
@@ -90,8 +93,9 @@ def extract_data_from_runs(project_name='phase1'):
     val_loss = []
     test_rce_with_noise = []
     test_rce = []
-    test_fid = []
+    fid = []
     noise_level = []
+
 
     runs = api.runs(path=f"nae/{project_name}")
     for run in runs:
@@ -108,7 +112,7 @@ def extract_data_from_runs(project_name='phase1'):
         val_loss.append(get_field_from_summary(run, "val_loss", type="float"))
         test_rce_with_noise.append(get_field_from_summary(run, "test_rce_with_noise", type="float"))
         test_rce.append(get_field_from_summary(run, "test_rce", type="float"))
-        test_fid.append(get_field_from_summary(run, "test_fid", type="float"))
+        fid.append(get_field_from_summary(run, "test_fid", type="float"))
         noise_level.append(get_field_from_summary(run, "noise_level", type="float"))
 
         model_name = get_field_from_config(run, "model")
@@ -134,16 +138,12 @@ def extract_data_from_runs(project_name='phase1'):
                 'posterior_flow': posterior_flow,
                 'test_rce_with_noise': test_rce_with_noise,
                 'test_rce': test_rce,
-                'test_fid': test_fid,
+                'fid': fid,
                 'noise_level': noise_level
                 }
     df = pd.DataFrame(col_dict)
 
     return df
-
-def check_for_outliers(df, model_name, latent_dims):
-    rows = df[df['model'] == model_name & df['latent_dim'] == latent_dims]
-
 
 
 def get_field_from_config(run: wandb.run, field: str, type: str = 'str'):
@@ -248,37 +248,26 @@ def update_log_likelihood():
             print(f'Failed to update {run_name}')
             continue
 
-def add_mse_and_fid():
+def add_mse_fid_phase_1():
     use_gpu = True
     device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
     project_name = 'phase1'
     image_dim = [1, 28, 28]
     n_pixels = np.prod(image_dim)
-    vae_like_models = ['vae-iaf', 'vae', 'iwae']
+    vae_like_models = ['vae-iaf', 'vae', 'iwae', 'nae-center', 'nae-corner', 'nae-external']
 
     alpha = 1e-6
 
     api = wandb.Api()
     runs = api.runs(path="nae/phase1")
     architecture_size = "small"
+    incept = metrics.InceptionV3().to(device)
     for run in runs:
+        if run.state != 'finished':
+            continue
+
         try:
             model_name = get_field_from_config(run, "model")
-            # Backwards compatibility: before we used 'nae' for both 'nae-center' and 'nae-corner'.
-            if model_name == 'nae':
-                if run.name.split('_')[-1] == 'corner':
-                    model_name = 'nae-corner'
-                    run.config["model"] = model_name
-                    run.update()
-                elif run.name.split('_')[-1] == 'center':
-                    model_name = 'nae-center'
-                    run.config["model"] = model_name
-                    run.update()
-                else:
-                    print(f'Encountered something weird in {run.name}.')
-                    continue
-            if model_name not in vae_like_models:
-                continue
 
             dataset = get_field_from_config(run, "dataset")
 
@@ -287,42 +276,47 @@ def add_mse_and_fid():
             decoder = get_field_from_config(run, "decoder")
             latent_dims = get_field_from_config(run, "latent_dims", type="int")
 
-            prior_flow = get_field_from_config(run, "prior_flow")
-            posterior_flow = get_field_from_config(run, "posterior_flow")
 
-            test_ll = get_field_from_summary(run, "test_log_likelihood", type="float")
-            test_bpp = get_field_from_summary(run, "test_bpp", type="float")
-            test_bpp_adjusted = get_field_from_summary(run, "test_bpp_adjusted", type="float")
-
-            test_loader = get_test_dataloader(dataset)
             posterior_flow = 'none'
             prior_flow = 'none'
             model = get_model(model_name, architecture_size, decoder, latent_dims, image_dim, alpha, posterior_flow,
                               prior_flow)
             #model.loss_function(model.sample(10))  # needed as some components such as actnorm need to be initialized
             run_name = run.name
-            artifact = api.artifact(f'nae/{project_name}/{run_name}_best:latest')#run.restore(f'{run_name}_best:latest', run_path=run.path, root='./artifacts')
+            artifact = api.artifact(f'nae/{project_name}/{run_name}_best:latest')
             artifact_dir = artifact.download()
             artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
             model.load_state_dict(torch.load(artifact_dir, map_location=device))
             model = model.to(device)
 
-            test_ll_averager = make_averager()
-            for test_batch, _ in test_loader:
-                test_batch = dequantize(test_batch)
-                test_batch = test_batch.to(device)
-                for iw_iter in range(20):
-                    log_likelihood = torch.mean(model.approximate_marginal(test_batch, n_samples=128))
-                    test_ll_averager(log_likelihood.item())
-            new_test_ll = test_ll_averager(None)
-            new_bpp_test = bits_per_pixel(new_test_ll, n_pixels)
-            new_bpp_test_adjusted = bits_per_pixel(new_test_ll, n_pixels, adjust_value=256.)
+            test_loader = get_test_dataloader(dataset, batch_size=128)
+            model = model.eval()
+            with torch.no_grad():
+                test_rce_averager = make_averager()
+                for test_batch, _ in test_loader:
+                    test_batch = dequantize(test_batch)
+                    test_batch = test_batch.to(device)
 
-            run.summary["test_log_likelihood"] = new_test_ll
-            run.summary["test_bpp"] = new_bpp_test
-            run.summary['test_bpp_adjusted'] = new_bpp_test_adjusted
+                    z = model.encode(test_batch)
+                    if isinstance(z, tuple):
+                        z = z[0]
+
+                    test_batch_reconstructed = model.decode(z)
+                    if isinstance(test_batch_reconstructed, tuple):
+                        test_batch_reconstructed = test_batch_reconstructed[0]
+
+                    rce = torch.mean(F.mse_loss(test_batch_reconstructed, test_batch, reduction='none'))
+                    test_rce_averager(rce.item())
+
+            test_rce = test_rce_averager(None)
+            run.summary["test_rce"] = test_rce
+            #
+            fid = metrics.calculate_fid(model, dataset, device, batch_size=128, incept=incept)
+            run.summary['fid'] = fid
+
             run.summary.update()
-            print(f"Updated {run_name}")
+            print(f"Updated {run_name} with RCE and FID")
+
         except Exception as e:
             print(e)
             traceback.print_exc()
@@ -389,5 +383,6 @@ def generate_denoising_table(latent_dims=32):
 if __name__ == '__main__':
     # df = extract_data_from_runs()
     # print(df)
-    generate_denoising_table()
+    #generate_denoising_table()
+    add_mse_fid_phase_1()
 
