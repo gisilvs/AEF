@@ -36,6 +36,7 @@ parser.add_argument('--data-dir', type=str, default="")
 parser.add_argument('--reload', type=int, default=0)
 parser.add_argument('--previous-val-iters', type=int, default=500, help='validate every x iterations (default: 500')
 parser.add_argument('--reload-from-project', type=str, default='prototyping')
+parser.add_argument('--early-stopping', type=int, default=20000)
 
 
 
@@ -69,6 +70,7 @@ architecture_size = args.architecture
 posterior_flow = args.post_flow
 prior_flow = args.prior_flow
 reload = True if args.reload==1 else False
+early_stopping_threshold = args.early_stopping
 
 args.runs = [int(item) for item in args.runs.split(',')]
 
@@ -232,7 +234,7 @@ for run_nr in args.runs:
                         wandb.log({**metrics, **val_metrics, **image_dict, **histograms, **reconstruction_dict, **{'iterations_without_improvement': n_iterations_without_improvements}})
                         plt.close("all")
 
-                        if n_iterations_without_improvements >= 20000:
+                        if n_iterations_without_improvements >= early_stopping_threshold:
                             stop = True
                             break
 
