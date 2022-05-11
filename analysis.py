@@ -89,6 +89,9 @@ def extract_data_from_runs(project_name='phase1'):
     train_loss = []
     val_loss = []
     test_rce_with_noise = []
+    test_rce = []
+    test_fid = []
+    noise_level = []
 
     runs = api.runs(path=f"nae/{project_name}")
     for run in runs:
@@ -104,6 +107,9 @@ def extract_data_from_runs(project_name='phase1'):
         train_loss.append(get_field_from_summary(run, "train_loss", type="float"))
         val_loss.append(get_field_from_summary(run, "val_loss", type="float"))
         test_rce_with_noise.append(get_field_from_summary(run, "test_rce_with_noise", type="float"))
+        test_rce.append(get_field_from_summary(run, "test_rce", type="float"))
+        test_fid.append(get_field_from_summary(run, "test_fid", type="float"))
+        noise_level.append(get_field_from_summary(run, "noise_level", type="float"))
 
         model_name = get_field_from_config(run, "model")
         model_names.append(model_name)
@@ -126,6 +132,10 @@ def extract_data_from_runs(project_name='phase1'):
                 'architecture_size': architecture_size,
                 'prior_flow': prior_flow,
                 'posterior_flow': posterior_flow,
+                'test_rce_with_noise': test_rce_with_noise,
+                'test_rce': test_rce,
+                'test_fid': test_fid,
+                'noise_level': noise_level
                 }
     df = pd.DataFrame(col_dict)
 
@@ -238,13 +248,94 @@ def update_log_likelihood():
             print(f'Failed to update {run_name}')
             continue
 
+def add_mse_and_fid():
+    use_gpu = True
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+    project_name = 'phase1'
+    image_dim = [1, 28, 28]
+    n_pixels = np.prod(image_dim)
+    vae_like_models = ['vae-iaf', 'vae', 'iwae']
+
+    alpha = 1e-6
+
+    api = wandb.Api()
+    runs = api.runs(path="nae/phase1")
+    architecture_size = "small"
+    for run in runs:
+        try:
+            model_name = get_field_from_config(run, "model")
+            # Backwards compatibility: before we used 'nae' for both 'nae-center' and 'nae-corner'.
+            if model_name == 'nae':
+                if run.name.split('_')[-1] == 'corner':
+                    model_name = 'nae-corner'
+                    run.config["model"] = model_name
+                    run.update()
+                elif run.name.split('_')[-1] == 'center':
+                    model_name = 'nae-center'
+                    run.config["model"] = model_name
+                    run.update()
+                else:
+                    print(f'Encountered something weird in {run.name}.')
+                    continue
+            if model_name not in vae_like_models:
+                continue
+
+            dataset = get_field_from_config(run, "dataset")
+
+            if 'mnist' not in dataset:
+                continue
+            decoder = get_field_from_config(run, "decoder")
+            latent_dims = get_field_from_config(run, "latent_dims", type="int")
+
+            prior_flow = get_field_from_config(run, "prior_flow")
+            posterior_flow = get_field_from_config(run, "posterior_flow")
+
+            test_ll = get_field_from_summary(run, "test_log_likelihood", type="float")
+            test_bpp = get_field_from_summary(run, "test_bpp", type="float")
+            test_bpp_adjusted = get_field_from_summary(run, "test_bpp_adjusted", type="float")
+
+            test_loader = get_test_dataloader(dataset)
+            posterior_flow = 'none'
+            prior_flow = 'none'
+            model = get_model(model_name, architecture_size, decoder, latent_dims, image_dim, alpha, posterior_flow,
+                              prior_flow)
+            #model.loss_function(model.sample(10))  # needed as some components such as actnorm need to be initialized
+            run_name = run.name
+            artifact = api.artifact(f'nae/{project_name}/{run_name}_best:latest')#run.restore(f'{run_name}_best:latest', run_path=run.path, root='./artifacts')
+            artifact_dir = artifact.download()
+            artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+            model.load_state_dict(torch.load(artifact_dir, map_location=device))
+            model = model.to(device)
+
+            test_ll_averager = make_averager()
+            for test_batch, _ in test_loader:
+                test_batch = dequantize(test_batch)
+                test_batch = test_batch.to(device)
+                for iw_iter in range(20):
+                    log_likelihood = torch.mean(model.approximate_marginal(test_batch, n_samples=128))
+                    test_ll_averager(log_likelihood.item())
+            new_test_ll = test_ll_averager(None)
+            new_bpp_test = bits_per_pixel(new_test_ll, n_pixels)
+            new_bpp_test_adjusted = bits_per_pixel(new_test_ll, n_pixels, adjust_value=256.)
+
+            run.summary["test_log_likelihood"] = new_test_ll
+            run.summary["test_bpp"] = new_bpp_test
+            run.summary['test_bpp_adjusted'] = new_bpp_test_adjusted
+            run.summary.update()
+            print(f"Updated {run_name}")
+        except Exception as e:
+            print(e)
+            traceback.print_exc()
+            print(f'Failed to update {run_name}')
+            continue
+
 def generate_phase1_table(latent_dims=32):
 
     datasets = ['mnist', 'fashionmnist', 'kmnist']
     models = ['vae', 'iwae', 'vae-iaf', 'nae-center', 'nae-corner', 'nae-external']
     model_titles = ['VAE', 'IWAE', 'VAE-IAF', 'IAE (center)', 'IAE (corner)', 'IAE (linear)']
 
-    df = extract_data_from_runs()
+    df = extract_data_from_runs(project_name='denoising-experiments')
 
     mean_bpps = np.zeros((len(models), len(datasets)))
     se_bpps = np.zeros((len(models), len(datasets)))
@@ -267,11 +358,36 @@ def generate_phase1_table(latent_dims=32):
         se_maf = runs.loc[:, 'test_bpp_adjusted'].sem(axis=0)
         print(f'& ${mean_maf:.3f} \pm {se_maf:.3f}$', end=' ')
 
+def generate_denoising_table(latent_dims=32):
 
-def generate
+    datasets = ['mnist', 'fashionmnist']
+    models = ['ae', 'vae', 'vae-iaf', 'nae-external']
+    model_titles = ['AE', 'VAE', 'VAE-IAF', 'IAE (linear)']
+    noise_levels = [0.25, 0.5, 0.75]
+
+    df = extract_data_from_runs('denoising-experiments')
+
+    mean_rce = np.zeros((len(models), len(datasets), len(noise_levels)))
+    se_rce = np.zeros((len(models), len(datasets), len(noise_levels)))
+    for model_idx, model_name in enumerate(models):
+        for dataset_idx, dataset in enumerate(datasets):
+            for noise_idx, noise_level in enumerate(noise_levels):
+                runs = df.loc[(df.loc[:, 'model'] == model_name) & (df.loc[:, 'dataset'] == dataset) & (df.loc[:, 'noise_level'] == noise_level)]
+                print(f'{model_name} {dataset} {noise_level} nr. of runs: {len(runs)}')
+                mean_rce[model_idx, dataset_idx, noise_idx] = runs.loc[:, 'test_rce_with_noise'].mean(axis=0)
+                se_rce[model_idx, dataset_idx] = runs.loc[:, 'test_rce_with_noise'].sem(axis=0)
+
+    for row_idx in range(len(models)):
+        print(model_titles[row_idx], end=' ')
+        for dataset_idx in range(len(datasets)):
+            for noise_level_idx in range(len(noise_levels)):
+                print(f'& ${mean_rce[row_idx, dataset_idx, noise_level_idx]:.3f} \pm {se_rce[row_idx, dataset_idx, noise_level_idx]:.3f}$', end=' ')
+        print('\\\\')
+
+
 
 if __name__ == '__main__':
     # df = extract_data_from_runs()
     # print(df)
-    generate_phase1_table()
+    generate_denoising_table()
 
