@@ -76,25 +76,20 @@ class ExternalLatentAutoEncoder(GaussianAutoEncoder):
         z0_dist = Normal(z, std)
         z0_samples = z0_dist.sample([n_samples])
 
-        z1_samples, log_j_z1 = self.core_flow_post.forward(z0_samples.view(n_samples*batch_size, -1))
+        z1_samples, _ = self.core_flow_post.forward(z0_samples.view(n_samples*batch_size, -1))
         z1_samples = z1_samples.view(n_samples, batch_size, -1)
-        log_j_z1 = log_j_z1.view(n_samples, batch_size)
-        w1_samples = z1_samples * (sigma_z + self.eps) + mu_z
 
-        w0_samples, log_j_w0 = self.core_flow_pre.inverse(w1_samples.view(n_samples*batch_size, -1))
-        log_j_w0 = log_j_w0.view(n_samples, batch_size)
-        w_log_prob = z0_dist.log_prob(z0_samples).sum(-1) - log_j_z1 + log_j_z - log_j_w0
+        z0_log_prob = z0_dist.log_prob(z0_samples).sum(-1)
 
-        w1_samples = w1_samples.view(n_samples, batch_size, -1)
-        mu_d, sigma_d = self.decoder(w1_samples.view(n_samples * batch_size, -1))
+        mu_d, sigma_d = self.decoder(z1_samples.view(n_samples * batch_size, -1))
         mu_d = mu_d.view(n_samples, batch_size, self.image_shape[0], self.image_shape[1], self.image_shape[2])
         sigma_d = sigma_d.view(n_samples, batch_size, self.image_shape[0], self.image_shape[1], self.image_shape[2])
         deviations = (x - mu_d) / (sigma_d + self.eps)
         log_j_d = torch.sum(-torch.log(sigma_d + self.eps),
                             dim=[2, 3, 4])
 
-        log_j = log_j_preprocessing - log_j_w0 + log_j_z + log_j_d - log_j_z1
-        return z0_samples.view(n_samples, batch_size, -1), deviations, log_j, w_log_prob
+        log_j = log_j_preprocessing + log_j_d
+        return z0_samples.view(n_samples, batch_size, -1), deviations, log_j, z0_log_prob
 
     def embedding(self, x):
         log_j_preprocessing = 0
@@ -116,7 +111,7 @@ class ExternalLatentAutoEncoder(GaussianAutoEncoder):
 
     def neg_log_likelihood(self, x, importance_sampling=False, std=0.01, n_samples=20):
         if importance_sampling:
-            z, deviations, log_j, core_log_prob = self.importance_sampling_embedding(x, std, n_samples)
+            z, deviations, log_j, z0_log_prob = self.importance_sampling_embedding(x, std, n_samples)
         else:
             z, deviations, log_j = self.embedding(x)
         loss_z = torch.sum(
@@ -128,7 +123,7 @@ class ExternalLatentAutoEncoder(GaussianAutoEncoder):
 
         log_prob = loss_z + loss_d + log_j
         if importance_sampling:
-            log_prob = torch.logsumexp(log_prob - core_log_prob, [0])
+            log_prob = torch.logsumexp(log_prob - z0_log_prob, [0])
         return -log_prob
 
     def encode(self, x: Tensor):
