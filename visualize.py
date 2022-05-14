@@ -314,52 +314,46 @@ def generate_all_noisy_reconstructions():
     run.finish()
 
 def generate_visualizations_single_run():
-    run_name = 'visualizations_XXX'
-    project_name = 'phase1'
-    model_name = 'nae-corner'
-    experiment_name = f'nae_mnist_run_3_latent_size_4_decoder_independent_corner'
+    run_name = 'visualizations_celeba'
+    project_name = 'phase2'
+    model_name = 'nae-external'
+    experiment_name = f'nae-external_big_celebahq_run_0_latent_size_256_decoder_independent_post_maf_prior_maf'
     decoder = 'independent'
-    dataset = 'mnist'
+    dataset = 'celeba'
     use_gpu = False
     device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
     alpha = 1e-6
-    latent_dims = 4
-    image_dim = [1, 28, 28]
+    latent_dims = 256
+    image_dim = [3, 32, 32]
+    architecture_size = 'big'
+
+    prior_flow = 'maf'
+    posterior_flow = 'maf'
 
     run = wandb.init(project='visualizations', entity="nae", name=run_name)
     model = load_best_model(run, project_name, model_name, experiment_name, device, latent_dims, image_dim,
-                            alpha, decoder, version='latest')
+                            alpha, decoder, architecture_size, prior_flow, posterior_flow, version='latest')
 
-    do_plot_samples_from_latent_space_grid = False
-    do_plot_latent_space_equal_to_2 = False
-    latent_grid_size = 20
-    do_plot_latent_space_greater_than_2 = False
-    do_plot_samples = False
-    n_times_to_sample = 5
-    if do_plot_samples_from_latent_space_grid:
-        z_vals = get_z_values(n_vals=latent_grid_size, latent_dims=2)
-        z_vals = z_vals.to(device)
+    n_rows = 2
+    n_cols = 4
+    img_shape = [3, 32, 32]
+    batch_size = 8
+    temperature = 1
 
+    n_samples = n_rows * n_cols
+    arr = torch.zeros((n_samples, *img_shape))
+    n_filled = 0
+    while n_filled < n_samples:
+        n_to_sample = min(batch_size, n_samples - n_filled)
         with torch.no_grad():
-            output = model.decode(z=z_vals).detach().cpu()
+            arr[n_filled:n_filled + n_to_sample] = model.sample(n_to_sample, temperature=temperature).cpu().detach()
+        n_filled += n_to_sample
 
-        util.plot_image_grid(output, cols=latent_grid_size, padding=0, hires=True)
-        image_dict = {f'latent grid {dataset} {model_name}': plt}
-        wandb.log({**image_dict})
-    if do_plot_latent_space_equal_to_2:
-        test_loader = get_test_dataloader(dataset)
-        fig = plot_latent_space(model, test_loader, device)
-        wandb.log({f"latent dims {latent_dims} {dataset} {model_name}": wandb.Image(fig)})
-
-    # Don't do these for >2d latent space, doesn't add that much since very dependent on TSNE.
-    if do_plot_latent_space_greater_than_2:
-        test_loader = get_test_dataloader(dataset)
-        fig = plot_latent_space(model, test_loader, device)
-        wandb.log({f"latent dims {latent_dims} {dataset} {model_name}": wandb.Image(fig)})
-    if do_plot_samples:
-        for i in range(n_times_to_sample):
-            fig = plot_samples(model, image_dim)
-            wandb.log({f"samples {latent_dims} {dataset} {model_name} plot {i}": wandb.Image(fig)})
+    fig = plt.figure(figsize=(10, 10))
+    grid_img = torchvision.utils.make_grid(arr, padding=1, pad_value=0., nrow=n_rows)
+    plt.imshow(grid_img.permute(1, 2, 0))
+    plt.axis("off")
+    return fig
 
 
 def generate_visualizations_separately():
@@ -547,5 +541,5 @@ def generate_loss_over_latentdims():
 
 
 if __name__ == "__main__":
-    generate_visualizations_separately()
+    generate_visualizations_single_run()
     # generate_loss_over_latentdims()
