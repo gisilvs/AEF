@@ -482,6 +482,128 @@ def generate_pics_nae_external():
         plt.close('all')
     # visualization_run.finish()
 
+def generate_denoising_reconstructions():
+    datasets = ['fashionmnist']
+    model_name = 'nae-external'
+    posterior_flow = 'none'
+    prior_flow = 'none'
+
+    #posterior_flow = 'maf'
+    #prior_flow = 'maf'
+    decoder = 'independent'
+    # model_name = 'vae'
+    # posterior_flow = 'iaf'
+    # prior_flow = 'maf'
+    # decoder = 'fixed'
+    latent_dims = 32
+    api = wandb.Api()
+    architecture_size = 'small'
+    img_dim = [1, 28, 28]
+    alpha = 0.05
+    project_name = 'denoising-experiments-1'
+    noise_level = 0.75
+
+    use_gpu = True
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+    latent_grid_size = 20
+    # visualization_run = wandb.init(project='visualizations', entity="nae", name=run_name)
+    for dataset in datasets:
+
+        runs = api.runs(path=f"nae/{project_name}", filters={"config.dataset": dataset,
+                                                             "config.latent_dims": latent_dims,
+                                                             "config.model": model_name,
+                                                             # "config.posterior_flow": posterior_flow,
+                                                             # "config.prior_flow": prior_flow,
+                                                             "config.noise_level": noise_level
+                                                             })
+
+        for run in runs:
+            run_id = run.id
+            experiment_name = run.name
+            try:
+
+                model = get_model(model_name, architecture_size, decoder, latent_dims, img_dim, alpha,
+                                  posterior_flow,
+                                  prior_flow)
+                run_name = run.name
+                artifact = api.artifact(
+                    f'nae/{project_name}/{run_name}_best:latest')  # run.restore(f'{run_name}_best:latest', run_path=run.path, root='./artifacts')
+                artifact_dir = artifact.download()
+                artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+                model.load_state_dict(torch.load(artifact_dir, map_location=device))
+                model = model.to(device)
+
+                test_loader = get_test_dataloader(dataset)
+                noise_distribution = torch.distributions.normal.Normal(torch.zeros([6, *img_dim]),
+                                                                       noise_level * torch.ones([6, *img_dim]))
+                fig = plot_noisy_reconstructions(model, test_loader, device, noise_distribution,
+                                                 img_dim, n_rows=6)
+                plt.savefig(f'plots/denoising_{run_name}.pdf', bbox_inches='tight', pad_inches=0)
+            except Exception as E:
+                print(E)
+                print(f'Failed to plot latent space of {experiment_name}')
+                traceback.print_exc()
+                continue
+        plt.close('all')
+
+def generate_cifar_reconstructions():
+    datasets = ['cifar']
+    model_name = 'nae-external'
+    posterior_flow = 'maf'
+    prior_flow = 'maf'
+    decoder = 'independent'
+    # model_name = 'vae'
+    # posterior_flow = 'iaf'
+    # prior_flow = 'maf'
+    # decoder = 'fixed'
+    latent_dims = 64
+    api = wandb.Api()
+    architecture_size = 'small'
+    img_dim = [3, 32, 32]
+    alpha = 0.05
+    project_name = 'cifar'
+
+    use_gpu = True
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+    latent_grid_size = 20
+    # visualization_run = wandb.init(project='visualizations', entity="nae", name=run_name)
+    for dataset in datasets:
+
+        runs = api.runs(path=f"nae/{project_name}", filters={"config.dataset": dataset,
+                                                    "config.latent_dims": latent_dims,
+                                                    "config.model": model_name,
+                                                    "config.posterior_flow": posterior_flow,
+                                                    "config.prior_flow": prior_flow
+                                                    })
+
+        for run in runs:
+            run_id = run.id
+            experiment_name = run.name
+            try:
+
+                model = get_model(model_name, architecture_size, decoder, latent_dims, img_dim, alpha,
+                                  posterior_flow,
+                                  prior_flow)
+                run_name = run.name
+                artifact = api.artifact(
+                    f'nae/{project_name}/{run_name}_best:latest')  # run.restore(f'{run_name}_best:latest', run_path=run.path, root='./artifacts')
+                artifact_dir = artifact.download()
+                artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+                model.load_state_dict(torch.load(artifact_dir, map_location=device))
+                model = model.to(device)
+
+                test_loader = get_test_dataloader(dataset)
+                for i in range(20, 23):
+                    fig=plot_reconstructions(model, test_loader, device, img_dim, n_rows=4, skip_batches=i)
+                    plt.savefig(f'plots/cifar_{run_name}_{i}.pdf', bbox_inches='tight', pad_inches=0)
+            except Exception as E:
+                print(E)
+                print(f'Failed to plot latent space of {experiment_name}')
+                traceback.print_exc()
+                continue
+        plt.close('all')
+    # visualization_run.finish()
+
 def generate_samples():
     datasets = ['mnist', 'fashionmnist', 'kmnist']
     model_names = ['vae', 'iwae', 'vae-iaf', 'nae-center', 'nae-corner', 'nae-external']
@@ -787,7 +909,7 @@ def generate_visualizations(do_plot_latent_space_greater_than_2=False,
 
 if __name__ == "__main__":
     #generate_pics_nae_external()
-    generate_pics_vae_maf_iaf()
+    generate_denoising_reconstructions()
     #generate_2d_latent_spaces('samples transparent')
     #generate_visualizations_separately()
     # generate_loss_over_latentdims()
