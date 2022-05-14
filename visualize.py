@@ -24,12 +24,14 @@ import traceback
 
 def get_z_values(n_vals: int = 20, border: float = 0.15, latent_dims: int = 2):
     ''' Get z values needed to plot a grid of samples from the latent space. Grid over two dimensional z. '''
-    lin_vals = torch.linspace(border, 1 - border, steps=n_vals)
-    icdf_vals = torch.cartesian_prod(*([lin_vals] * latent_dims))
+    lin_vals = torch.linspace(1-border,border, steps=n_vals)
+    lin_vals_1 = torch.linspace(border,1-border, steps=n_vals)
+
+    icdf_vals = torch.cartesian_prod(*([lin_vals, lin_vals_1]))
     distr = torch.distributions.normal.Normal(torch.zeros(latent_dims), torch.ones(latent_dims))
     z_vals = distr.icdf(icdf_vals)
 
-    return z_vals
+    return torch.index_select(z_vals, 1, torch.tensor([1,0]))
 
 
 def plot_latent_space(model, test_loader, device):
@@ -312,7 +314,17 @@ def generate_2d_grids():
                     model.load_state_dict(torch.load(artifact_dir, map_location=device))
                     model = model.to(device)
 
-                    z_vals = get_z_values(n_vals=latent_grid_size, latent_dims=2)
+                    z_vals = get_z_values(n_vals=latent_grid_size, latent_dims=2, border=0.06)
+                    ''' latent_x = np.linspace(-1.5, 1.5, 20)
+                    latent_y = np.linspace(-1.5, 1.5, 20)
+                    latents = torch.FloatTensor(len(latent_y), len(latent_x), 2)
+                    for i, lx in enumerate(latent_x):
+                        for j, ly in enumerate(latent_y):
+                            latents[j, i, 0] = lx
+                            latents[j, i, 1] = ly
+                    latents = latents.view(-1, 2)  # flatten grid into a batch
+
+                    z_vals = latents.to(device)'''
                     z_vals = z_vals.to(device)
 
                     with torch.no_grad():
@@ -384,7 +396,7 @@ def generate_pics_vae_maf_iaf():
 
                 fig = plot_latent_space_2d(model, test_loader, device, equal_axes=True, max_val=5)
                 plt.savefig(f'plots/latent_{run_name}.pdf', bbox_inches='tight', pad_inches=0)
-                z_vals = get_z_values(n_vals=latent_grid_size, latent_dims=2)
+                z_vals = get_z_values(n_vals=latent_grid_size, latent_dims=2, border=0.06)
                 z_vals = z_vals.to(device)
 
                 with torch.no_grad():
@@ -426,8 +438,8 @@ def generate_pics_nae_external():
         runs = api.runs(path="nae/phase1", filters={"config.dataset": dataset,
                                                     "config.latent_dims": latent_dims,
                                                     "config.model": model_name,
-                                                    "config.posterior_flow": posterior_flow,
-                                                    "config.prior_flow": prior_flow
+                                                    #"config.posterior_flow": posterior_flow,
+                                                    #"config.prior_flow": prior_flow
                                                     })
 
         for run in runs:
@@ -450,7 +462,7 @@ def generate_pics_nae_external():
 
                 fig = plot_latent_space_2d(model, test_loader, device, equal_axes=True, max_val=5)
                 plt.savefig(f'plots/latent_{run_name}.pdf', bbox_inches='tight', pad_inches=0)
-                z_vals = get_z_values(n_vals=latent_grid_size, latent_dims=2)
+                z_vals = get_z_values(n_vals=latent_grid_size, latent_dims=2, border=0.06)
                 z_vals = z_vals.to(device)
 
                 with torch.no_grad():
@@ -774,8 +786,8 @@ def generate_visualizations(do_plot_latent_space_greater_than_2=False,
 
 
 if __name__ == "__main__":
-    generate_pics_nae_external()
-    #generate_pics_vae_maf_iaf()
+    #generate_pics_nae_external()
+    generate_pics_vae_maf_iaf()
     #generate_2d_latent_spaces('samples transparent')
     #generate_visualizations_separately()
     # generate_loss_over_latentdims()
