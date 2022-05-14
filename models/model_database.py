@@ -176,7 +176,7 @@ def get_model_denoising(model_name: str, decoder: str, latent_dims: int, img_sha
 
     if model_name == 'vae-iaf-maf':
         vae_channels = 64
-        encoder = DeterministicConvolutionalEncoderSmall(vae_channels, input_shape=img_shape, latent_dims=latent_dims)
+        encoder = ConvolutionalEncoderSmall(vae_channels, input_shape=img_shape, latent_dims=latent_dims)
         decoder = FixedVarianceDecoderSmall(vae_channels, output_shape=img_shape, latent_dims=latent_dims)
 
         flow_features = 256
