@@ -94,10 +94,10 @@ def plot_latent_space_2d(model: AutoEncoder, test_loader, device, equal_axes=Tru
 
     fig = plt.figure(figsize=(10, 10))
     plt.style.use('seaborn')
-    scat = plt.scatter(arr[:, 0], arr[:, 1], s=10, c=arr[:, 2], cmap=plt.get_cmap('tab10'))
+    scat = plt.scatter(arr[:, 0], arr[:, 1], s=10, c=arr[:, 2], cmap=plt.get_cmap('tab10'), alpha=0.2)
     cb = plt.colorbar(scat, spacing='uniform')
     if equal_axes:
-        plt.axis('square')
+        plt.axis('equal')
     if max_val is not None:
         cur_min_x, cur_max_x = np.min(arr[:, 0]), np.max(arr[:, 0])
         cur_min_y, cur_max_y = np.min(arr[:, 1]), np.max(arr[:, 1])
@@ -254,8 +254,8 @@ def plot_noisy_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoad
 
 def generate_2d_grids():
     datasets = ['mnist', 'fashionmnist', 'kmnist']
-    #model_names = ['vae', 'iwae', 'vae-iaf', 'nae-center', 'nae-corner', 'nae-external']
-    model_names = ['nae-center', 'nae-corner', 'nae-external']
+    model_names = ['vae', 'iwae', 'vae-iaf', 'nae-center', 'nae-corner', 'nae-external']
+    #model_names = ['nae-center', 'nae-corner', 'nae-external']
     latent_dims = 2
     api = wandb.Api()
     architecture_size = 'small'
@@ -473,6 +473,8 @@ def generate_2d_latent_spaces(run_name = None):
                                                         })
 
             for run in runs:
+                if run.state != 'finished':
+                    continue
                 run_id = run.id
                 experiment_name = run.name
                 try:
@@ -622,6 +624,6 @@ def generate_visualizations(do_plot_latent_space_greater_than_2=False,
 
 
 if __name__ == "__main__":
-    generate_samples()
+    generate_2d_latent_spaces('samples transparent')
     #generate_visualizations_separately()
     # generate_loss_over_latentdims()

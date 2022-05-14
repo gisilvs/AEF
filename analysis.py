@@ -13,7 +13,9 @@ from models.model_database import get_model
 from util import load_best_model, vae_log_prob, make_averager, dequantize, bits_per_pixel
 from datasets import get_test_dataloader
 import matplotlib.pyplot as plt
+import seaborn as sns
 
+from matplotlib.ticker import (AutoMinorLocator, MultipleLocator)
 
 
 def generate_loss_over_latentdims():
@@ -99,6 +101,8 @@ def extract_data_from_runs(project_name='phase1'):
 
     runs = api.runs(path=f"nae/{project_name}")
     for run in runs:
+        if run.state != 'finished':
+            continue
         dataset.append(get_field_from_config(run, "dataset"))
         decoder.append(get_field_from_config(run, "decoder"))
         latent_dims.append(get_field_from_config(run, "latent_dims", type="int"))
@@ -113,7 +117,7 @@ def extract_data_from_runs(project_name='phase1'):
         test_rce_with_noise.append(get_field_from_summary(run, "test_rce_with_noise", type="float"))
         test_rce.append(get_field_from_summary(run, "test_rce", type="float"))
         fid.append(get_field_from_summary(run, "test_fid", type="float"))
-        noise_level.append(get_field_from_summary(run, "noise_level", type="float"))
+        noise_level.append(get_field_from_config(run, "noise_level", type="float"))
 
         model_name = get_field_from_config(run, "model")
         model_names.append(model_name)
@@ -126,7 +130,7 @@ def extract_data_from_runs(project_name='phase1'):
 
     col_dict = {'model': model_names,
                 'dataset': dataset,
-                'latent_dim': latent_dims,
+                'latent_dims': latent_dims,
                 'decoder': decoder,
                 'test_loss': test_loss,
                 'test_bpp': test_bpp,
@@ -157,7 +161,7 @@ def get_field_from_config(run: wandb.run, field: str, type: str = 'str'):
         return run.config[field]
 
 def get_field_from_summary(run: wandb.run, field: str, type: str = 'str'):
-    if field not in run.summary.keys():
+    if field not in run.summary.keys() or run.summary[field] is None:
         return None
     if type == 'int':
         return int(run.summary[field])
@@ -335,7 +339,7 @@ def generate_phase1_table(latent_dims=32):
     se_bpps = np.zeros((len(models), len(datasets)))
     for model_idx, model_name in enumerate(models):
         for dataset_idx, dataset in enumerate(datasets):
-            runs = df.loc[(df.loc[:, 'model'] == model_name) & (df.loc[:, 'dataset'] == dataset) & (df.loc[:, 'latent_dim'] == latent_dims)]
+            runs = df.loc[(df.loc[:, 'model'] == model_name) & (df.loc[:, 'dataset'] == dataset) & (df.loc[:, 'latent_dims'] == latent_dims)]
             mean_bpps[model_idx, dataset_idx] = runs.loc[:, 'test_bpp_adjusted'].mean(axis=0)
             se_bpps[model_idx, dataset_idx] = runs.loc[:, 'test_bpp_adjusted'].sem(axis=0)
 
@@ -352,14 +356,12 @@ def generate_phase1_table(latent_dims=32):
         se_maf = runs.loc[:, 'test_bpp_adjusted'].sem(axis=0)
         print(f'& ${mean_maf:.3f} \pm {se_maf:.3f}$', end=' ')
 
-def generate_denoising_table(latent_dims=32):
+def generate_denoising_table(df, latent_dims=32):
 
-    datasets = ['mnist', 'fashionmnist']
-    models = ['ae', 'vae', 'vae-iaf', 'nae-external']
-    model_titles = ['AE', 'VAE', 'VAE-IAF', 'IAE (linear)']
+    datasets = ['mnist', 'kmnist']
+    models = ['ae', 'vae-iaf', 'nae-external']
+    model_titles = ['AE', 'VAE-IAF', 'IAE (linear)']
     noise_levels = [0.25, 0.5, 0.75]
-
-    df = extract_data_from_runs('denoising-experiments')
 
     mean_rce = np.zeros((len(models), len(datasets), len(noise_levels)))
     se_rce = np.zeros((len(models), len(datasets), len(noise_levels)))
@@ -367,7 +369,7 @@ def generate_denoising_table(latent_dims=32):
         for dataset_idx, dataset in enumerate(datasets):
             for noise_idx, noise_level in enumerate(noise_levels):
                 runs = df.loc[(df.loc[:, 'model'] == model_name) & (df.loc[:, 'dataset'] == dataset) & (df.loc[:, 'noise_level'] == noise_level)]
-                print(f'{model_name} {dataset} {noise_level} nr. of runs: {len(runs)}')
+                #print(f'{model_name} {dataset} {noise_level} nr. of runs: {len(runs)}')
                 mean_rce[model_idx, dataset_idx, noise_idx] = runs.loc[:, 'test_rce_with_noise'].mean(axis=0)
                 se_rce[model_idx, dataset_idx] = runs.loc[:, 'test_rce_with_noise'].sem(axis=0)
 
@@ -380,9 +382,180 @@ def generate_denoising_table(latent_dims=32):
 
 
 
+def denoising_plot(df):
+    datasets = ['mnist', 'kmnist', 'fashionmnist']
+    dataset_titles = {'mnist':'MNIST', 'kmnist': 'KMNIST', 'fashionmnist' : 'FashionMNIST'}
+    models = ['ae', 'vae-iaf', 'nae-external']
+    model_titles = ['AE', 'VAE-IAF', 'IAE (linear)']
+    noise_levels = [0.25, 0.5, 0.75]
+
+
+    # for dataset_idx, dataset in enumerate(datasets):
+    #     mean_rce = np.zeros((len(models), len(noise_levels)))
+    #     se_rce = np.zeros((len(models), len(noise_levels)))
+    #     for model_idx, model_name in enumerate(models):
+    #             for noise_idx, noise_level in enumerate(noise_levels):
+    #                 runs = df.loc[(df.loc[:, 'model'] == model_name) & (df.loc[:, 'dataset'] == dataset) & (
+    #                             df.loc[:, 'noise_level'] == noise_level)]
+    #                 # print(f'{model_name} {dataset} {noise_level} nr. of runs: {len(runs)}')
+    #                 mean_rce[model_idx, dataset_idx, noise_idx] = runs.loc[:, 'test_rce_with_noise'].mean(axis=0)
+    #                 se_rce[model_idx, dataset_idx] = 1.96 * runs.loc[:, 'test_rce_with_noise'].sem(axis=0)
+    # Replace values
+
+    plt.rcParams['axes.axisbelow'] = True
+
+    for dataset in datasets:
+        df_to_use = df.loc[df.loc[:, 'dataset'] == dataset]
+        df_to_use = df_to_use.replace(to_replace={'ae': "AE", 'vae-iaf': "VAE-IAF", 'nae-external': 'IAE'})
+        df_to_use = df_to_use.sort_values(by=['model'])
+
+        ax = sns.pointplot(x="noise_level", y="test_rce_with_noise", hue="model", data=df_to_use, ci=95)
+        ax.set_facecolor('lavender')
+        ax.yaxis.set_major_locator(plt.MaxNLocator(4))
+        ax.grid(visible=True, which='major', axis='both', color='w')
+
+
+        ax.legend(ncol=3)
+        ax.set_xlabel('Noise level')
+        ax.set_ylabel('Avg. reconstruction error')
+        plt.title(dataset_titles[dataset])
+        plt.savefig(f'plots/denoising_{dataset}.png')
+
+def phase1_plot(df, broken_axis=True):
+    datasets = ['mnist', 'kmnist', 'fashionmnist']
+    models = ['ae', 'vae-iaf', 'nae-external']
+    dataset_titles = {'mnist': 'MNIST', 'kmnist': 'KMNIST', 'fashionmnist': 'FashionMNIST'}
+
+    noise_levels = [0.25, 0.5, 0.75]
+
+    vae_models = ['vae', 'iwae', 'vae-iaf']
+    nae_models = ['nae-external', 'nae-corner', 'nae-center']
+
+    # Replace names
+
+    df_fixed = df.loc[(df.loc[:,'latent_dims'] <= 32) & (df.loc[:, 'model'] != 'maf'), :]
+
+    # todo
+    # rc = {
+    #     "text.usetex": True,
+    #     "font.family": "Times New Roman",
+    #     }
+    # plt.rcParams.update(rc)
+
+    for dataset in datasets:
+        df_to_use = df_fixed[df.loc[:, 'dataset'] == dataset]
+        #df_to_use = df_to_use[df.loc[:, 'model'].isin(['vae', 'vae-iaf', 'iwae'])]
+        df_to_use = df_to_use.replace(to_replace={'iwae': "vae-iwae"}) #hack
+        df_to_use = df_to_use.sort_values(by=['model'])
+        df_to_use = df_to_use.replace(to_replace={'vae-iwae': "iwae"})
+        df_to_use = df_to_use.replace(to_replace={'vae': "VAE",
+                                     'iwae': "IWAE",
+                                     'vae-iaf': "VAE-IAF",
+                                     'nae-center': 'IAE (center)',
+                                     'nae-corner': 'IAE (corner)',
+                                     'nae-external': 'IAE (linear)'})
+
+        if not broken_axis:
+            ax = sns.pointplot(x="latent_dims", y="test_bpp_adjusted", hue="model", data=df_to_use, ci=95)
+        else:
+
+            top_scores = df_to_use[df.loc[:, 'model'].isin(vae_models)].loc[:, 'test_bpp_adjusted']
+            bottom_scores = df_to_use[df.loc[:, 'model'].isin(nae_models)].loc[:, 'test_bpp_adjusted']
+            max_top, min_top = top_scores.max(), top_scores.min()
+            top_range = max_top - min_top
+            max_bottom, min_bottom = bottom_scores.max(), bottom_scores.min()
+            bottom_range = max_bottom - min_bottom
+
+
+            fig, (ax_top, ax_bottom) = plt.subplots(2, 1, sharex=True, dpi=300, figsize=(6,6))
+            fig.subplots_adjust(hspace=0.05)  # adjust space between axes
+
+            sns.pointplot(x="latent_dims", y="test_bpp_adjusted", hue="model", data=df_to_use, ci=95, ax=ax_top)
+            # ax_top.xaxis.set_major_locator(MultipleLocator(top_range/6))
+            # ax_top.yaxis.set_major_locator(MultipleLocator(top_range/6))
+
+            #sns.set_theme()
+            sns.pointplot(x="latent_dims", y="test_bpp_adjusted", hue="model", data=df_to_use, ci=95, ax=ax_bottom)
+            ax_top.grid(visible=True, which='major', axis='both', color='w')
+            ax_bottom.grid(visible=True, which='major', axis='both', color='w')
+            #sns.set_theme()
+            ax_top.set_facecolor('lavender')
+            ax_bottom.set_facecolor('lavender')
+            ax_top.yaxis.set_major_locator(plt.MaxNLocator(4))
+            ax_bottom.yaxis.set_major_locator(plt.MaxNLocator(4))
+
+
+
+            ax_top.set_ylim(min_top - 0.2 * top_range, max_top + 0.5 * top_range)
+            ax_bottom.set_ylim(min_bottom - 0.2 * bottom_range, max_bottom + 0.2 * bottom_range)
+
+            sns.despine(ax=ax_bottom)
+            sns.despine(ax=ax_top, bottom=True)
+
+
+            ax = ax_top
+            d = .015  # how big to make the diagonal lines in axes coordinates
+            # arguments to pass to plot, just so we don't keep repeating them
+            kwargs = dict(transform=ax.transAxes, color='k', clip_on=False)
+            ax.plot((-d, +d), (-d, +d), **kwargs)  # top-left diagonal
+
+            ax2 = ax_bottom
+            kwargs.update(transform=ax2.transAxes)  # switch to the bottom axes
+            ax2.plot((-d, +d), (1 - d, 1 + d), **kwargs)  # bottom-left diagonal
+
+            # remove one of the legend
+
+
+            ax_top.tick_params(bottom=False)
+
+            #ax_bottom.set_xlabel('Nr. of latent dimensions')
+            ax_top.set_xlabel('')
+            ax_top.set_ylabel('')
+            ax_bottom.set_xlabel('')
+            ax_bottom.set_ylabel('')
+            #ax.set_ylabel('Bits per pixel')
+            fig.add_subplot(111, frameon=False)
+            plt.xlabel("Nr. of latent dimensions")
+            # hide tick and tick label of the big axis
+            plt.tick_params(labelcolor='none', which='both', top=False, bottom=False, left=False, right=False)
+
+            #ax_bottom.set_xlabel("Nr. of latent dimensions")
+            #plt.ylabel("Bits per pixel")
+            fig.text(0.005, 0.5, 'Bits per pixel', va='center', rotation='vertical')
+
+            ax_top.legend(loc='upper center', ncol=3)#, bbox_to_anchor=(0.5, -0.1))
+            ax_bottom.legend_.remove()
+
+            #fig.subplots_adjust(bottom=0.2)
+            # handles = ax_top.legend_.data.values()
+            # labels = ax_top.legend_.data.keys()
+            #
+            # ax_bottom.legend(handles=handles, labels=labels, loc='lower center', ncol=6)
+
+            # Shrink current axis's height by 10% on the bottom
+            # box = ax.get_position()
+            # ax.set_position([box.x0, box.y0 + box.height * 0.1,
+            #                  box.width, box.height * 0.9])
+
+            ax_top.set_title(dataset_titles[dataset])
+        plt.savefig(f'plots/phase1_{dataset}.png')
+
 if __name__ == '__main__':
-    # df = extract_data_from_runs()
-    # print(df)
-    #generate_denoising_table()
-    add_mse_fid_phase_1()
+    # df = extract_data_from_runs('phase1')
+    # df.to_pickle('phase1.pkl')
+    # #df = pd.read_pickle('phase1.pkl')
+    # df = extract_data_from_runs('denoising-experiments-1')
+    # df.to_pickle('denoising-experiments-1.pkl')
+    # df = pd.read_pickle('denoising-experiments-1.pkl')
+    # denoising_plot(df)
+    # df = pd.read_pickle('phase1.pkl')
+    # phase1_plot(df)
+
+    api = wandb.Api()
+    runs = api.runs(path="nae/phase1")
+
+    for run in runs:
+        print(run.name)
+    exit()
+    #add_mse_fid_phase_1()
 
