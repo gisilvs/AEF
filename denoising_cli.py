@@ -36,7 +36,7 @@ parser.add_argument('--batch-size', type=int, default=128,
 
 args = parser.parse_args()
 
-assert args.model in ['ae', 'nae-center', 'nae-corner', 'vae', 'iwae', 'vae-iaf', 'nae-external'] # 'maf',
+assert args.model in ['ae', 'nae-center', 'nae-corner', 'vae', 'iwae', 'vae-iaf', 'nae-external', 'vae-iaf-maf'] # 'maf',
 assert args.dataset in ['mnist', 'kmnist', 'emnist', 'fashionmnist', 'cifar10', 'cifar']
 assert args.decoder in ['fixed', 'independent', 'dependent']
 
