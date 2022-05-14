@@ -16,7 +16,7 @@ from visualize import plot_reconstructions, plot_noisy_reconstructions
 parser = argparse.ArgumentParser(description='NAE Experiments')
 
 
-parser.add_argument('--model', type=str, help='ae | nae-center | nae-corner | nae-external | vae | iwae | vae-iaf | maf')
+parser.add_argument('--model', type=str, help='ae | nae-center | nae-corner | nae-external | vae | iwae | vae-iaf | vae-iaf-maf')
 parser.add_argument('--dataset', type=str, help='mnist | kmnist | fashionmnist | cifar10')
 parser.add_argument('--latent-dims', type=int, help='size of the latent space')
 parser.add_argument('--noise-level', type=float, default=0.25,
@@ -57,7 +57,7 @@ noise_level = args.noise_level
 
 args.runs = [int(item) for item in args.runs.split(',')]
 
-AE_like_models = ['nae-center', 'nae-corner', 'nae-external', 'vae', 'iwae', 'vae-iaf', 'ae']
+AE_like_models = ['nae-center', 'nae-corner', 'nae-external', 'vae', 'iwae', 'vae-iaf', 'ae', 'vae-iaf-maf']
 flow_like_models = ['nae-center', 'nae-corner', 'nae-external', 'maf']
 
 for run_nr in args.runs:
