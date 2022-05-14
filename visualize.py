@@ -87,20 +87,32 @@ def plot_latent_space_2d(model: AutoEncoder, test_loader, device, equal_axes=Tru
         image_batch = util.dequantize(image_batch)
         image_batch = image_batch.to(device)
         with torch.no_grad():
-            mu, _ = model.encode(image_batch)
+            output = model.encode(image_batch)
+            if isinstance(output, tuple):
+                mu, _ = model.encode(image_batch)
+            else:
+                mu = output
         arr[n_added:n_added + len(image_batch), :2] = mu.cpu().detach().numpy()
         arr[n_added:n_added + len(image_batch), 2] = image_labels
         n_added += len(image_batch)
+    plt.rcParams['axes.axisbelow'] = True
+    fig = plt.figure(figsize=(6, 6))
+    ax = fig.gca()
 
-    fig = plt.figure(figsize=(10, 10))
-    plt.style.use('seaborn')
-    scat = plt.scatter(arr[:, 0], arr[:, 1], s=10, c=arr[:, 2], cmap=plt.get_cmap('tab10'), alpha=0.2)
+    #plt.style.use('seaborn')
+    scat = plt.scatter(arr[:, 0], arr[:, 1], s=10, c=arr[:, 2], cmap=plt.get_cmap('tab10'), alpha=0.8)
     cb = plt.colorbar(scat, spacing='uniform')
+    ax.set_facecolor('lavender')
+    ax.grid(visible=True, which='major', axis='both', color='w', )
+
+    # sns.set_theme()
+
     if equal_axes:
         plt.axis('equal')
     if max_val is not None:
         cur_min_x, cur_max_x = np.min(arr[:, 0]), np.max(arr[:, 0])
         cur_min_y, cur_max_y = np.min(arr[:, 1]), np.max(arr[:, 1])
+
         plt.ylim((max(cur_min_x, -max_val), min(cur_max_x, max_val)))  # Why are these reversed?
         plt.xlim((max(cur_min_y, -max_val), min(cur_max_y, max_val)))
     return fig
@@ -319,6 +331,144 @@ def generate_2d_grids():
                     traceback.print_exc()
                     continue
     visualization_run.finish()
+
+def generate_pics_vae_maf_iaf():
+    datasets = ['mnist', 'fashionmnist', 'kmnist']
+    model_name = 'vae'
+    posterior_flow = 'iaf'
+    prior_flow = 'maf'
+    decoder = 'fixed'
+    latent_dims = 2
+    api = wandb.Api()
+    architecture_size = 'small'
+    img_dim = [1, 28, 28]
+    alpha = 1e-6
+    project_name = 'phase1'
+
+    use_gpu = True
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+
+    run_name = 'latent grids vae iaf maf'
+
+    latent_grid_size = 20
+
+    # visualization_run = wandb.init(project='visualizations', entity="nae", name=run_name)
+    for dataset in datasets:
+
+
+        runs = api.runs(path="nae/phase1", filters={"config.dataset": dataset,
+                                                    "config.latent_dims": latent_dims,
+                                                    "config.model": model_name,
+                                                    "config.posterior_flow": "iaf",
+                                                    "config.prior_flow": "maf"
+                                                    })
+
+        for run in runs:
+            run_id = run.id
+            experiment_name = run.name
+            try:
+
+
+                model = get_model(model_name, architecture_size, decoder, latent_dims, img_dim, alpha,
+                                  posterior_flow,
+                                  prior_flow)
+                run_name = run.name
+                artifact = api.artifact(
+                    f'nae/{project_name}/{run_name}_best:latest')  # run.restore(f'{run_name}_best:latest', run_path=run.path, root='./artifacts')
+                artifact_dir = artifact.download()
+                artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+                model.load_state_dict(torch.load(artifact_dir, map_location=device))
+                model = model.to(device)
+
+                test_loader = get_test_dataloader(dataset)
+
+                fig = plot_latent_space_2d(model, test_loader, device, equal_axes=True, max_val=5)
+                plt.savefig(f'plots/latent_{run_name}.pdf', bbox_inches='tight', pad_inches=0)
+                z_vals = get_z_values(n_vals=latent_grid_size, latent_dims=2)
+                z_vals = z_vals.to(device)
+
+                with torch.no_grad():
+                    z_vals, _ = model.prior_bijector.forward(z_vals)
+                    output = model.decode(z_vals)
+                    if isinstance(output, tuple):
+                        output = output[0]
+                    output = output.detach().cpu()
+
+                fig = util.plot_image_grid(output, cols=latent_grid_size, padding=0, hires=True)
+                plt.savefig(f'plots/grid_{run_name}.pdf', transparent='true', bbox_inches='tight', pad_inches=0)
+            except Exception as E:
+                print(E)
+                print(f'Failed to plot latent space of {experiment_name}')
+                traceback.print_exc()
+                continue
+        plt.close('all')
+    # visualization_run.finish()
+
+def generate_pics_nae_external():
+    datasets = ['mnist', 'fashionmnist']
+    model_name = 'nae-external'
+    posterior_flow = 'none'
+    prior_flow = 'none'
+    decoder = 'independent'
+    latent_dims = 2
+    api = wandb.Api()
+    architecture_size = 'small'
+    img_dim = [1, 28, 28]
+    alpha = 1e-6
+    project_name = 'phase1'
+
+    use_gpu = True
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+    latent_grid_size = 20
+    # visualization_run = wandb.init(project='visualizations', entity="nae", name=run_name)
+    for dataset in datasets:
+
+        runs = api.runs(path="nae/phase1", filters={"config.dataset": dataset,
+                                                    "config.latent_dims": latent_dims,
+                                                    "config.model": model_name,
+                                                    "config.posterior_flow": posterior_flow,
+                                                    "config.prior_flow": prior_flow
+                                                    })
+
+        for run in runs:
+            run_id = run.id
+            experiment_name = run.name
+            try:
+
+                model = get_model(model_name, architecture_size, decoder, latent_dims, img_dim, alpha,
+                                  posterior_flow,
+                                  prior_flow)
+                run_name = run.name
+                artifact = api.artifact(
+                    f'nae/{project_name}/{run_name}_best:latest')  # run.restore(f'{run_name}_best:latest', run_path=run.path, root='./artifacts')
+                artifact_dir = artifact.download()
+                artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+                model.load_state_dict(torch.load(artifact_dir, map_location=device))
+                model = model.to(device)
+
+                test_loader = get_test_dataloader(dataset)
+
+                fig = plot_latent_space_2d(model, test_loader, device, equal_axes=True, max_val=5)
+                plt.savefig(f'plots/latent_{run_name}.pdf', bbox_inches='tight', pad_inches=0)
+                z_vals = get_z_values(n_vals=latent_grid_size, latent_dims=2)
+                z_vals = z_vals.to(device)
+
+                with torch.no_grad():
+
+                    output = model.decode(z_vals)
+                    if isinstance(output, tuple):
+                        output = output[0]
+                    output = output.detach().cpu()
+
+                fig = util.plot_image_grid(output, cols=latent_grid_size, padding=0, hires=True)
+                plt.savefig(f'plots/grid_{run_name}.pdf', bbox_inches='tight', pad_inches=0)
+            except Exception as E:
+                print(E)
+                print(f'Failed to plot latent space of {experiment_name}')
+                traceback.print_exc()
+                continue
+        plt.close('all')
+    # visualization_run.finish()
 
 def generate_samples():
     datasets = ['mnist', 'fashionmnist', 'kmnist']
@@ -624,6 +774,8 @@ def generate_visualizations(do_plot_latent_space_greater_than_2=False,
 
 
 if __name__ == "__main__":
-    generate_2d_latent_spaces('samples transparent')
+    generate_pics_nae_external()
+    #generate_pics_vae_maf_iaf()
+    #generate_2d_latent_spaces('samples transparent')
     #generate_visualizations_separately()
     # generate_loss_over_latentdims()
