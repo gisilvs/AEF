@@ -64,3 +64,17 @@ class DenoisingVAE(VAE):
         kl_div = distributions.kl.kl_divergence(q_z, self.prior).sum(1)
         return -(reconstruction_loss - kl_div)
 
+
+class ExtendedDenoisingVAE(ExtendedVAE):
+    def __init__(self, encoder: GaussianEncoder, decoder: GaussianDecoder,
+                 posterior_bijector: Transform = IdentityTransform(), prior_bijector: Transform = IdentityTransform()):
+        super(ExtendedDenoisingVAE, self).__init__(encoder, decoder, posterior_bijector, prior_bijector)
+
+    def loss_function(self, x_noisy: Tensor, x_original: Tensor):
+        self.set_device()
+        x_mu, x_sigma, z_mu, z_sigma, z0, log_j_q, z = self.forward(x_noisy)
+        reconstruction_loss = torch.distributions.normal.Normal(x_mu, x_sigma + self.eps).log_prob(x_original).sum([1, 2, 3])
+        q_z = distributions.normal.Normal(z_mu, z_sigma + self.eps).log_prob(z0).sum(-1) - log_j_q
+        z_inv, log_j_p = self.prior_bijector.inverse(z)
+        p_z = self.prior.log_prob(z_inv).sum(-1) + log_j_p
+        return -(reconstruction_loss + p_z - q_z)
