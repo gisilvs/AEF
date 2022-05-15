@@ -32,42 +32,6 @@ class ExternalLatentAutoEncoder(GaussianAutoEncoder):
         else:
             self.dense = external_net
 
-    def get_w(self, x):
-
-        log_j_preprocessing = 0
-        for layer in self.preprocessing_layers:
-            x, log_j_transform = layer.inverse(x)
-            log_j_preprocessing += log_j_transform
-
-        core = self.dense(x)
-        return core
-
-    '''def importance_sampling_embedding(self, x, cov, std, n_samples):
-        log_j_preprocessing = 0
-        for layer in self.preprocessing_layers:
-            x, log_j_transform = layer.inverse(x)
-            log_j_preprocessing += log_j_transform
-
-        core = self.dense(x)
-        batch_size = core.shape[0]
-        core_dist = MultivariateNormal(core, cov*std)
-        core = core_dist.sample([n_samples])
-        core_log_prob = core_dist.log_prob(core)#.sum(-1)
-        core, log_j_core_pre = self.core_flow_pre.inverse(core.view(n_samples*batch_size, -1))
-        mu_z, sigma_z = self.encoder(x)
-        core = core.view(n_samples, batch_size, -1)
-        log_j_core_pre = log_j_core_pre.view(n_samples, batch_size)
-        z = (core - mu_z) / (sigma_z + self.eps)
-        log_j_z = torch.sum(-torch.log(sigma_z + self.eps), dim=[1])
-        mu_d, sigma_d = self.decoder(z.view(n_samples*batch_size, -1))
-        mu_d = mu_d.view(n_samples, batch_size, self.image_shape[0], self.image_shape[1], self.image_shape[2])
-        sigma_d = sigma_d.view(n_samples, batch_size, self.image_shape[0], self.image_shape[1], self.image_shape[2])
-        deviations = (x - mu_d) / (sigma_d + self.eps)
-        log_j_d = torch.sum(-torch.log(sigma_d + self.eps),
-                            dim=[2, 3, 4])
-        z, log_j_core_post = self.core_flow_post.inverse(z.view(n_samples*batch_size, -1))
-        log_j = log_j_preprocessing + log_j_core_pre + log_j_z + log_j_d + log_j_core_post.view(n_samples, batch_size)
-        return z.view(n_samples, batch_size, -1), deviations, log_j, core_log_prob'''
     def importance_sampling_embedding(self, x, std, n_samples):
         log_j_preprocessing = 0
         for layer in self.preprocessing_layers:
@@ -94,39 +58,6 @@ class ExternalLatentAutoEncoder(GaussianAutoEncoder):
         z, log_j_core_post = self.core_flow_post.inverse(z.view(n_samples*batch_size, -1))
         log_j = log_j_preprocessing + log_j_core_pre + log_j_z + log_j_d + log_j_core_post.view(n_samples, batch_size)
         return z.view(n_samples, batch_size, -1), deviations, log_j, core_log_prob
-
-    '''def importance_sampling_embedding(self, x, std, n_samples):
-        log_j_preprocessing = 0
-        for layer in self.preprocessing_layers:
-            x, log_j_transform = layer.inverse(x)
-            log_j_preprocessing += log_j_transform
-
-        core = self.dense(x)
-        batch_size = core.shape[0]
-        core, log_j_core_pre = self.core_flow_pre.inverse(core)
-        mu_z, sigma_z = self.encoder(x)
-        z = (core - mu_z) / (sigma_z + self.eps)
-        log_j_z = torch.sum(-torch.log(sigma_z + self.eps), dim=[1])
-
-        z, log_j_core_post = self.core_flow_post.inverse(z)
-
-        z0_dist = Normal(z, std)
-        z0_samples = z0_dist.sample([n_samples])
-
-        z1_samples, _ = self.core_flow_post.forward(z0_samples.view(n_samples*batch_size, -1))
-        z1_samples = z1_samples.view(n_samples, batch_size, -1)
-
-        z0_log_prob = z0_dist.log_prob(z0_samples).sum(-1)
-
-        mu_d, sigma_d = self.decoder(z1_samples.view(n_samples * batch_size, -1))
-        mu_d = mu_d.view(n_samples, batch_size, self.image_shape[0], self.image_shape[1], self.image_shape[2])
-        sigma_d = sigma_d.view(n_samples, batch_size, self.image_shape[0], self.image_shape[1], self.image_shape[2])
-        deviations = (x - mu_d) / (sigma_d + self.eps)
-        log_j_d = torch.sum(-torch.log(sigma_d + self.eps),
-                            dim=[2, 3, 4])
-
-        log_j = log_j_preprocessing + log_j_d
-        return z0_samples.view(n_samples, batch_size, -1), deviations, log_j, z0_log_prob'''
 
     def embedding(self, x):
         log_j_preprocessing = 0
