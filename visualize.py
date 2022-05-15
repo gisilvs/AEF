@@ -401,7 +401,7 @@ def generate_reconstructions(run_name = None):
     run_name = 'reconstructions'
 
     visualization_run = wandb.init(project='visualizations', entity="nae", name=run_name)
-    for latent in latent_dims:
+    for latent_dim in latent_dims:
         for dataset in datasets:
             for model_name in model_names:
                 if 'nae' in model_name:
@@ -409,7 +409,7 @@ def generate_reconstructions(run_name = None):
                 else:
                     decoder = 'fixed'
                 runs = api.runs(path="nae/phase1", filters={"config.dataset": dataset,
-                                                            "config.latent_dims": latent,
+                                                            "config.latent_dims": latent_dim,
                                                             "config.model": model_name,
                                                             })
 
@@ -420,7 +420,7 @@ def generate_reconstructions(run_name = None):
 
                         posterior_flow = 'none'
                         prior_flow = 'none'
-                        model = get_model(model_name, architecture_size, decoder, latent_dims, img_dim, alpha,
+                        model = get_model(model_name, architecture_size, decoder, latent_dim, img_dim, alpha,
                                           posterior_flow,
                                           prior_flow)
                         run_name = run.name
@@ -436,7 +436,7 @@ def generate_reconstructions(run_name = None):
                         for i in range(3):
                             fig = plot_reconstructions(model, test_loader, device, img_dim, n_rows=10, skip_batches=i)
                             wandb.log(
-                                {f"reconstructions {dataset} {model_name} latent {latent }run {run_id}": wandb.Image(fig)})
+                                {f"reconstructions {dataset} {model_name} latent {latent_dim}run {run_id}": wandb.Image(fig)})
                         plt.close('all')
                     except Exception as E:
                         print(E)
@@ -622,6 +622,7 @@ def generate_visualizations(do_plot_latent_space_greater_than_2=False,
 
 
 if __name__ == "__main__":
-    generate_samples()
+    generate_reconstructions()
+    #generate_samples()
     #generate_visualizations_separately()
     # generate_loss_over_latentdims()
