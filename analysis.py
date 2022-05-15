@@ -265,6 +265,9 @@ def add_mse_fid_phase_1():
     for run in runs:
         if run.state != 'finished':
             continue
+        if 'test_rce' in run.summary.keys() and 'fid' in run.summary.keys():
+            if np.isfinite(run.summary['test_rce']) and np.isfinite(run.summary['fid']):
+                continue
 
         try:
             model_name = get_field_from_config(run, "model")
@@ -277,8 +280,13 @@ def add_mse_fid_phase_1():
             latent_dims = get_field_from_config(run, "latent_dims", type="int")
 
 
-            posterior_flow = 'none'
-            prior_flow = 'none'
+            posterior_flow = get_field_from_config(run, "posterior_flow")
+            if posterior_flow is None:
+                posterior_flow = 'none'
+            prior_flow = get_field_from_config(run, "prior_flow")
+            if prior_flow is None:
+                prior_flow = 'none'
+
             model = get_model(model_name, architecture_size, decoder, latent_dims, image_dim, alpha, posterior_flow,
                               prior_flow)
             #model.loss_function(model.sample(10))  # needed as some components such as actnorm need to be initialized
@@ -291,31 +299,38 @@ def add_mse_fid_phase_1():
 
             test_loader = get_test_dataloader(dataset, batch_size=128)
             model = model.eval()
-            with torch.no_grad():
-                test_rce_averager = make_averager()
-                for test_batch, _ in test_loader:
-                    test_batch = dequantize(test_batch)
-                    test_batch = test_batch.to(device)
 
-                    z = model.encode(test_batch)
-                    if isinstance(z, tuple):
-                        z = z[0]
+            if not 'test_rce' in run.summary.keys() or not np.isfinite(run.summary['test_rce']):
+                with torch.no_grad():
+                    test_rce_averager = make_averager()
+                    for test_batch, _ in test_loader:
+                        test_batch = dequantize(test_batch)
+                        test_batch = test_batch.to(device)
 
-                    test_batch_reconstructed = model.decode(z)
-                    if isinstance(test_batch_reconstructed, tuple):
-                        test_batch_reconstructed = test_batch_reconstructed[0]
+                        z = model.encode(test_batch)
+                        if isinstance(z, tuple):
+                            z = z[0]
 
-                    rce = torch.mean(F.mse_loss(test_batch_reconstructed, test_batch, reduction='none'))
-                    test_rce_averager(rce.item())
+                        test_batch_reconstructed = model.decode(z)
+                        if isinstance(test_batch_reconstructed, tuple):
+                            test_batch_reconstructed = test_batch_reconstructed[0]
 
-            test_rce = test_rce_averager(None)
-            run.summary["test_rce"] = test_rce
-            #
-            fid = metrics.calculate_fid(model, dataset, device, batch_size=128, incept=incept)
-            run.summary['fid'] = fid
+                        rce = torch.mean(F.mse_loss(test_batch_reconstructed, test_batch, reduction='none'))
+                        test_rce_averager(rce.item())
+
+                test_rce = test_rce_averager(None)
+                run.summary["test_rce"] = test_rce
+            if not 'fid' in run.summary.keys() or not np.isfinite(run.summary['fid']):
+                try:
+                    fid = metrics.calculate_fid(model, dataset, device, batch_size=128, incept=incept)
+                    run.summary['fid'] = fid
+                except Exception as e:
+                    print(e)
+                    traceback.print_exc()
+                    print(f'Failed FID in {run_name}')
 
             run.summary.update()
-            print(f"Updated {run_name} with RCE and FID")
+            print(f"Updated {run_name}")
 
         except Exception as e:
             print(e)
@@ -381,8 +396,9 @@ def generate_denoising_table(latent_dims=32):
 
 
 if __name__ == '__main__':
+    add_mse_fid_phase_1
     # df = extract_data_from_runs()
     # print(df)
     #generate_denoising_table()
-    add_mse_fid_phase_1()
+    #add_mse_fid_phase_1()
 
