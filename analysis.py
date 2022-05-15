@@ -476,6 +476,9 @@ def phase1_plot(df, broken_axis=True):
 
             #sns.set_theme()
             sns.pointplot(x="latent_dims", y="test_bpp_adjusted", hue="model", data=df_to_use, ci=95, ax=ax_bottom)
+
+            
+
             ax_top.grid(visible=True, which='major', axis='both', color='w')
             ax_bottom.grid(visible=True, which='major', axis='both', color='w')
             #sns.set_theme()
@@ -540,10 +543,67 @@ def phase1_plot(df, broken_axis=True):
             ax_top.set_title(dataset_titles[dataset])
         plt.savefig(f'plots/phase1_{dataset}.png')
 
+def check_nr_experiments(df):
+    datasets = ['mnist', 'cifar', 'fashionmnist', 'kmnist']
+    models = ['vae', 'vae-iaf', 'iwae', 'vae-maf-iaf', 'nae-center', 'nae-corner', 'nae-external']
+    latent_sizes = [2, 4, 8, 16, 32]
+
+    df.loc[(df.loc[:, 'model'] == 'vae') & (df.loc[:, 'posterior_flow'] == 'iaf') & (df.loc[:, 'prior_flow'] == 'maf'), 'model'] = 'vae-maf-iaf'
+    for model in models:
+        for dataset in datasets:
+            for latent_dims in latent_sizes:
+                rows = df.loc[(df.loc[:, 'model'] == model) & (df.loc[:, 'dataset'] == dataset) & (df.loc[:, 'latent_dims'] == latent_dims), :]
+                print(f'{rows.shape[0]} rows, mean {rows.loc[:, "test_bpp_adjusted"].mean()}, std {rows.loc[:, "test_bpp_adjusted"].std()}')
+
+
+def check_runs_missing_artifact():
+    use_gpu = True
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+    project_name = 'phase1'
+
+    alpha = 1e-6
+    image_dim = [1, 28, 28]
+    api = wandb.Api()
+    runs = api.runs(path="nae/phase1")
+    architecture_size = "small"
+    for run in runs:
+        if run.state != 'finished':
+            continue
+
+        try:
+            model_name = get_field_from_config(run, "model")
+
+            dataset = get_field_from_config(run, "dataset")
+
+            decoder = get_field_from_config(run, "decoder")
+            latent_dims = get_field_from_config(run, "latent_dims", type="int")
+
+            posterior_flow = get_field_from_config('posterior_flow')
+            if posterior_flow is None:
+                posterior_flow = 'none'
+            prior_flow = get_field_from_config('prior_flow')
+            if prior_flow is None:
+                prior_flow = 'none'
+            model = get_model(model_name, architecture_size, decoder, latent_dims, image_dim, alpha, posterior_flow,
+                              prior_flow)
+            # model.loss_function(model.sample(10))  # needed as some components such as actnorm need to be initialized
+            run_name = run.name
+            artifact = api.artifact(f'nae/{project_name}/{run_name}_best:latest')
+            artifact_dir = artifact.download()
+            artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+            model.load_state_dict(torch.load(artifact_dir, map_location=device))
+        except Exception as e:
+            print(e)
+            traceback.print_exc()
+            print(run.name)
+
+
 if __name__ == '__main__':
     # df = extract_data_from_runs('phase1')
     # df.to_pickle('phase1.pkl')
-    # #df = pd.read_pickle('phase1.pkl')
+    # df = pd.read_pickle('phase1.pkl')
+    # check_nr_experiments(df)
+    check_runs_missing_artifact()
     # df = extract_data_from_runs('denoising-experiments-1')
     # df.to_pickle('denoising-experiments-1.pkl')
     # df = pd.read_pickle('denoising-experiments-1.pkl')
@@ -551,11 +611,11 @@ if __name__ == '__main__':
     # df = pd.read_pickle('phase1.pkl')
     # phase1_plot(df)
 
-    api = wandb.Api()
-    runs = api.runs(path="nae/phase1")
-
-    for run in runs:
-        print(run.name)
-    exit()
+    # api = wandb.Api()
+    # runs = api.runs(path="nae/phase1")
+    #
+    # for run in runs:
+    #     print(run.name)
+    # exit()
     #add_mse_fid_phase_1()
 
