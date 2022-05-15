@@ -378,6 +378,48 @@ def generate_samples():
                         continue
     visualization_run.finish()
 
+def generate_visualizations_single_run():
+    run_name = 'visualizations_celeba'
+    project_name = 'phase2'
+    model_name = 'nae-external'
+    experiment_name = f'nae-external_big_celebahq_run_0_latent_size_256_decoder_independent_post_maf_prior_maf'
+    decoder = 'independent'
+    dataset = 'celeba'
+    use_gpu = False
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+    alpha = 1e-6
+    latent_dims = 256
+    image_dim = [3, 32, 32]
+    architecture_size = 'big'
+
+    prior_flow = 'maf'
+    posterior_flow = 'maf'
+
+    run = wandb.init(project='visualizations', entity="nae", name=run_name)
+    model = load_best_model(run, project_name, model_name, experiment_name, device, latent_dims, image_dim,
+                            alpha, decoder, architecture_size, prior_flow, posterior_flow, version='latest')
+
+    n_rows = 2
+    n_cols = 4
+    img_shape = [3, 32, 32]
+    batch_size = 8
+    temperature = 1
+
+    n_samples = n_rows * n_cols
+    arr = torch.zeros((n_samples, *img_shape))
+    n_filled = 0
+    while n_filled < n_samples:
+        n_to_sample = min(batch_size, n_samples - n_filled)
+        with torch.no_grad():
+            arr[n_filled:n_filled + n_to_sample] = model.sample(n_to_sample, temperature=temperature).cpu().detach()
+        n_filled += n_to_sample
+
+    fig = plt.figure(figsize=(10, 10))
+    grid_img = torchvision.utils.make_grid(arr, padding=1, pad_value=0., nrow=n_rows)
+    plt.imshow(grid_img.permute(1, 2, 0))
+    plt.axis("off")
+    return fig
+
 
 def generate_visualizations_separately():
     generate_visualizations(False, True, False, False, 0, custom_name="2D latent space plots new")
@@ -622,7 +664,11 @@ def generate_visualizations(do_plot_latent_space_greater_than_2=False,
 
 
 if __name__ == "__main__":
+
     generate_reconstructions()
     #generate_samples()
     #generate_visualizations_separately()
+
+    generate_visualizations_single_run()
+
     # generate_loss_over_latentdims()

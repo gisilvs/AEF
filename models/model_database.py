@@ -13,7 +13,7 @@ from .denoising_ae import DeterministicConvolutionalEncoderSmall, DeterministicC
 from .iwae import IWAE, ExtendedIWAE, DenoisingIWAE
 from .nae_internal import InternalLatentAutoEncoder
 
-from .vae import VAE, ExtendedVAE, DenoisingVAE
+from .vae import VAE, ExtendedVAE, DenoisingVAE, ExtendedDenoisingVAE
 from .vae_iaf import VAEIAF, ExtendedVAEIAF, DenoisingVAEIAF
 from .nae_external import ExternalLatentAutoEncoder
 import numpy as np
@@ -173,6 +173,28 @@ def get_model_denoising(model_name: str, decoder: str, latent_dims: int, img_sha
 
     preprocessing_layers = [InverseTransform(AffineTransform(alpha, 1 - 2 * alpha)), Sigmoid(),
                             ActNorm(img_shape[0])]
+
+    if model_name == 'vae-iaf-maf':
+        vae_channels = 64
+        encoder = ConvolutionalEncoderSmall(vae_channels, input_shape=img_shape, latent_dims=latent_dims)
+        decoder = FixedVarianceDecoderSmall(vae_channels, output_shape=img_shape, latent_dims=latent_dims)
+
+        flow_features = 256
+        num_layers = 4
+        prior_flow = get_masked_autoregressive_transform(features=latent_dims,
+                                                         hidden_features=flow_features,
+                                                         num_layers=num_layers,
+                                                         num_blocks_per_layer=2,
+                                                         act_norm_between_layers=True)
+        post_flow = get_masked_autoregressive_transform(features=latent_dims,
+                                                        hidden_features=flow_features,
+                                                        num_layers=num_layers,
+                                                        num_blocks_per_layer=2,
+                                                        act_norm_between_layers=True,
+                                                        is_inverse=True)
+
+        model = ExtendedDenoisingVAE(encoder, decoder, post_flow, prior_flow)
+        return model
 
     if model_name == 'ae':
         vae_channels = 64
