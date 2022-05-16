@@ -111,6 +111,82 @@ def get_field_from_summary(run: wandb.run, field: str, type: str = 'str'):
         return run.summary[field]
 
 
+def update_nae_external():
+    model_name = 'nae-external'
+    api = wandb.Api(timeout=59)
+    alpha = 1e-6
+    img_dim = [1, 28, 28]
+    n_pixels = np.prod(img_dim)
+    project_name = 'phase1'
+
+    use_gpu = True
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+
+
+    runs = api.runs(path=f"nae/{project_name}", filters={#"config.dataset": dataset,
+                                                             #"config.latent_dims": latent_dims,
+                                                             "config.model": model_name,
+                                                             # "config.posterior_flow": posterior_flow,
+                                                             # "config.prior_flow": prior_flow,
+                                                             #"config.noise_level": noise_level
+                                                             })
+
+    for run in runs:
+        try:
+            model_name = get_field_from_config(run, "model")
+
+            dataset = get_field_from_config(run, "dataset")
+
+            decoder = get_field_from_config(run, "decoder")
+            latent_dims = get_field_from_config(run, "latent_dims", type="int")
+
+            architecture_size = get_field_from_config(run, "architecture_size")
+            if architecture_size is None:
+                architecture_size = "small"
+
+            posterior_flow = get_field_from_config(run, "posterior_flow")
+            if posterior_flow is None:
+                posterior_flow = 'none'
+            prior_flow = get_field_from_config(run, "prior_flow")
+            if prior_flow is None:
+                prior_flow = 'none'
+
+            model = get_model(model_name, architecture_size, decoder, latent_dims, img_dim, alpha, posterior_flow,
+                              prior_flow)
+
+            run_name = run.name
+            artifact = api.artifact(f'nae/{project_name}/{run_name}_best:latest')
+            artifact_dir = artifact.download()
+            artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+            model.load_state_dict(torch.load(artifact_dir, map_location=device))
+            model = model.to(device)
+
+            test_loader = get_test_dataloader(dataset, batch_size=128)
+            model = model.eval()
+
+            test_ll_averager = make_averager()
+            for test_batch, _ in test_loader:
+                test_batch = dequantize(test_batch)
+                test_batch = test_batch.to(device)
+                for iw_iter in range(20):
+                    log_likelihood = torch.mean(model.negative_log_likelihood(test_batch, n_samples=128))
+                    test_ll_averager(log_likelihood.item())
+            new_test_ll = test_ll_averager(None)
+            new_bpp_test = bits_per_pixel(new_test_ll, n_pixels)
+            new_bpp_test_adjusted = bits_per_pixel(new_test_ll, n_pixels, adjust_value=256.)
+
+            run.summary["test_log_likelihood"] = new_test_ll
+            run.summary["test_bpp"] = new_bpp_test
+            run.summary['test_bpp_adjusted'] = new_bpp_test_adjusted
+            run.summary.update()
+            print(f"Updated {run_name}")
+        except Exception as E:
+            print(E)
+            print(f'Failed to update bpp/likelihood of {run.name}')
+            traceback.print_exc()
+            continue
+
+
 def update_log_likelihood():
     use_gpu = True
     device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
@@ -752,7 +828,8 @@ def check_nr_experiments(df):
         for dataset in datasets:
             for latent_dims in latent_sizes:
                 rows = df.loc[(df.loc[:, 'model'] == model) & (df.loc[:, 'dataset'] == dataset) & (df.loc[:, 'latent_dims'] == latent_dims), :]
-                print(f'{rows.shape[0]} rows, mean {rows.loc[:, "test_bpp_adjusted"].mean()}, std {rows.loc[:, "test_bpp_adjusted"].std()}')
+                print(f'{model} {dataset} {latent_dims} {rows.shape[0]} rows')
+                #print(f'{rows.shape[0]} rows, mean {rows.loc[:, "test_bpp_adjusted"].mean()}, std {rows.loc[:, "test_bpp_adjusted"].std()}')
 
 
 def check_runs_missing_artifact():
@@ -798,7 +875,7 @@ def check_runs_missing_artifact():
 
 
 if __name__ == '__main__':
-    add_fid_phase2()
+    update_nae_external()
     # add_fid_cifar()
     # add_mse_fid_phase_1()
     # df = extract_data_from_runs('phase1')
