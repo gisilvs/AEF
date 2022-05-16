@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader
 from datasets import get_test_dataloader
 import util
 import wandb
+from models import model_database
 from models.autoencoder_base import AutoEncoder, GaussianAutoEncoder
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
@@ -474,13 +475,13 @@ def generate_pics_nae_external():
 
 def generate_denoising_reconstructions():
     datasets = ['fashionmnist']
-    model_name = 'nae-external'
-    posterior_flow = 'none'
-    prior_flow = 'none'
+    model_name = 'vae-iaf-maf'
+    posterior_flow = 'iaf'
+    prior_flow = 'maf'
 
     #posterior_flow = 'maf'
     #prior_flow = 'maf'
-    decoder = 'independent'
+    decoder = 'fixed'
     # model_name = 'vae'
     # posterior_flow = 'iaf'
     # prior_flow = 'maf'
@@ -498,7 +499,6 @@ def generate_denoising_reconstructions():
     latent_grid_size = 20
     # visualization_run = wandb.init(project='visualizations', entity="nae", name=run_name)
     for dataset in datasets:
-
         runs = api.runs(path=f"nae/{project_name}", filters={"config.dataset": dataset,
                                                              "config.latent_dims": latent_dims,
                                                              "config.model": model_name,
@@ -512,9 +512,7 @@ def generate_denoising_reconstructions():
             experiment_name = run.name
             try:
 
-                model = get_model(model_name, architecture_size, decoder, latent_dims, img_dim, alpha,
-                                  posterior_flow,
-                                  prior_flow)
+                model = model_database.get_model_denoising(model_name, decoder, latent_dims, img_dim, alpha)
                 run_name = run.name
                 artifact = api.artifact(
                     f'nae/{project_name}/{run_name}_best:latest')  # run.restore(f'{run_name}_best:latest', run_path=run.path, root='./artifacts')
@@ -717,7 +715,7 @@ def generate_reconstructions(run_name = None):
     run_name = 'reconstructions'
 
     visualization_run = wandb.init(project='visualizations', entity="nae", name=run_name)
-    for latent in latent_dims:
+    for latent_dim in latent_dims:
         for dataset in datasets:
             for model_name in model_names:
                 if 'nae' in model_name:
@@ -725,7 +723,7 @@ def generate_reconstructions(run_name = None):
                 else:
                     decoder = 'fixed'
                 runs = api.runs(path="nae/phase1", filters={"config.dataset": dataset,
-                                                            "config.latent_dims": latent,
+                                                            "config.latent_dims": latent_dim,
                                                             "config.model": model_name,
                                                             })
 
@@ -736,7 +734,7 @@ def generate_reconstructions(run_name = None):
 
                         posterior_flow = 'none'
                         prior_flow = 'none'
-                        model = get_model(model_name, architecture_size, decoder, latent_dims, img_dim, alpha,
+                        model = get_model(model_name, architecture_size, decoder, latent_dim, img_dim, alpha,
                                           posterior_flow,
                                           prior_flow)
                         run_name = run.name
@@ -752,7 +750,7 @@ def generate_reconstructions(run_name = None):
                         for i in range(3):
                             fig = plot_reconstructions(model, test_loader, device, img_dim, n_rows=10, skip_batches=i)
                             wandb.log(
-                                {f"reconstructions {dataset} {model_name} latent {latent }run {run_id}": wandb.Image(fig)})
+                                {f"reconstructions {dataset} {model_name} latent {latent_dim}run {run_id}": wandb.Image(fig)})
                         plt.close('all')
                     except Exception as E:
                         print(E)
@@ -940,12 +938,4 @@ def generate_visualizations(do_plot_latent_space_greater_than_2=False,
 
 
 if __name__ == "__main__":
-
-    #generate_pics_nae_external()
     generate_denoising_reconstructions()
-    #generate_2d_latent_spaces('samples transparent')
-    #generate_visualizations_separately()
-    # generate_loss_over_latentdims()
-
-    generate_visualizations_single_run()
-    # generate_loss_over_latentdims()
