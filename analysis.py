@@ -386,8 +386,10 @@ def add_fid_cifar():
 
         try:
             model_name = get_field_from_config(run, "model")
-            if 'nae' not in model_name:
+
+            if model_name != 'maf':
                 continue
+
             dataset = get_field_from_config(run, "dataset")
 
             decoder = get_field_from_config(run, "decoder")
@@ -404,13 +406,14 @@ def add_fid_cifar():
             if prior_flow is None:
                 prior_flow = 'none'
 
-            model = get_model(model_name, architecture_size, decoder, latent_dims, image_dim, alpha, posterior_flow,
+            model = get_model(model_name, architecture_size, decoder, latent_dims, [3, 32, 32], alpha, posterior_flow,
                               prior_flow)
             #model.loss_function(model.sample(10))  # needed as some components such as actnorm need to be initialized
             run_name = run.name
             artifact = api.artifact(f'nae/{project_name}/{run_name}_best:latest')
             artifact_dir = artifact.download()
             artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+            model.loss_function(model.sample(2))
             model.load_state_dict(torch.load(artifact_dir, map_location=device))
             model = model.to(device)
 
@@ -551,7 +554,7 @@ def generate_denoising_table(df, latent_dims=32):
         print(model_titles[row_idx], end=' ')
         for dataset_idx in range(len(datasets)):
             for noise_level_idx in range(len(noise_levels)):
-                print(f'& ${mean_rce[row_idx, dataset_idx, noise_level_idx]:.3f} \pm {se_rce[row_idx, dataset_idx, noise_level_idx]:.3f}$', end=' ')
+                print(f'& ${mean_rce[row_idx, dataset_idx, noise_level_idx]:.3f} \pm {se_rce[row_idx, dataset_idx, noise_level_idx]:.2e}$', end=' ')
         print('\\\\')
 
 
@@ -603,7 +606,6 @@ def denoising_plot(df):
 
 def phase1_bpp_plot(df, broken_axis=True):
     datasets = ['mnist', 'kmnist', 'fashionmnist']
-    models = ['ae', 'vae-iaf', 'nae-external']
     dataset_titles = {'mnist': 'MNIST', 'kmnist': 'KMNIST', 'fashionmnist': 'FashionMNIST'}
 
 
@@ -738,12 +740,8 @@ def phase1_bpp_plot(df, broken_axis=True):
 
 def phase1_fid_plot(df):
     datasets = ['mnist', 'kmnist', 'fashionmnist']
-    models = ['ae', 'vae-iaf', 'nae-external']
+
     dataset_titles = {'mnist': 'MNIST', 'kmnist': 'KMNIST', 'fashionmnist': 'FashionMNIST'}
-
-
-    vae_models = ['vae', 'iwae', 'vae-iaf']
-    nae_models = ['nae-external', 'nae-corner', 'nae-center']
 
     # Replace names
 
@@ -818,10 +816,78 @@ def phase1_fid_plot(df):
         ax.set_title(dataset_titles[dataset])
         plt.savefig(f'plots/fid_phase1_{dataset}.png')
 
+def cifar_fid_plot(df):
+    datasets = ['cifar']
+    dataset_titles = {'cifar': 'CIFAR-10'}
+
+    # Replace names
+
+    df_fixed = df.loc[(df.loc[:,'latent_dims'] <= 32) & (df.loc[:, 'model'] != 'maf'), :]
+    row_indexer = (df_fixed.loc[:, 'model'] == 'vae') \
+                  & (df_fixed.loc[:, 'posterior_flow'] == 'iaf') \
+                  & (df_fixed.loc[:, 'prior_flow'] == 'maf')
+    df_fixed.loc[row_indexer, 'model'] = 'vae-iaf-maf'
+
+    # todo
+    # rc = {
+    #     "text.usetex": True,
+    #     "font.family": "Times New Roman",
+    #     }
+    # plt.rcParams.update(rc)
+
+    for dataset in datasets:
+
+        maf_mean = df.loc[(df.loc[:, 'model'] == 'maf') & (df.loc[:, 'dataset'] == dataset), 'fid'].mean()
+
+        df_to_use = df_fixed[df.loc[:, 'dataset'] == dataset]
+        #df_to_use = df_to_use[df.loc[:, 'model'].isin(['vae', 'vae-iaf', 'iwae'])]
+        df_to_use = df_to_use.replace(to_replace={'iwae': "vae-iwae"}) #hack to get right ordering
+        df_to_use = df_to_use.sort_values(by=['model'])
+        df_to_use = df_to_use.replace(to_replace={'vae-iwae': "iwae"})
+        df_to_use = df_to_use.replace(to_replace={'vae': "VAE",
+                                     'iwae': "IWAE",
+                                     'vae-iaf': "VAE-IAF",
+                                     'vae-iaf-maf': "VAE-IAF-MAF",
+                                     'nae-center': 'IAE (center)',
+                                     'nae-corner': 'IAE (corner)',
+                                     'nae-external': 'IAE (linear)'})
+
+
+
+        fig = plt.figure(dpi=300, figsize=(6,6))
+        ax = fig.gca()
+        sns.pointplot(x="latent_dims", y="fid", hue="model", data=df_to_use, ci=95)
+
+        maf_line_handle = ax.axhline(y=maf_mean, c='k', linestyle='--', label='MAF')
+
+        bottom, top = plt.ylim()  # return the current ylim
+        plt.ylim((bottom, top+20))  # set the ylim to bottom, top
+
+        ax.grid(visible=True, which='major', axis='both', color='w')
+
+        ax.set_facecolor('lavender')
+
+        plt.ylim()
+        plt.ylabel('FID score')
+        plt.xlabel("Nr. of latent dimensions")
+
+        handles, labels = ax.get_legend_handles_labels()
+        # handles.append(maf_line_handle)
+        # labels.append("MAF")
+        ax.legend(handles=handles, labels=labels, loc='upper center', ncol=3)#, bbox_to_anchor=(0.5, -0.1))
+
+
+        ax.set_title(dataset_titles[dataset])
+        plt.savefig(f'plots/fid_phase1_{dataset}.png')
+
 def check_nr_experiments(df):
-    datasets = ['mnist', 'cifar', 'fashionmnist', 'kmnist']
-    models = ['vae', 'vae-iaf', 'iwae', 'vae-maf-iaf', 'nae-center', 'nae-corner', 'nae-external']
-    latent_sizes = [2, 4, 8, 16, 32]
+    # datasets = ['mnist', 'fashionmnist', 'kmnist']
+    # models = ['vae', 'vae-iaf', 'iwae', 'vae-maf-iaf', 'nae-center', 'nae-corner', 'nae-external']
+    # latent_sizes = [2, 4, 8, 16, 32]
+
+    models = df.loc[:, 'model'].unique()
+    datasets = df.loc[:, 'dataset'].unique()
+    latent_sizes = df.loc[:, 'latent_dims'].unique()
 
     df.loc[(df.loc[:, 'model'] == 'vae') & (df.loc[:, 'posterior_flow'] == 'iaf') & (df.loc[:, 'prior_flow'] == 'maf'), 'model'] = 'vae-maf-iaf'
     for model in models:
@@ -832,16 +898,25 @@ def check_nr_experiments(df):
                 #print(f'{rows.shape[0]} rows, mean {rows.loc[:, "test_bpp_adjusted"].mean()}, std {rows.loc[:, "test_bpp_adjusted"].std()}')
 
 
-def check_runs_missing_artifact():
+def check_runs_missing_artifact(project_name='phase1', load_model=False):
     use_gpu = True
     device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
-    project_name = 'phase1'
 
-    alpha = 1e-6
-    image_dim = [1, 28, 28]
+    if project_name == 'phase1':
+        alpha = 1e-6
+        image_dim = [1, 28, 28]
+        architecture_size = "small"
+    elif project_name == 'cifar':
+        alpha = 0.05
+        image_dim = [3, 32, 32]
+        architecture_size = "small"
+    elif project_name == 'phase2':
+        alpha = 0.05
+        image_dim = [3, 32, 32]
+        architecture_size = "big"
     api = wandb.Api()
-    runs = api.runs(path="nae/phase1")
-    architecture_size = "small"
+    runs = api.runs(path=f"nae/{project_name}")
+
     for run in runs:
         if run.state != 'finished':
             continue
@@ -854,28 +929,31 @@ def check_runs_missing_artifact():
             decoder = get_field_from_config(run, "decoder")
             latent_dims = get_field_from_config(run, "latent_dims", type="int")
 
-            posterior_flow = get_field_from_config('posterior_flow')
+            posterior_flow = get_field_from_config(run, 'posterior_flow')
             if posterior_flow is None:
                 posterior_flow = 'none'
-            prior_flow = get_field_from_config('prior_flow')
+            prior_flow = get_field_from_config(run, 'prior_flow')
             if prior_flow is None:
                 prior_flow = 'none'
-            model = get_model(model_name, architecture_size, decoder, latent_dims, image_dim, alpha, posterior_flow,
+            if load_model:
+                model = get_model(model_name, architecture_size, decoder, latent_dims, image_dim, alpha, posterior_flow,
                               prior_flow)
             # model.loss_function(model.sample(10))  # needed as some components such as actnorm need to be initialized
             run_name = run.name
             artifact = api.artifact(f'nae/{project_name}/{run_name}_best:latest')
             artifact_dir = artifact.download()
-            artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
-            model.load_state_dict(torch.load(artifact_dir, map_location=device))
+            if load_model:
+                artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+                model.load_state_dict(torch.load(artifact_dir, map_location=device))
         except Exception as e:
             print(e)
             traceback.print_exc()
             print(run.name)
-
+    print(f'{project_name} complete')
 
 if __name__ == '__main__':
-    update_nae_external()
+    #add_fid_cifar()
+    #check_nr_experiments()
     # add_fid_cifar()
     # add_mse_fid_phase_1()
     # df = extract_data_from_runs('phase1')
@@ -883,10 +961,27 @@ if __name__ == '__main__':
     # df = pd.read_pickle('phase1.pkl')
     # phase1_fid_plot(df)
     # check_nr_experiments(df)
-    # check_runs_missing_artifact()
-    # df = extract_data_from_runs('denoising-experiments-1')
-    # df.to_pickle('denoising-experiments-1.pkl')
-    # df = pd.read_pickle('denoising-experiments-1.pkl')
+    #
+    # df = extract_data_from_runs('cifar')
+    # df.to_pickle('cifar.pkl')
+    # check_nr_experiments(df)
+    # check_runs_missing_artifact('phase1', load_model=False)
+    # check_runs_missing_artifact('cifar', load_model=False)
+    df = extract_data_from_runs('denoising-experiments-1')
+    df.to_pickle('denoising-experiments-1.pkl')
+    df = pd.read_pickle('denoising-experiments-1.pkl')
+    generate_denoising_table(df)
+    # df = pd.read_pickle('cifar.pkl')
+    # cifar_fid_plot(df)
+    # df = pd.read_pickle('phase1.pkl')
+    # phase1_fid_plot(df)
+
+    # df = extract_data_from_runs('phase2')
+    # df.to_pickle('phase2.pkl')
+    # df = pd.read_pickle('phase2.pkl')
+
+
+
     # generate_denoising_table(df)
     #denoising_plot(df)
     # df = pd.read_pickle('phase1.pkl')
@@ -900,5 +995,5 @@ if __name__ == '__main__':
     # exit()
 
     #add_mse_fid_phase_1()
-
+    #check_runs_missing_artifact('cifar')
     exit()

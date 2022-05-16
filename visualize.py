@@ -75,7 +75,7 @@ def plot_latent_space(model, test_loader, device):
     return fig
 
 
-def plot_latent_space_2d(model: AutoEncoder, test_loader, device, equal_axes=True, max_val=None):
+def plot_latent_space_2d(model: AutoEncoder, test_loader, device, equal_axes=True, max_val=None, colorbar=True):
     '''
 
     :param model:
@@ -99,12 +99,13 @@ def plot_latent_space_2d(model: AutoEncoder, test_loader, device, equal_axes=Tru
         arr[n_added:n_added + len(image_batch), 2] = image_labels
         n_added += len(image_batch)
     plt.rcParams['axes.axisbelow'] = True
-    fig = plt.figure(figsize=(6, 6))
+    fig = plt.figure(figsize=(6, 6), dpi=300)
     ax = fig.gca()
 
     #plt.style.use('seaborn')
-    scat = plt.scatter(arr[:, 0], arr[:, 1], s=10, c=arr[:, 2], cmap=plt.get_cmap('tab10'), alpha=0.8)
-    cb = plt.colorbar(scat, spacing='uniform')
+    scat = plt.scatter(arr[:, 0], arr[:, 1], s=10, c=arr[:, 2], cmap=plt.get_cmap('tab10'), alpha=0.8, rasterized=True, linewidths=0)
+    #cb = plt.colorbar(scat, spacing='uniform', ticks=np.linspace(0, 9, 10))
+
     ax.set_facecolor('lavender')
     ax.grid(visible=True, which='major', axis='both', color='w', )
 
@@ -113,12 +114,68 @@ def plot_latent_space_2d(model: AutoEncoder, test_loader, device, equal_axes=Tru
     if equal_axes:
         plt.axis('equal')
     if max_val is not None:
-        cur_min_x, cur_max_x = np.min(arr[:, 0]), np.max(arr[:, 0])
-        cur_min_y, cur_max_y = np.min(arr[:, 1]), np.max(arr[:, 1])
+        # cur_min_x, cur_max_x = np.min(arr[:, 0]), np.max(arr[:, 0])
+        # cur_min_y, cur_max_y = np.min(arr[:, 1]), np.max(arr[:, 1])
+        #
+        # cur_min = min(cur_min_x, cur_min_y)
+        # cur_max = max(cur_max_x, cur_max_y)
+        #
+        # if cur_min < -max_val or cur_max > max_val:
+        #     lim = max_val
+        # else:
+        #     lim = max(-1 * cur_min, cur_max)
+        lim = max_val
+        # plt.ylim((max(cur_min_x, -max_val), min(cur_max_x, max_val)))  # Why are these reversed?
+        # plt.xlim((max(cur_min_y, -max_val), min(cur_max_y, max_val)))
 
-        plt.ylim((max(cur_min_x, -max_val), min(cur_max_x, max_val)))  # Why are these reversed?
-        plt.xlim((max(cur_min_y, -max_val), min(cur_max_y, max_val)))
+        plt.ylim((-lim, lim))  # Why are these reversed?
+        plt.xlim((-lim, lim))
+    else:
+        left, right = plt.xlim()
+        max_lr = max(-left, right)
+        plt.xlim((-max_lr, max_lr))
+
+
+    if colorbar:
+        plt.clim(-0.5, 10 - 0.5)
+        cb = plt.colorbar(scat, ticks=range(0, 10), spacing='uniform')
+        cb.ax.tick_params(length=0)
+
     return fig
+
+def save_colorbar(model, test_loader, device):
+    arr = np.zeros([len(test_loader.dataset), 3])
+    n_added = 0
+    for image_batch, image_labels in test_loader:
+        image_batch = util.dequantize(image_batch)
+        image_batch = image_batch.to(device)
+        with torch.no_grad():
+            output = model.encode(image_batch)
+            if isinstance(output, tuple):
+                mu, _ = model.encode(image_batch)
+            else:
+                mu = output
+        arr[n_added:n_added + len(image_batch), :2] = mu.cpu().detach().numpy()
+        arr[n_added:n_added + len(image_batch), 2] = image_labels
+        n_added += len(image_batch)
+    plt.rcParams['axes.axisbelow'] = True
+    fig = plt.figure(figsize=(6, 6), dpi=300)
+    ax = fig.gca()
+
+    # plt.style.use('seaborn')
+    fig, ax = plt.subplots(figsize=(6, 6), dpi=300)
+    scat = plt.scatter(arr[:, 0], arr[:, 1], s=10, c=arr[:, 2], cmap=plt.get_cmap('tab10'), alpha=0.8, rasterized=True,
+                       linewidths=0)
+
+
+    plt.clim(-0.5, 10 - 0.5)
+    cb = plt.colorbar(scat, ticks=range(0, 10), spacing='uniform', ax=ax)
+    cb.ax.tick_params(length=0)
+    ax.remove()
+    plt.savefig('plots/plot_onlycbar.png', dpi=400)
+
+    # save the same figure with some approximate autocropping
+    plt.savefig('plots/plot_onlycbar_tight.png', bbox_inches='tight', dpi=400)
 
 
 def plot_samples(model: AutoEncoder, img_shape: List = [1, 28, 28], n_rows: int = 10, n_cols: int = 10,
@@ -336,7 +393,7 @@ def generate_2d_grids():
     visualization_run.finish()
 
 def generate_pics_vae_maf_iaf():
-    datasets = ['mnist', 'fashionmnist', 'kmnist']
+    datasets = ['mnist', 'fashionmnist']#, 'kmnist']
     model_name = 'vae'
     posterior_flow = 'iaf'
     prior_flow = 'maf'
@@ -383,10 +440,13 @@ def generate_pics_vae_maf_iaf():
                 model.load_state_dict(torch.load(artifact_dir, map_location=device))
                 model = model.to(device)
 
-                test_loader = get_test_dataloader(dataset)
-
-                fig = plot_latent_space_2d(model, test_loader, device, equal_axes=True, max_val=5)
-                plt.savefig(f'plots/latent_{run_name}.pdf', bbox_inches='tight', pad_inches=0)
+                # test_loader = get_test_dataloader(dataset)
+                #
+                # fig = plot_latent_space_2d(model, test_loader, device, equal_axes=True)
+                # plt.savefig(f'plots/latent_{run_name}.png', dpi=400, bbox_inches='tight')
+                #
+                # fig = plot_latent_space_2d(model, test_loader, device, equal_axes=True, colorbar=False)
+                # plt.savefig(f'plots/latent_{run_name}_no_colorbar.png', dpi=400, bbox_inches='tight')
                 z_vals = get_z_values(n_vals=latent_grid_size, latent_dims=2, border=0.06)
                 z_vals = z_vals.to(device)
 
@@ -397,8 +457,8 @@ def generate_pics_vae_maf_iaf():
                         output = output[0]
                     output = output.detach().cpu()
 
-                fig = util.plot_image_grid(output, cols=latent_grid_size, padding=0, hires=True)
-                plt.savefig(f'plots/grid_{run_name}.pdf', transparent='true', bbox_inches='tight', pad_inches=0)
+                fig = util.plot_image_grid(output, cols=latent_grid_size, hires=True, padding=0)
+                plt.savefig(f'plots/grid_{run_name}.png', dpi=400, transparent='true', bbox_inches='tight')
             except Exception as E:
                 print(E)
                 print(f'Failed to plot latent space of {experiment_name}')
@@ -451,8 +511,11 @@ def generate_pics_nae_external():
 
                 test_loader = get_test_dataloader(dataset)
 
-                fig = plot_latent_space_2d(model, test_loader, device, equal_axes=True, max_val=5)
-                plt.savefig(f'plots/latent_{run_name}.pdf', bbox_inches='tight', pad_inches=0)
+                fig = plot_latent_space_2d(model, test_loader, device, equal_axes=True, max_val=3.5)
+                plt.savefig(f'plots/latent_{run_name}.png', dpi=400, bbox_inches='tight')
+
+                fig = plot_latent_space_2d(model, test_loader, device, equal_axes=True, max_val=3.5, colorbar=False)
+                plt.savefig(f'plots/latent_{run_name}_no_colorbar.png', dpi=400, bbox_inches='tight')
                 z_vals = get_z_values(n_vals=latent_grid_size, latent_dims=2, border=0.06)
                 z_vals = z_vals.to(device)
 
@@ -464,20 +527,25 @@ def generate_pics_nae_external():
                     output = output.detach().cpu()
 
                 fig = util.plot_image_grid(output, cols=latent_grid_size, padding=0, hires=True)
-                plt.savefig(f'plots/grid_{run_name}.pdf', bbox_inches='tight', pad_inches=0)
+                plt.savefig(f'plots/grid_{run_name}.png', bbox_inches='tight', dpi=400)
             except Exception as E:
                 print(E)
                 print(f'Failed to plot latent space of {experiment_name}')
                 traceback.print_exc()
                 continue
+            break
         plt.close('all')
+        break
+    fig = save_colorbar(model, test_loader, device)
     # visualization_run.finish()
+
+
 
 def generate_denoising_reconstructions():
     datasets = ['fashionmnist']
-    model_name = 'vae-iaf-maf'
-    posterior_flow = 'iaf'
-    prior_flow = 'maf'
+    model_name = 'ae'
+    posterior_flow = 'none'
+    prior_flow = 'none'
 
     #posterior_flow = 'maf'
     #prior_flow = 'maf'
@@ -938,4 +1006,8 @@ def generate_visualizations(do_plot_latent_space_greater_than_2=False,
 
 
 if __name__ == "__main__":
-    generate_denoising_reconstructions()
+    #generate_denoising_reconstructions()
+    #generate_pics_nae_external()
+    generate_pics_vae_maf_iaf()
+    exit()
+    #generate_denoising_reconstructions()
