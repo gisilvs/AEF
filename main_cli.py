@@ -42,7 +42,7 @@ parser.add_argument('--early-stopping', type=int, default=20000)
 
 args = parser.parse_args()
 
-assert args.wandb_type in ['phase1', 'phase2', 'prototyping', 'visualization']
+#assert args.wandb_type in ['phase1', 'phase2', 'prototyping', 'visualization']
 assert args.model in ['nae-center', 'nae-corner', 'vae', 'iwae', 'vae-iaf', 'maf', 'nae-external']
 assert args.post_flow in ['none', 'maf', 'iaf']
 assert args.prior_flow in ['none', 'maf', 'iaf']

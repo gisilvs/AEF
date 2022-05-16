@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader
 from datasets import get_test_dataloader
 import util
 import wandb
+from models import model_database
 from models.autoencoder_base import AutoEncoder, GaussianAutoEncoder
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
@@ -474,13 +475,13 @@ def generate_pics_nae_external():
 
 def generate_denoising_reconstructions():
     datasets = ['fashionmnist']
-    model_name = 'nae-external'
-    posterior_flow = 'none'
-    prior_flow = 'none'
+    model_name = 'vae-iaf-maf'
+    posterior_flow = 'iaf'
+    prior_flow = 'maf'
 
     #posterior_flow = 'maf'
     #prior_flow = 'maf'
-    decoder = 'independent'
+    decoder = 'fixed'
     # model_name = 'vae'
     # posterior_flow = 'iaf'
     # prior_flow = 'maf'
@@ -498,7 +499,6 @@ def generate_denoising_reconstructions():
     latent_grid_size = 20
     # visualization_run = wandb.init(project='visualizations', entity="nae", name=run_name)
     for dataset in datasets:
-
         runs = api.runs(path=f"nae/{project_name}", filters={"config.dataset": dataset,
                                                              "config.latent_dims": latent_dims,
                                                              "config.model": model_name,
@@ -512,9 +512,7 @@ def generate_denoising_reconstructions():
             experiment_name = run.name
             try:
 
-                model = get_model(model_name, architecture_size, decoder, latent_dims, img_dim, alpha,
-                                  posterior_flow,
-                                  prior_flow)
+                model = model_database.get_model_denoising(model_name, decoder, latent_dims, img_dim, alpha)
                 run_name = run.name
                 artifact = api.artifact(
                     f'nae/{project_name}/{run_name}_best:latest')  # run.restore(f'{run_name}_best:latest', run_path=run.path, root='./artifacts')
@@ -940,4 +938,4 @@ def generate_visualizations(do_plot_latent_space_greater_than_2=False,
 
 
 if __name__ == "__main__":
-    pass
+    generate_denoising_reconstructions()
