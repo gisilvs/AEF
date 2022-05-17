@@ -7,6 +7,7 @@ import torchvision
 import numpy as np
 from torch.utils.data import DataLoader
 
+from analysis import get_field_from_config
 from datasets import get_test_dataloader
 import util
 import wandb
@@ -75,7 +76,8 @@ def plot_latent_space(model, test_loader, device):
     return fig
 
 
-def plot_latent_space_2d(model: AutoEncoder, test_loader, device, equal_axes=True, max_val=None, colorbar=True):
+def plot_latent_space_2d(model: AutoEncoder, test_loader, device, equal_axes=True, max_val=None, colorbar=True,
+                         add_prior_flow=False):
     '''
 
     :param model:
@@ -95,6 +97,8 @@ def plot_latent_space_2d(model: AutoEncoder, test_loader, device, equal_axes=Tru
                 mu, _ = model.encode(image_batch)
             else:
                 mu = output
+            if add_prior_flow:
+                mu, _ = model.prior_bijector.inverse(mu)
         arr[n_added:n_added + len(image_batch), :2] = mu.cpu().detach().numpy()
         arr[n_added:n_added + len(image_batch), 2] = image_labels
         n_added += len(image_batch)
@@ -172,10 +176,10 @@ def save_colorbar(model, test_loader, device):
     cb = plt.colorbar(scat, ticks=range(0, 10), spacing='uniform', ax=ax)
     cb.ax.tick_params(length=0)
     ax.remove()
-    plt.savefig('plots/plot_onlycbar.png', dpi=400)
+    # plt.savefig('plots/plot_onlycbar.png', dpi=400)
 
     # save the same figure with some approximate autocropping
-    plt.savefig('plots/plot_onlycbar_tight.png', bbox_inches='tight', dpi=400)
+    plt.savefig('plots/plot_onlycbar_tight.pdf', bbox_inches='tight', dpi=400)
 
 
 def plot_samples(model: AutoEncoder, img_shape: List = [1, 28, 28], n_rows: int = 10, n_cols: int = 10,
@@ -440,25 +444,25 @@ def generate_pics_vae_maf_iaf():
                 model.load_state_dict(torch.load(artifact_dir, map_location=device))
                 model = model.to(device)
 
-                # test_loader = get_test_dataloader(dataset)
-                #
+                test_loader = get_test_dataloader(dataset)
+
                 # fig = plot_latent_space_2d(model, test_loader, device, equal_axes=True)
-                # plt.savefig(f'plots/latent_{run_name}.png', dpi=400, bbox_inches='tight')
-                #
-                # fig = plot_latent_space_2d(model, test_loader, device, equal_axes=True, colorbar=False)
-                # plt.savefig(f'plots/latent_{run_name}_no_colorbar.png', dpi=400, bbox_inches='tight')
+                # plt.savefig(f'plots/latent_{run_name}.pdf', dpi=400, bbox_inches='tight')
+
+                fig = plot_latent_space_2d(model, test_loader, device, equal_axes=True, max_val=3.5, colorbar=False, add_prior_flow=True)
+                plt.savefig(f'plots/prior_latent_{run_name}_no_colorbar.pdf', dpi=400, bbox_inches='tight')
                 z_vals = get_z_values(n_vals=latent_grid_size, latent_dims=2, border=0.06)
                 z_vals = z_vals.to(device)
 
-                with torch.no_grad():
-                    z_vals, _ = model.prior_bijector.forward(z_vals)
-                    output = model.decode(z_vals)
-                    if isinstance(output, tuple):
-                        output = output[0]
-                    output = output.detach().cpu()
-
-                fig = util.plot_image_grid(output, cols=latent_grid_size, hires=True, padding=0)
-                plt.savefig(f'plots/grid_{run_name}.png', dpi=400, transparent='true', bbox_inches='tight')
+                # with torch.no_grad():
+                #     z_vals, _ = model.prior_bijector.forward(z_vals)
+                #     output = model.decode(z_vals)
+                #     if isinstance(output, tuple):
+                #         output = output[0]
+                #     output = output.detach().cpu()
+                #
+                # fig = util.plot_image_grid(output, cols=latent_grid_size, hires=True, padding=0)
+                # plt.savefig(f'plots/grid_{run_name}.pdf', dpi=400, transparent='true', bbox_inches='tight', pad_inches=0)
             except Exception as E:
                 print(E)
                 print(f'Failed to plot latent space of {experiment_name}')
@@ -511,11 +515,11 @@ def generate_pics_nae_external():
 
                 test_loader = get_test_dataloader(dataset)
 
-                fig = plot_latent_space_2d(model, test_loader, device, equal_axes=True, max_val=3.5)
-                plt.savefig(f'plots/latent_{run_name}.png', dpi=400, bbox_inches='tight')
+                # fig = plot_latent_space_2d(model, test_loader, device, equal_axes=True, max_val=3.5)
+                # plt.savefig(f'plots/latent_{run_name}.png', dpi=400, bbox_inches='tight')
 
                 fig = plot_latent_space_2d(model, test_loader, device, equal_axes=True, max_val=3.5, colorbar=False)
-                plt.savefig(f'plots/latent_{run_name}_no_colorbar.png', dpi=400, bbox_inches='tight')
+                plt.savefig(f'plots/latent_{run_name}_no_colorbar.pdf', dpi=400, bbox_inches='tight')
                 z_vals = get_z_values(n_vals=latent_grid_size, latent_dims=2, border=0.06)
                 z_vals = z_vals.to(device)
 
@@ -527,22 +531,21 @@ def generate_pics_nae_external():
                     output = output.detach().cpu()
 
                 fig = util.plot_image_grid(output, cols=latent_grid_size, padding=0, hires=True)
-                plt.savefig(f'plots/grid_{run_name}.png', bbox_inches='tight', dpi=400)
+                plt.savefig(f'plots/grid_{run_name}.pdf', bbox_inches='tight', dpi=400, pad_inches=0)
             except Exception as E:
                 print(E)
                 print(f'Failed to plot latent space of {experiment_name}')
                 traceback.print_exc()
                 continue
-            break
         plt.close('all')
-        break
-    fig = save_colorbar(model, test_loader, device)
+    save_colorbar(model, test_loader, device)
     # visualization_run.finish()
 
 
 
 def generate_denoising_reconstructions():
     datasets = ['fashionmnist']
+    models = ['vae-iaf-maf', 'nae-external']
     model_name = 'ae'
     posterior_flow = 'none'
     prior_flow = 'none'
@@ -558,7 +561,7 @@ def generate_denoising_reconstructions():
     api = wandb.Api()
     architecture_size = 'small'
     img_dim = [1, 28, 28]
-    alpha = 0.05
+    alpha = 1e-6
     project_name = 'denoising-experiments-1'
     noise_level = 0.75
 
@@ -566,41 +569,44 @@ def generate_denoising_reconstructions():
     device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
     latent_grid_size = 20
     # visualization_run = wandb.init(project='visualizations', entity="nae", name=run_name)
-    for dataset in datasets:
-        runs = api.runs(path=f"nae/{project_name}", filters={"config.dataset": dataset,
-                                                             "config.latent_dims": latent_dims,
-                                                             "config.model": model_name,
-                                                             # "config.posterior_flow": posterior_flow,
-                                                             # "config.prior_flow": prior_flow,
-                                                             "config.noise_level": noise_level
-                                                             })
+    for model_name in models:
+        for dataset in datasets:
+            runs = api.runs(path=f"nae/{project_name}", filters={"config.dataset": dataset,
+                                                                 "config.latent_dims": latent_dims,
+                                                                 "config.model": model_name,
+                                                                 # "config.posterior_flow": posterior_flow,
+                                                                 # "config.prior_flow": prior_flow,
+                                                                 "config.noise_level": noise_level
+                                                                 })
 
-        for run in runs:
-            run_id = run.id
-            experiment_name = run.name
-            try:
+            for run in runs:
+                run_id = run.id
+                experiment_name = run.name
+                try:
+                    decoder = get_field_from_config(run, 'decoder')
 
-                model = model_database.get_model_denoising(model_name, decoder, latent_dims, img_dim, alpha)
-                run_name = run.name
-                artifact = api.artifact(
-                    f'nae/{project_name}/{run_name}_best:latest')  # run.restore(f'{run_name}_best:latest', run_path=run.path, root='./artifacts')
-                artifact_dir = artifact.download()
-                artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
-                model.load_state_dict(torch.load(artifact_dir, map_location=device))
-                model = model.to(device)
+                    model = model_database.get_model_denoising(model_name, decoder, latent_dims, img_dim, alpha)
+                    run_name = run.name
+                    artifact = api.artifact(
+                        f'nae/{project_name}/{run_name}_best:latest')  # run.restore(f'{run_name}_best:latest', run_path=run.path, root='./artifacts')
+                    artifact_dir = artifact.download()
+                    artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+                    model.load_state_dict(torch.load(artifact_dir, map_location=device))
+                    model = model.to(device)
 
-                test_loader = get_test_dataloader(dataset)
-                noise_distribution = torch.distributions.normal.Normal(torch.zeros([6, *img_dim]),
-                                                                       noise_level * torch.ones([6, *img_dim]))
-                fig = plot_noisy_reconstructions(model, test_loader, device, noise_distribution,
-                                                 img_dim, n_rows=6)
-                plt.savefig(f'plots/denoising_{run_name}.pdf', bbox_inches='tight', pad_inches=0)
-            except Exception as E:
-                print(E)
-                print(f'Failed to plot latent space of {experiment_name}')
-                traceback.print_exc()
-                continue
-        plt.close('all')
+                    test_loader = get_test_dataloader(dataset)
+                    torch.manual_seed(3)
+                    noise_distribution = torch.distributions.normal.Normal(torch.zeros([6, *img_dim]),
+                                                                           noise_level * torch.ones([6, *img_dim]))
+                    fig = plot_noisy_reconstructions(model, test_loader, device, noise_distribution,
+                                                     img_dim, n_rows=6)
+                    plt.savefig(f'plots/denoising_{run_name}.pdf', bbox_inches='tight', pad_inches=0)
+                except Exception as E:
+                    print(E)
+                    print(f'Failed to plot latent space of {experiment_name}')
+                    traceback.print_exc()
+                    continue
+            plt.close('all')
 
 def generate_cifar_reconstructions():
     datasets = ['cifar']
@@ -1003,11 +1009,77 @@ def generate_visualizations(do_plot_latent_space_greater_than_2=False,
                     plt.close('all')
     run.finish()
 
+def generate_celeba_samples():
+    fig, axs = plt.subplots(2, 3, figsize=(6,6), dpi=300)
+
+    model_names = ['vae', 'nae-external']
+    latent_sizes = [64, 128, 256]
+
+    project_name = 'phase2'
+
+    architecture_size = 'big'
+    img_dim = [3, 32, 32]
+    alpha = 0.05
+
+    api = wandb.Api()
+    use_gpu = True
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+
+    for model_idx, model_name in enumerate(model_names):
+        for latent_idx, latent_dims in enumerate(latent_sizes):
+            runs = api.runs(path="nae/phase2", filters={
+                                                        "config.latent_dims": latent_dims,
+                                                        "config.model": model_name,
+                                                        })
+            for run in runs:
+                run_id = run.id
+                experiment_name = run.name
+
+                model_name = get_field_from_config(run, "model")
+
+                dataset = get_field_from_config(run, "dataset")
+
+                decoder = get_field_from_config(run, "decoder")
+                latent_dims = get_field_from_config(run, "latent_dims", type="int")
+
+                posterior_flow = get_field_from_config(run, 'posterior_flow')
+                prior_flow = get_field_from_config(run, 'prior_flow')
+
+                model = get_model(model_name, architecture_size, decoder, latent_dims, img_dim, alpha,
+                                  posterior_flow,
+                                  prior_flow)
+                run_name = run.name
+                artifact = api.artifact(
+                    f'nae/{project_name}/{run_name}_best:latest')  # run.restore(f'{run_name}_best:latest', run_path=run.path, root='./artifacts')
+                artifact_dir = artifact.download()
+                artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+                model.load_state_dict(torch.load(artifact_dir, map_location=device))
+                model = model.to(device)
+
+                samples = model.sample(6).detach().cpu()
+                grid_img = torchvision.utils.make_grid(samples, padding=0, pad_value=0., nrow=2)
+                axs[model_idx, latent_idx].imshow(grid_img.permute(1, 2, 0))
+                axs[model_idx, latent_idx].axis("off")
+                if model_idx == 0:
+                    axs[model_idx, latent_idx].set_title(f'{latent_dims}')
+                if latent_idx == 0:
+                    lbl = 'AEF' if model_idx == 0 else 'VAE'
+                    axs[model_idx, latent_idx].set_xlabel(lbl)
+    fig.tight_layout()
+    plt.savefig('plots/celeba_samples.pdf', dpi=300, bbox_inches='tight')
+    plt.show()
 
 
 if __name__ == "__main__":
+    # rc = {
+    #     "text.usetex": True,
+    #     "font.family": "Times New Roman",
+    # }
+    # plt.rcParams.update(rc)
     #generate_denoising_reconstructions()
-    #generate_pics_nae_external()
-    generate_pics_vae_maf_iaf()
+    # generate_pics_nae_external()
+    generate_celeba_samples()
+    #generate_pics_vae_maf_iaf()
+    # generate_denoising_reconstructions()
     exit()
     #generate_denoising_reconstructions()
