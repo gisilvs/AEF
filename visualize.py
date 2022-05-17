@@ -255,14 +255,13 @@ def plot_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoader, de
 
 
 def plot_noisy_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoader, device: torch.device,
-                               noise_distribution: torch.distributions.Distribution,
-                               img_shape: List = [1, 28, 28], n_rows: int = 6, hires=False,
+                               noise_distribution: torch.distributions.Distribution = None,
+                               img_shape: List = [1, 28, 28], n_rows: int = 6, n_cols: int = 6, hires=False,
                                image_batch=None):
     '''
     Function to plot a grid (size n_rows x n_rows) of reconstructions given a model. Following row structure:
     1) image with noise 2) denoised image 3) original image
     '''
-    n_cols = n_rows
     n_images = n_rows * n_cols
     arr = torch.zeros((n_images, *img_shape))
 
@@ -286,7 +285,7 @@ def plot_noisy_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoad
             batch_idx += n_cols
 
             noisy_batch = torch.clone(row_batch).detach()
-            noise = noise_distribution.sample()[:n_rows] # What would be faster: this or reinitializing a
+            noise = noise_distribution.sample()[:n_cols] # What would be faster: this or reinitializing a
             # distribution of proper size each time?
             if noise_to_device:
                 noise = noise.to(device)
@@ -322,8 +321,8 @@ def plot_noisy_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoad
     if hires:
         fig = plt.figure(figsize=(10, 10))
     else:
-        fig = plt.figure(figsize=(10, 10))
-    grid_img = torchvision.utils.make_grid(arr, padding=1, pad_value=0., nrow=n_rows)
+        fig = plt.figure(figsize=(6, 3))
+    grid_img = torchvision.utils.make_grid(arr, padding=1, pad_value=0., nrow=n_cols)
     plt.imshow(grid_img.permute(1, 2, 0))
     plt.axis("off")
     return fig
@@ -545,7 +544,7 @@ def generate_pics_nae_external():
 
 def generate_denoising_reconstructions():
     datasets = ['fashionmnist']
-    models = ['vae-iaf-maf', 'nae-external']
+    models = ['ae', 'vae-iaf-maf', 'nae-external']
     model_name = 'ae'
     posterior_flow = 'none'
     prior_flow = 'none'
@@ -596,10 +595,10 @@ def generate_denoising_reconstructions():
 
                     test_loader = get_test_dataloader(dataset)
                     torch.manual_seed(3)
-                    noise_distribution = torch.distributions.normal.Normal(torch.zeros([6, *img_dim]),
-                                                                           noise_level * torch.ones([6, *img_dim]))
+                    noise_distribution = torch.distributions.normal.Normal(torch.zeros([60, *img_dim]),
+                                                                           noise_level * torch.ones([60, *img_dim]))
                     fig = plot_noisy_reconstructions(model, test_loader, device, noise_distribution,
-                                                     img_dim, n_rows=6)
+                                                     img_dim, n_rows=3, n_cols=6)
                     plt.savefig(f'plots/denoising_{run_name}.pdf', bbox_inches='tight', pad_inches=0)
                 except Exception as E:
                     print(E)
@@ -1010,9 +1009,9 @@ def generate_visualizations(do_plot_latent_space_greater_than_2=False,
     run.finish()
 
 def generate_celeba_samples():
-    fig, axs = plt.subplots(2, 3, figsize=(6,6), dpi=300)
+    fig, axs = plt.subplots(2, 3, figsize=(6.4, 4.8), dpi=300)
 
-    model_names = ['vae', 'nae-external']
+    model_names = ['nae-external', 'vae']
     latent_sizes = [64, 128, 256]
 
     project_name = 'phase2'
@@ -1024,6 +1023,11 @@ def generate_celeba_samples():
     api = wandb.Api()
     use_gpu = True
     device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+
+    params = {
+              'axes.titlesize': 'xx-large',
+                }
+    plt.rcParams.update(params)
 
     for model_idx, model_name in enumerate(model_names):
         for latent_idx, latent_dims in enumerate(latent_sizes):
@@ -1056,12 +1060,13 @@ def generate_celeba_samples():
                 model.load_state_dict(torch.load(artifact_dir, map_location=device))
                 model = model.to(device)
 
-                samples = model.sample(6).detach().cpu()
+                samples = model.sample(4).detach().cpu()
                 grid_img = torchvision.utils.make_grid(samples, padding=0, pad_value=0., nrow=2)
                 axs[model_idx, latent_idx].imshow(grid_img.permute(1, 2, 0))
                 axs[model_idx, latent_idx].axis("off")
                 if model_idx == 0:
                     axs[model_idx, latent_idx].set_title(f'{latent_dims}')
+
                 if latent_idx == 0:
                     lbl = 'AEF' if model_idx == 0 else 'VAE'
                     axs[model_idx, latent_idx].set_xlabel(lbl)
@@ -1079,6 +1084,7 @@ if __name__ == "__main__":
     #generate_denoising_reconstructions()
     # generate_pics_nae_external()
     generate_celeba_samples()
+    #generate_denoising_reconstructions()
     #generate_pics_vae_maf_iaf()
     # generate_denoising_reconstructions()
     exit()

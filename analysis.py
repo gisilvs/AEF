@@ -689,14 +689,13 @@ def phase1_bpp_plot(df, broken_axis=True):
                   & (df_fixed.loc[:, 'prior_flow'] == 'maf')
     df_fixed.loc[row_indexer, 'model'] = 'vae-iaf-maf'
 
-
-    # todo
-    rc = {
-        "text.usetex": True,
-        "font.family": "Times New Roman",
-        }
-    plt.rcParams.update(rc)
     plt.rcParams['axes.axisbelow'] = True
+    plt.rcParams['axes.titlesize'] = 'xx-large'
+    plt.rcParams['axes.labelsize'] = 'x-large'
+    plt.rcParams['ytick.labelsize'] = 'x-small'
+    plt.rcParams['xtick.labelsize'] = 'x-small'
+    plt.rcParams["axes.formatter.useoffset"] = False
+    plt.rcParams['legend.fontsize'] = 'small'
 
     for dataset in datasets:
 
@@ -724,10 +723,11 @@ def phase1_bpp_plot(df, broken_axis=True):
             max_top, min_top = top_scores.max(), top_scores.min()
             top_range = max_top - min_top
             max_bottom, min_bottom = bottom_scores.max(), bottom_scores.min()
+            min_bottom = min(min_bottom, maf_mean)
             bottom_range = max_bottom - min_bottom
 
 
-            fig, (ax_top, ax_bottom) = plt.subplots(2, 1, sharex=True, dpi=300, figsize=(6,6))
+            fig, (ax_top, ax_bottom) = plt.subplots(2, 1, sharex=True, dpi=300, figsize=(6,5))
             fig.subplots_adjust(hspace=0.05)  # adjust space between axes
 
             sns.pointplot(x="latent_dims", y="test_bpp_adjusted", hue="model", data=df_to_use, ci=95, ax=ax_top, rasterize=True)
@@ -749,11 +749,11 @@ def phase1_bpp_plot(df, broken_axis=True):
 
 
 
-            ax_top.set_ylim(min_top - 0.2 * top_range, max_top + 0.5 * top_range)
+            ax_top.set_ylim(min_top - 0.2 * top_range, max_top + 0.75 * top_range)
             ax_bottom.set_ylim(min_bottom - 0.2 * bottom_range, max_bottom + 0.2 * bottom_range)
 
-            sns.despine(ax=ax_bottom)
-            sns.despine(ax=ax_top, bottom=True)
+            sns.despine(ax=ax_bottom, right=False)
+            sns.despine(ax=ax_top, bottom=True, top=False, right=False)
 
 
             ax = ax_top
@@ -761,15 +761,18 @@ def phase1_bpp_plot(df, broken_axis=True):
             # arguments to pass to plot, just so we don't keep repeating them
             kwargs = dict(transform=ax.transAxes, color='k', clip_on=False)
             ax.plot((-d, +d), (-d, +d), **kwargs)  # top-left diagonal
+            ax.plot((1-d, 1+d), (-d, +d), **kwargs)  # top-right diagonal
+
 
             ax2 = ax_bottom
             kwargs.update(transform=ax2.transAxes)  # switch to the bottom axes
             ax2.plot((-d, +d), (1 - d, 1 + d), **kwargs)  # bottom-left diagonal
+            ax2.plot((1-d, 1+d), (1 - d, 1 + d), **kwargs)  # bottom-left diagonal
 
             # remove one of the legend
 
 
-            ax_top.tick_params(bottom=False)
+            ax_top.tick_params(bottom=False, top=False)
 
             #ax_bottom.set_xlabel('Nr. of latent dimensions')
             ax_top.set_xlabel('')
@@ -784,7 +787,7 @@ def phase1_bpp_plot(df, broken_axis=True):
 
             #ax_bottom.set_xlabel("Nr. of latent dimensions")
             #plt.ylabel("Bits per pixel")
-            fig.text(0.005, 0.5, 'Bits per pixel', va='center', rotation='vertical')
+            fig.text(0.001, 0.5, 'Bits per pixel', va='center', rotation='vertical', fontsize='x-large')
 
             handles, labels = ax_top.get_legend_handles_labels()
             handles.append(maf_line_handle)
@@ -822,14 +825,14 @@ def cifar_bpp_plot(df, broken_axis=True):
                   & (df_fixed.loc[:, 'prior_flow'] == 'maf')
     df_fixed.loc[row_indexer, 'model'] = 'vae-iaf-maf'
 
-
-    # todo
     plt.rcParams['axes.axisbelow'] = True
-    rc = {
-        "text.usetex": True,
-        "font.family": "Times New Roman",
-        }
-    plt.rcParams.update(rc)
+    plt.rcParams['axes.titlesize'] = 'xx-large'
+    plt.rcParams['axes.labelsize'] = 'x-large'
+    plt.rcParams['ytick.labelsize'] = 'x-small'
+    plt.rcParams['xtick.labelsize'] = 'x-small'
+    plt.rcParams["axes.formatter.useoffset"] = False
+    plt.rcParams['legend.fontsize'] = 'small'
+
 
     for dataset in datasets:
 
@@ -860,7 +863,7 @@ def cifar_bpp_plot(df, broken_axis=True):
             bottom_range = max_bottom - min_bottom
 
 
-            fig, (ax_top, ax_bottom) = plt.subplots(2, 1, sharex=True, dpi=300, figsize=(6,6))
+            fig, (ax_top, ax_bottom) = plt.subplots(2, 1, sharex=True, dpi=300, figsize=(6,5))
             fig.subplots_adjust(hspace=0.05)  # adjust space between axes
 
             sns.pointplot(x="latent_dims", y="test_bpp_adjusted", hue="model", data=df_to_use, ci=95, ax=ax_top, rasterize=True)
@@ -887,7 +890,7 @@ def cifar_bpp_plot(df, broken_axis=True):
 
 
 
-            ax_top.set_ylim(min_top - 0.2 * top_range, max_top + 0.5 * top_range)
+            ax_top.set_ylim(min_top - 0.2 * top_range, max_top + 0.75 * top_range)
             ax_bottom.set_ylim(min_bottom - 0.2 * bottom_range, max_bottom + 0.2 * bottom_range)
 
             sns.despine(ax=ax_bottom)
@@ -908,6 +911,7 @@ def cifar_bpp_plot(df, broken_axis=True):
 
 
             ax_top.tick_params(bottom=False)
+            #ax_bottom.ticklabel_format(useOffset=False)
 
             #ax_bottom.set_xlabel('Nr. of latent dimensions')
             ax_top.set_xlabel('')
@@ -922,7 +926,7 @@ def cifar_bpp_plot(df, broken_axis=True):
 
             #ax_bottom.set_xlabel("Nr. of latent dimensions")
             #plt.ylabel("Bits per pixel")
-            fig.text(0.005, 0.5, 'Bits per pixel', va='center', rotation='vertical')
+            fig.text(0.001, 0.5, 'Bits per pixel', va='center', rotation='vertical', fontsize='x-large')
 
             handles, labels = ax_top.get_legend_handles_labels()
             handles.append(maf_line_handle)
@@ -1364,22 +1368,30 @@ if __name__ == '__main__':
     # add_mse_fid_phase_1()
     # df = extract_data_from_runs('phase1')
     # df.to_pickle('phase1.pkl')
-    # df = pd.read_pickle('phase1.pkl')
-    # phase1_bpp_plot(df)
+
+    # rc = {
+    #     "text.usetex": True,
+    #     "font.family": "Times New Roman",
+    #
+    # }
+
+    df = pd.read_pickle('phase1.pkl')
+    phase1_bpp_plot(df)
     # phase1_fid_plot(df)
     # # check_nr_experiments(df)
     # #
-    # # df = extract_data_from_runs('cifar')
-    # # df.to_pickle('cifar.pkl')
-    # df = pd.read_pickle('cifar.pkl')
-    # cifar_bpp_plot(df)
+    # df = extract_data_from_runs('cifar')
+    # df.to_pickle('cifar.pkl')
+    df = pd.read_pickle('cifar.pkl')
+    cifar_bpp_plot(df)
     # cifar_fid_plot(df)
 
     # df = extract_data_from_runs('phase2')
     # df.to_pickle('phase2.pkl')
-    df = pd.read_pickle('phase2.pkl')
+    # df = pd.read_pickle('phase2.pkl')
+    pass
     # celeba_fid_plot(df)
-    celeba_bpp_plot(df, broken_axis=False)
+    # celeba_bpp_plot(df, broken_axis=False)
     #df = pd.read_pickle('cifar.pkl')
 
     # check_nr_experiments(df)
