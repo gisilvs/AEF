@@ -633,20 +633,15 @@ def denoising_plot(df):
     model_titles = ['AE', 'VAE-IAF', 'IAE (linear)']
     noise_levels = [0.25, 0.5, 0.75]
 
-
-    # for dataset_idx, dataset in enumerate(datasets):
-    #     mean_rce = np.zeros((len(models), len(noise_levels)))
-    #     se_rce = np.zeros((len(models), len(noise_levels)))
-    #     for model_idx, model_name in enumerate(models):
-    #             for noise_idx, noise_level in enumerate(noise_levels):
-    #                 runs = df.loc[(df.loc[:, 'model'] == model_name) & (df.loc[:, 'dataset'] == dataset) & (
-    #                             df.loc[:, 'noise_level'] == noise_level)]
-    #                 # print(f'{model_name} {dataset} {noise_level} nr. of runs: {len(runs)}')
-    #                 mean_rce[model_idx, dataset_idx, noise_idx] = runs.loc[:, 'test_rce_with_noise'].mean(axis=0)
-    #                 se_rce[model_idx, dataset_idx] = 1.96 * runs.loc[:, 'test_rce_with_noise'].sem(axis=0)
-    # Replace values
-
     plt.rcParams['axes.axisbelow'] = True
+    plt.rcParams['axes.titlesize'] = 'xx-large'
+    plt.rcParams['axes.labelsize'] = 'x-large'
+    plt.rcParams['ytick.labelsize'] = 'x-small'
+    plt.rcParams['xtick.labelsize'] = 'x-small'
+    plt.rcParams["axes.formatter.useoffset"] = False
+    #plt.rcParams['legend.fontsize'] = 'small'
+
+
     row_indexer = (df.loc[:, 'model'] == 'vae') \
                   & (df.loc[:, 'posterior_flow'] == 'iaf') \
                   & (df.loc[:, 'prior_flow'] == 'maf')
@@ -656,31 +651,34 @@ def denoising_plot(df):
         df_to_use = df.loc[df.loc[:, 'dataset'] == dataset]
         df_to_use = df_to_use.loc[df_to_use.loc[:, 'noise_level'].isin(noise_levels)]
         df_to_use = df_to_use.loc[df_to_use.loc[:, 'model'].isin(models)]
-        df_to_use = df_to_use.replace(to_replace={'ae': "AE", 'vae-iaf-maf': "VAE-IAF-MAF", 'nae-external': 'AEF'})
+        df_to_use = df_to_use.replace(to_replace={'ae': "AE", 'vae-iaf-maf': "VAE-IAF-MAF", 'nae-external': 'AEF (linear)'})
         df_to_use = df_to_use.sort_values(by=['model'])
 
         fig = plt.figure()
         ax = sns.pointplot(x="noise_level", y="test_rce_with_noise", hue="model", data=df_to_use, ci=95)
         ax.set_facecolor('lavender')
-        ax.yaxis.set_major_locator(plt.MaxNLocator(4))
+        #ax.yaxis.set_major_locator(plt.MaxNLocator(4))
         ax.grid(visible=True, which='major', axis='both', color='w')
 
-        ax.legend(ncol=3)
+        ax.legend(ncol=3, loc='upper center')
         ax.set_xlabel('Noise level')
         ax.set_ylabel('Avg. reconstruction error')
         plt.title(dataset_titles[dataset])
-        plt.savefig(f'plots/denoising_{dataset}.pdf')
+        plt.savefig(f'plots/denoising_{dataset}.pdf', bbox_inches='tight')
 
 def phase1_bpp_plot(df, broken_axis=True):
-    datasets = df.loc[:, 'dataset'].unique()
-    dataset_titles = {'mnist': 'MNIST', 'kmnist': 'KMNIST', 'fashionmnist': 'FashionMNIST', 'cifar': 'CIFAR-10'}
+    datasets = ['mnist', 'kmnist', 'fashionmnist']
+    dataset_titles = {'mnist': 'MNIST', 'kmnist': 'KMNIST', 'fashionmnist': 'FashionMNIST'}
+
 
     vae_models = ['vae', 'iwae', 'vae-iaf']
     nae_models = ['nae-external', 'nae-corner', 'nae-center']
 
     # Replace names
 
-    df_fixed = df.loc[(df.loc[:, 'model'] != 'maf'), :]
+
+
+    df_fixed = df.loc[(df.loc[:,'latent_dims'] <= 32) & (df.loc[:, 'model'] != 'maf'), :]
     row_indexer = (df_fixed.loc[:, 'model'] == 'vae') \
                   & (df_fixed.loc[:, 'posterior_flow'] == 'iaf') \
                   & (df_fixed.loc[:, 'prior_flow'] == 'maf')
@@ -692,7 +690,7 @@ def phase1_bpp_plot(df, broken_axis=True):
     plt.rcParams['ytick.labelsize'] = 'x-small'
     plt.rcParams['xtick.labelsize'] = 'x-small'
     plt.rcParams["axes.formatter.useoffset"] = False
-    #plt.rcParams['legend.fontsize'] = 'small'
+    plt.rcParams['legend.fontsize'] = 'small'
 
     for dataset in datasets:
 
@@ -769,7 +767,7 @@ def phase1_bpp_plot(df, broken_axis=True):
             # remove one of the legend
 
 
-            ax_top.tick_params(bottom=False, top=False, labeltop=False)
+            ax_top.tick_params(bottom=False, top=False)
 
             #ax_bottom.set_xlabel('Nr. of latent dimensions')
             ax_top.set_xlabel('')
@@ -806,6 +804,144 @@ def phase1_bpp_plot(df, broken_axis=True):
             ax_top.set_title(dataset_titles[dataset])
         plt.savefig(f'plots/bpp_{dataset}.pdf',bbox_inches='tight')
 
+def cifar_bpp_plot(df, broken_axis=True):
+    datasets = ['cifar']
+    dataset_titles = {'cifar': 'CIFAR-10'}
+
+
+    # Replace names
+
+    vae_models = ['vae', 'iwae', 'vae-iaf']
+    nae_models = ['nae-external', 'nae-corner', 'nae-center']
+
+    df_fixed = df.loc[(df.loc[:, 'model'] != 'maf'), :]
+    row_indexer = (df_fixed.loc[:, 'model'] == 'vae') \
+                  & (df_fixed.loc[:, 'posterior_flow'] == 'iaf') \
+                  & (df_fixed.loc[:, 'prior_flow'] == 'maf')
+    df_fixed.loc[row_indexer, 'model'] = 'vae-iaf-maf'
+
+    plt.rcParams['axes.axisbelow'] = True
+    plt.rcParams['axes.titlesize'] = 'xx-large'
+    plt.rcParams['axes.labelsize'] = 'x-large'
+    plt.rcParams['ytick.labelsize'] = 'x-small'
+    plt.rcParams['xtick.labelsize'] = 'x-small'
+    plt.rcParams["axes.formatter.useoffset"] = False
+    plt.rcParams['legend.fontsize'] = 'small'
+
+
+    for dataset in datasets:
+
+        maf_mean = df.loc[(df.loc[:, 'model'] == 'maf') & (df.loc[:, 'dataset'] == dataset), 'test_bpp_adjusted'].mean()
+
+        df_to_use = df_fixed[df.loc[:, 'dataset'] == dataset]
+        #df_to_use = df_to_use[df.loc[:, 'model'].isin(['vae', 'vae-iaf', 'iwae'])]
+        df_to_use = df_to_use.replace(to_replace={'iwae': "vae-iwae"}) #hack to get right ordering
+        df_to_use = df_to_use.sort_values(by=['model'])
+        df_to_use = df_to_use.replace(to_replace={'vae-iwae': "iwae"})
+        df_to_use = df_to_use.replace(to_replace={'vae': "VAE",
+                                     'iwae': "IWAE",
+                                     'vae-iaf': "VAE-IAF",
+                                     'vae-iaf-maf': "VAE-IAF-MAF",
+                                     'nae-center': 'AEF (center)',
+                                     'nae-corner': 'AEF (corner)',
+                                     'nae-external': 'AEF (linear)'})
+
+        if not broken_axis:
+            ax = sns.pointplot(x="latent_dims", y="test_bpp_adjusted", hue="model", data=df_to_use, ci=95)
+        else:
+
+            top_scores = df_to_use.loc[df.loc[:, 'model'].isin(vae_models), 'test_bpp_adjusted']
+            bottom_scores = df_to_use.loc[df.loc[:, 'model'].isin(nae_models), 'test_bpp_adjusted']
+            max_top, min_top = top_scores.max(), top_scores.min()
+            top_range = max_top - min_top
+            max_bottom, min_bottom = bottom_scores.max(), bottom_scores.min()
+            bottom_range = max_bottom - min_bottom
+
+
+            fig, (ax_top, ax_bottom) = plt.subplots(2, 1, sharex=True, dpi=300, figsize=(6,5))
+            fig.subplots_adjust(hspace=0.05)  # adjust space between axes
+
+            sns.pointplot(x="latent_dims", y="test_bpp_adjusted", hue="model", data=df_to_use, ci=95, ax=ax_top, rasterize=True)
+            # locs, labels = plt.yticks()
+            # plt.yticks(locs, map(lambda x: "%.4f" % x, locs))
+            # ax_top.xaxis.set_major_locator(MultipleLocator(top_range/6))
+            # ax_top.yaxis.set_major_locator(MultipleLocator(top_range/6))
+
+            #sns.set_theme()
+            sns.pointplot(x="latent_dims", y="test_bpp_adjusted", hue="model", data=df_to_use, ci=95, ax=ax_bottom, rasterize=True)
+
+            maf_line_handle = ax_bottom.axhline(y=maf_mean, c='k', linestyle='--', label='MAF')
+
+            ax_top.grid(visible=True, which='major', axis='both', color='w')
+            ax_bottom.grid(visible=True, which='major', axis='both', color='w')
+
+
+
+            #sns.set_theme()
+            ax_top.set_facecolor('lavender')
+            ax_bottom.set_facecolor('lavender')
+            ax_top.yaxis.set_major_locator(plt.MaxNLocator(4))
+            ax_bottom.yaxis.set_major_locator(plt.MaxNLocator(4))
+
+
+
+            ax_top.set_ylim(min_top - 0.2 * top_range, max_top + 0.75 * top_range)
+            ax_bottom.set_ylim(min_bottom - 0.2 * bottom_range, max_bottom + 0.2 * bottom_range)
+
+            sns.despine(ax=ax_bottom)
+            sns.despine(ax=ax_top, bottom=True)
+
+
+            ax = ax_top
+            d = .015  # how big to make the diagonal lines in axes coordinates
+            # arguments to pass to plot, just so we don't keep repeating them
+            kwargs = dict(transform=ax.transAxes, color='k', clip_on=False)
+            ax.plot((-d, +d), (-d, +d), **kwargs)  # top-left diagonal
+
+            ax2 = ax_bottom
+            kwargs.update(transform=ax2.transAxes)  # switch to the bottom axes
+            ax2.plot((-d, +d), (1 - d, 1 + d), **kwargs)  # bottom-left diagonal
+
+            # remove one of the legend
+
+
+            ax_top.tick_params(bottom=False)
+            #ax_bottom.ticklabel_format(useOffset=False)
+
+            #ax_bottom.set_xlabel('Nr. of latent dimensions')
+            ax_top.set_xlabel('')
+            ax_top.set_ylabel('')
+            ax_bottom.set_xlabel('')
+            ax_bottom.set_ylabel('')
+            #ax.set_ylabel('Bits per pixel')
+            fig.add_subplot(111, frameon=False)
+            plt.xlabel("Nr. of latent dimensions")
+            # hide tick and tick label of the big axis
+            plt.tick_params(labelcolor='none', which='both', top=False, bottom=False, left=False, right=False)
+
+            #ax_bottom.set_xlabel("Nr. of latent dimensions")
+            #plt.ylabel("Bits per pixel")
+            fig.text(0.001, 0.5, 'Bits per pixel', va='center', rotation='vertical', fontsize='x-large')
+
+            handles, labels = ax_top.get_legend_handles_labels()
+            handles.append(maf_line_handle)
+            labels.append("MAF")
+            ax_top.legend(handles=handles, labels=labels, loc='upper center', ncol=3)#, bbox_to_anchor=(0.5, -0.1))
+            ax_bottom.legend_.remove()
+
+            #fig.subplots_adjust(bottom=0.2)
+            # handles = ax_top.legend_.data.values()
+            # labels = ax_top.legend_.data.keys()
+            #
+            # ax_bottom.legend(handles=handles, labels=labels, loc='lower center', ncol=6)
+
+            # Shrink current axis's height by 10% on the bottom
+            # box = ax.get_position()
+            # ax.set_position([box.x0, box.y0 + box.height * 0.1,
+            #                  box.width, box.height * 0.9])
+
+            ax_top.set_title(dataset_titles[dataset])
+        plt.savefig(f'plots/bpp_{dataset}.pdf',bbox_inches='tight')
 
 def celeba_bpp_plot(df, broken_axis=True):
     datasets = ['celebahq']
@@ -897,16 +1033,69 @@ def celeba_bpp_plot(df, broken_axis=True):
 
 
 
+            ax_top.set_ylim(min_top - 0.2 * top_range, max_top + 0.5 * top_range)
+            ax_bottom.set_ylim(min_bottom - 0.2 * bottom_range, max_bottom + 0.2 * bottom_range)
+
+            sns.despine(ax=ax_bottom)
+            sns.despine(ax=ax_top, bottom=True)
+
+
+            ax = ax_top
+            d = .015  # how big to make the diagonal lines in axes coordinates
+            # arguments to pass to plot, just so we don't keep repeating them
+            kwargs = dict(transform=ax.transAxes, color='k', clip_on=False)
+            ax.plot((-d, +d), (-d, +d), **kwargs)  # top-left diagonal
+
+            ax2 = ax_bottom
+            kwargs.update(transform=ax2.transAxes)  # switch to the bottom axes
+            ax2.plot((-d, +d), (1 - d, 1 + d), **kwargs)  # bottom-left diagonal
+
+            # remove one of the legend
+
+
+            ax_top.tick_params(bottom=False)
+
+            #ax_bottom.set_xlabel('Nr. of latent dimensions')
+            ax_top.set_xlabel('')
+            ax_top.set_ylabel('')
+            ax_bottom.set_xlabel('')
+            ax_bottom.set_ylabel('')
+            #ax.set_ylabel('Bits per pixel')
+            fig.add_subplot(111, frameon=False)
+            plt.xlabel("Nr. of latent dimensions")
+            # hide tick and tick label of the big axis
+            plt.tick_params(labelcolor='none', which='both', top=False, bottom=False, left=False, right=False)
+
+            #ax_bottom.set_xlabel("Nr. of latent dimensions")
+            #plt.ylabel("Bits per pixel")
+            fig.text(0.005, 0.5, 'Bits per pixel', va='center', rotation='vertical')
+
+
+            ax_top.legend(loc='upper center', ncol=2)#, bbox_to_anchor=(0.5, -0.1))
+            ax_bottom.legend_.remove()
+
+            #fig.subplots_adjust(bottom=0.2)
+            # handles = ax_top.legend_.data.values()
+            # labels = ax_top.legend_.data.keys()
+            #
+            # ax_bottom.legend(handles=handles, labels=labels, loc='lower center', ncol=6)
+
+            # Shrink current axis's height by 10% on the bottom
+            # box = ax.get_position()
+            # ax.set_position([box.x0, box.y0 + box.height * 0.1,
+            #                  box.width, box.height * 0.9])
+
+            ax_top.set_title(dataset_titles[dataset])
+            plt.savefig(f'plots/bpp_{dataset}_break.pdf',bbox_inches='tight')
 
 def phase1_fid_plot(df):
-    #datasets = ['mnist', 'kmnist', 'fashionmnist', 'cifar']
-    datasets = df.loc[:, 'dataset'].unique()
-    vae_models = ['vae', 'iwae', 'vae-iaf']
-    dataset_titles = {'mnist': 'MNIST', 'kmnist': 'KMNIST', 'fashionmnist': 'FashionMNIST', 'cifar': 'CIFAR-10'}
+    datasets = ['mnist', 'kmnist', 'fashionmnist']
+
+    dataset_titles = {'mnist': 'MNIST', 'kmnist': 'KMNIST', 'fashionmnist': 'FashionMNIST'}
 
     # Replace names
 
-    df_fixed = df.loc[(df.loc[:, 'model'] != 'maf'), :]
+    df_fixed = df.loc[(df.loc[:,'latent_dims'] <= 32) & (df.loc[:, 'model'] != 'maf'), :]
     row_indexer = (df_fixed.loc[:, 'model'] == 'vae') \
                   & (df_fixed.loc[:, 'posterior_flow'] == 'iaf') \
                   & (df_fixed.loc[:, 'prior_flow'] == 'maf')
@@ -920,11 +1109,6 @@ def phase1_fid_plot(df):
     plt.rcParams.update(rc)
 
     plt.rcParams['axes.axisbelow'] = True
-    plt.rcParams['axes.titlesize'] = 'xx-large'
-    plt.rcParams['axes.labelsize'] = 'x-large'
-    plt.rcParams['ytick.labelsize'] = 'x-small'
-    plt.rcParams['xtick.labelsize'] = 'x-small'
-    plt.rcParams["axes.formatter.useoffset"] = False
 
     for dataset in datasets:
 
@@ -943,20 +1127,16 @@ def phase1_fid_plot(df):
                                      'nae-corner': 'AEF (corner)',
                                      'nae-external': 'AEF (linear)'})
 
-        top_scores = df_to_use.loc[df.loc[:, 'model'].isin(vae_models), 'fid']
-        max_top, min_top = top_scores.max(), top_scores.min()
-        range_top = max_top - min_top
 
 
-        fig = plt.figure(dpi=300, figsize=(6,5))
+        fig = plt.figure(dpi=300, figsize=(6,6))
         ax = fig.gca()
-        pointplot_handle = sns.pointplot(x="latent_dims", y="fid", hue="model", data=df_to_use, ci=95, rasterize=True)
-        pointplot_handle.set_zorder(2)
-        maf_line_handle = ax.axhline(y=maf_mean, c='k', linestyle='--', label='MAF', zorder=1.5)
-        maf_line_handle.set_zorder(1.5)
+        sns.pointplot(x="latent_dims", y="fid", hue="model", data=df_to_use, ci=95)
+
+        maf_line_handle = ax.axhline(y=maf_mean, c='k', linestyle='--', label='MAF')
 
         bottom, top = plt.ylim()  # return the current ylim
-        plt.ylim((bottom, top + 30))  # set the ylim to bottom, top
+        plt.ylim((bottom, top+20))  # set the ylim to bottom, top
 
         ax.grid(visible=True, which='major', axis='both', color='w')
 
@@ -970,11 +1150,20 @@ def phase1_fid_plot(df):
         plt.xlabel("Nr. of latent dimensions")
 
         handles, labels = ax.get_legend_handles_labels()
-        leg = ax.legend(handles=handles, labels=labels, loc='upper center', ncol=3)#, bbox_to_anchor=(0.5, -0.1))
-        leg.set_zorder(100)
-        plt.setp(ax.lines, zorder=2)
-        # plt.setp(ax.collections, zorder=2)
-        plt.setp(maf_line_handle, zorder=1.5)
+        # handles.append(maf_line_handle)
+        # labels.append("MAF")
+        ax.legend(handles=handles, labels=labels, loc='upper center', ncol=3)#, bbox_to_anchor=(0.5, -0.1))
+
+        #fig.subplots_adjust(bottom=0.2)
+        # handles = ax_top.legend_.data.values()
+        # labels = ax_top.legend_.data.keys()
+        #
+        # ax_bottom.legend(handles=handles, labels=labels, loc='lower center', ncol=6)
+
+        # Shrink current axis's height by 10% on the bottom
+        # box = ax.get_position()
+        # ax.set_position([box.x0, box.y0 + box.height * 0.1,
+        #                  box.width, box.height * 0.9])
 
         ax.set_title(dataset_titles[dataset])
         plt.savefig(f'plots/fid_phase1_{dataset}.pdf',bbox_inches='tight')
@@ -1172,27 +1361,24 @@ if __name__ == '__main__':
     #check_nr_experiments()
     # add_fid_cifar()
     # add_mse_fid_phase_1()
-    print('running')
     # df = extract_data_from_runs('phase1')
     # df.to_pickle('phase1.pkl')
 
-    rc = {
-        "text.usetex": True,
-        "font.family": "Times New Roman",
-    }
-    plt.rcParams.update(rc)
-    plt.rcParams['pdf.fonttype'] = 42
-    plt.rcParams['ps.fonttype'] = 42
+    # rc = {
+    #     "text.usetex": True,
+    #     "font.family": "Times New Roman",
+    #
+    # }
 
-    df = pd.read_pickle('phase1.pkl')
-    phase1_fid_plot(df)
-    # phase1_fid_plot(df)
-    # # check_nr_experiments(df)
-    # #
-    # df = extract_data_from_runs('cifar')
-    # df.to_pickle('cifar.pkl')
-    df = pd.read_pickle('cifar.pkl')
-    phase1_fid_plot(df)
+    # df = pd.read_pickle('phase1.pkl')
+    # phase1_bpp_plot(df)
+    # # phase1_fid_plot(df)
+    # # # check_nr_experiments(df)
+    # # #
+    # # df = extract_data_from_runs('cifar')
+    # # df.to_pickle('cifar.pkl')
+    # df = pd.read_pickle('cifar.pkl')
+    # cifar_bpp_plot(df)
     # cifar_fid_plot(df)
 
     # df = extract_data_from_runs('phase2')
@@ -1208,8 +1394,13 @@ if __name__ == '__main__':
     # check_runs_missing_artifact('cifar', load_model=False)
     # df = extract_data_from_runs('denoising-experiments-1')
     # df.to_pickle('denoising-experiments-1.pkl')
-    # df = pd.read_pickle('denoising-experiments-1.pkl')
-    # generate_denoising_table(df)
+    df = pd.read_pickle('denoising-experiments-1.pkl')
+    rc = {
+        "text.usetex": True,
+        "font.family": "Times New Roman",
+    }
+    plt.rcParams.update(rc)
+    denoising_plot(df)
 
 
     # df = pd.read_pickle('phase1.pkl')
