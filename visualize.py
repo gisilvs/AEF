@@ -450,8 +450,8 @@ def generate_pics_vae_maf_iaf():
 
                 fig = plot_latent_space_2d(model, test_loader, device, equal_axes=True, max_val=3.5, colorbar=False, add_prior_flow=True)
                 plt.savefig(f'plots/prior_latent_{run_name}_no_colorbar.pdf', dpi=400, bbox_inches='tight')
-                z_vals = get_z_values(n_vals=latent_grid_size, latent_dims=2, border=0.06)
-                z_vals = z_vals.to(device)
+                # z_vals = get_z_values(n_vals=latent_grid_size, latent_dims=2, border=0.06)
+                # z_vals = z_vals.to(device)
 
                 # with torch.no_grad():
                 #     z_vals, _ = model.prior_bijector.forward(z_vals)
@@ -519,18 +519,18 @@ def generate_pics_nae_external():
 
                 fig = plot_latent_space_2d(model, test_loader, device, equal_axes=True, max_val=3.5, colorbar=False)
                 plt.savefig(f'plots/latent_{run_name}_no_colorbar.pdf', dpi=400, bbox_inches='tight')
-                z_vals = get_z_values(n_vals=latent_grid_size, latent_dims=2, border=0.06)
-                z_vals = z_vals.to(device)
-
-                with torch.no_grad():
-
-                    output = model.decode(z_vals)
-                    if isinstance(output, tuple):
-                        output = output[0]
-                    output = output.detach().cpu()
-
-                fig = util.plot_image_grid(output, cols=latent_grid_size, padding=0, hires=True)
-                plt.savefig(f'plots/grid_{run_name}.pdf', bbox_inches='tight', dpi=400, pad_inches=0)
+                # z_vals = get_z_values(n_vals=latent_grid_size, latent_dims=2, border=0.06)
+                # z_vals = z_vals.to(device)
+                #
+                # with torch.no_grad():
+                #
+                #     output = model.decode(z_vals)
+                #     if isinstance(output, tuple):
+                #         output = output[0]
+                #     output = output.detach().cpu()
+                #
+                # fig = util.plot_image_grid(output, cols=latent_grid_size, padding=0, hires=True)
+                # plt.savefig(f'plots/grid_{run_name}.pdf', bbox_inches='tight', dpi=400, pad_inches=0)
             except Exception as E:
                 print(E)
                 print(f'Failed to plot latent space of {experiment_name}')
@@ -1076,16 +1076,17 @@ def generate_celeba_samples():
 
 
 if __name__ == "__main__":
-    # rc = {
-    #     "text.usetex": True,
-    #     "font.family": "Times New Roman",
-    # }
-    # plt.rcParams.update(rc)
+    rc = {
+        "text.usetex": True,
+        "font.family": "Times New Roman",
+    }
+    plt.rcParams.update(rc)
     #generate_denoising_reconstructions()
     # generate_pics_nae_external()
-    generate_celeba_samples()
+    #generate_celeba_samples()
     #generate_denoising_reconstructions()
-    #generate_pics_vae_maf_iaf()
+    generate_pics_nae_external()
+    generate_pics_vae_maf_iaf()
     # generate_denoising_reconstructions()
     exit()
     #generate_denoising_reconstructions()
