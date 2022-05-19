@@ -545,6 +545,78 @@ def generate_pics_nae_external():
     save_colorbar(model, test_loader, device)
     # visualization_run.finish()
 
+def generate_latent_spaces():
+    datasets = ['mnist']
+    model_names = ['vae-iaf-maf'] #'nae-external', 'vae', 'vae-iaf',
+    latent_dims = 2
+    api = wandb.Api()
+    architecture_size = 'small'
+    img_dim = [1, 28, 28]
+    alpha = 1e-6
+    project_name = 'phase1'
+
+    use_gpu = True
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+
+    add_prior_flow = False
+    for dataset in datasets:
+        for model_name in model_names:
+            if model_name == 'vae-iaf-maf':
+                model_name = 'vae'
+                runs = api.runs(path=f"nae/{project_name}",
+                                filters={"config.dataset": dataset,
+                                         "config.latent_dims": latent_dims,
+                                         "config.model": 'vae',
+                                         "config.posterior_flow": 'iaf',
+                                         "config.prior_flow": 'maf'
+                                         })
+                add_prior_flow = True
+            else:
+
+                runs = api.runs(path=f"nae/{project_name}",
+                                filters={"config.dataset": dataset,
+                                         "config.latent_dims": latent_dims,
+                                         "config.model": model_name,
+                                         })
+                add_prior_flow = False
+            for run in runs:
+                run_id = run.id
+                experiment_name = run.name
+                try:
+                    posterior_flow = get_field_from_config(run, 'posterior_flow')
+                    if posterior_flow is None:
+                        posterior_flow = 'none'
+                    prior_flow = get_field_from_config(run, 'prior_flow')
+                    if prior_flow is None:
+                        prior_flow = 'none'
+
+                    decoder = get_field_from_config(run, 'decoder')
+                    model = get_model(model_name, architecture_size, decoder, latent_dims, img_dim, alpha,
+                                      posterior_flow,
+                                      prior_flow)
+                    run_name = run.name
+                    artifact = api.artifact(
+                        f'nae/{project_name}/{run_name}_best:latest')  # run.restore(f'{run_name}_best:latest', run_path=run.path, root='./artifacts')
+                    artifact_dir = artifact.download()
+                    artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+                    model.load_state_dict(torch.load(artifact_dir, map_location=device))
+                    model = model.to(device)
+
+                    test_loader = get_test_dataloader(dataset)
+
+                    fig = plot_latent_space_2d(model, test_loader, device, equal_axes=True, max_val=3.5, add_prior_flow=add_prior_flow)
+                    plt.savefig(f'plots/latent_spaces/{run_name}.png', dpi=400, bbox_inches='tight')
+
+                    fig = plot_latent_space_2d(model, test_loader, device, equal_axes=True, max_val=3.5, colorbar=False, add_prior_flow=add_prior_flow)
+                    plt.savefig(f'plots/latent_spaces/{run_name}_no_colorbar.pdf', dpi=400, bbox_inches='tight')
+
+                except Exception as E:
+                    print(E)
+                    print(f'Failed to plot latent space of {experiment_name}')
+                    traceback.print_exc()
+                    continue
+            plt.close('all')
+    save_colorbar(model, test_loader, device)
 
 def generate_denoising_reconstructions_main():
     datasets = ['fashionmnist']
@@ -1197,7 +1269,8 @@ if __name__ == "__main__":
     # generate_phase1_samples()
     # generate_phase1_reconstructions()
     #generate_denoising_reconstructions_supp()
-    generate_celeba_reconstructions_supp()
-    generate_celeba_samples_supp()
+    # generate_celeba_reconstructions_supp()
+    # generate_celeba_samples_supp()
+    generate_latent_spaces()
     exit()
     # generate_denoising_reconstructions()
