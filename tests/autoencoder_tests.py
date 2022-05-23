@@ -32,9 +32,9 @@ def test_autoencoders_without_flows(batch_size: int = 4):
     autoencoder_names = ['vae',
                          'iwae',
                          'vae-iaf',
-                         'nae-center',
-                         'nae-corner',
-                         'nae-external'
+                         'aef-center',
+                         'aef-corner',
+                         'aef-linear'
                          ]
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -64,9 +64,9 @@ def test_autoencoders_with_flows(batch_size: int = 4):
     autoencoder_names = ['vae',
                          'iwae',
                          'vae-iaf',
-                         'nae-center',
-                         'nae-corner',
-                         'nae-external'
+                         'aef-center',
+                         'aef-corner',
+                         'aef-linear'
                          ]
     flow_names = ['maf', 'iaf', 'none']
 

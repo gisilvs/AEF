@@ -4,12 +4,11 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 from torch.distributions.normal import Normal
-import wandb
 
 import os
 import torchvision
 
-from models.model_database import get_model
+import models.model_database
 
 
 def get_avg_loss_over_iterations(iteration_losses: np.array, window_size: int, cur_iteration: int):
@@ -146,7 +145,7 @@ def download_artifact_and_get_path(run, project_name, experiment_name, download_
 
 def load_best_model(run, project_name, model_name, experiment_name, device, latent_dims, image_dim, alpha,
                     decoder, architecture_size, prior_flow, posterior_flow, version='latest'):
-    model = get_model(model_name, architecture_size, decoder, latent_dims, image_dim, alpha, posterior_flow, prior_flow) # needed as some components such as actnorm need to be initialized
+    model = models.get_model(model_name, architecture_size, decoder, latent_dims, image_dim, alpha, posterior_flow, prior_flow) # needed as some components such as actnorm need to be initialized
     model.loss_function(model.sample(10)) # needed as some components such as actnorm need to be initialized
 
     model_path = download_artifact_and_get_path(run, project_name, experiment_name, download_best=True, version=version)
@@ -195,3 +194,113 @@ def bits_per_pixel(neg_log_prob, n_pixels, adjust_value=None):
 
     return log_prob_base_2/n_pixels
 
+def get_center_mask(image_shape: List, core_size: int):
+    mask = torch.zeros(image_shape)
+    # for compatibility with phase1 models
+    if image_shape[0] == 1:
+        if core_size == 2:
+            mask[0, 13:15, 13] = 1
+        elif core_size == 4:
+            mask[0, 13:15, 13:15] = 1
+        elif core_size == 8:
+            mask[0, 12:16, 13:15] = 1
+        elif core_size == 16:
+            mask[0, 12:16, 12:16] = 1
+        elif core_size == 32:
+            mask[0, 10:18, 12:16] = 1
+        elif core_size == 64:
+            mask[0, 10:18, 10:18] = 1
+        else:
+            print('NOT IMPLEMENTED YET')
+            exit(1)
+        return mask
+    width = image_shape[1]
+    height = image_shape[2]
+    n_channels = image_shape[0]
+    counter = 0
+    row = width // 2 - 1
+    column = height // 2 - 1
+    row_dir = 1
+    col_dir = 0
+    n_steps = 1
+    steps_counter = 0
+    stop = False
+    while 1:
+        for i in range(n_steps):
+            for c in range(n_channels):
+                mask[c, row, column] = 1
+                counter += 1
+                if counter == core_size:
+                    stop = True
+                    break
+            if stop:
+                break
+            row += row_dir
+            column += col_dir
+        if stop:
+            break
+        row_dir_temp = -col_dir
+        col_dir = row_dir
+        row_dir = row_dir_temp
+        steps_counter +=1
+        if steps_counter == 2:
+            steps_counter = 0
+            n_steps+=1
+
+    return mask
+
+def get_corner_mask(image_shape: List, core_size: int):
+    '''
+    simple procedure to fill up first each corner of each channel, and then proceeding along the sides.
+    plot the mask for a visual understanding
+    :return:
+    '''
+    mask = torch.zeros(image_shape)
+    width = image_shape[1]
+    height = image_shape[2]
+    n_channels = image_shape[0]
+    counter = 0
+    row = 0
+    column = 0
+    channel = 0
+    base_number_cols = 0
+    base_number_rows = 0
+    while 1:
+        mask[channel, row, column] = 1
+        counter += 1
+        if counter == core_size:
+            break
+        mask[channel, row, height - column - 1] = 1
+        counter += 1
+        if counter == core_size:
+            break
+        mask[channel, width - row - 1, column] = 1
+        counter += 1
+        if counter == core_size:
+            break
+        mask[channel, width - row - 1, height - column - 1] = 1
+        counter += 1
+        if counter == core_size:
+            break
+        channel += 1
+        if channel == n_channels:
+            channel = 0
+            if row == column:
+                row += 1
+            elif row > column:
+                column = row
+                row = base_number_rows
+                if column >= height // 2:
+                    base_number_cols += 1
+                    base_number_rows += 1
+                    row = base_number_rows
+                    column = base_number_cols
+            elif column > row:
+                row = column + 1
+                column = base_number_cols
+                if row >= width // 2:
+                    base_number_rows += 1
+                    base_number_cols += 1
+                    row = base_number_rows
+                    column = base_number_cols
+    return mask

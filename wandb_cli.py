@@ -12,9 +12,10 @@ from models.model_database import get_model
 from util import make_averager, dequantize, vae_log_prob, plot_image_grid, bits_per_pixel, count_parameters, load_latest_model
 from visualize import plot_reconstructions
 
-parser = argparse.ArgumentParser(description='NAE Experiments')
-parser.add_argument('--wandb-type', type=str, help='phase1 | phase2 | prototyping | visualization')
-parser.add_argument('--model', type=str, help='nae-center | nae-corner | nae-external | vae | iwae | vae-iaf | maf')
+parser = argparse.ArgumentParser(description='AEF Experiments')
+parser.add_argument('--wandb-entity', type=str, help='wandb entity')
+parser.add_argument('--wandb-project', type=str, help='wandb project')
+parser.add_argument('--model', type=str, help='aef-center | aef-corner | aef-linear | vae | iwae | vae-iaf | maf')
 parser.add_argument('--architecture', type=str, default='small', help='big | small (default)')
 parser.add_argument('--post-flow', type=str, default='none', help='none (default) | maf | iaf')
 parser.add_argument('--prior-flow', type=str, default='none', help='none (default) | maf | iaf')
@@ -42,8 +43,7 @@ parser.add_argument('--early-stopping', type=int, default=20000)
 
 args = parser.parse_args()
 
-assert args.wandb_type in ['phase1', 'phase2', 'prototyping', 'visualization', 'cifar']
-assert args.model in ['nae-center', 'nae-corner', 'vae', 'iwae', 'vae-iaf', 'maf', 'nae-external']
+assert args.model in ['aef-center', 'aef-corner', 'aef-linear', 'vae', 'iwae', 'vae-iaf', 'maf']
 assert args.post_flow in ['none', 'maf', 'iaf']
 assert args.prior_flow in ['none', 'maf', 'iaf']
 assert args.dataset in ['mnist', 'kmnist', 'emnist', 'fashionmnist', 'cifar10', 'cifar', 'imagenet', 'celebahq', 'celebahq64']
@@ -74,10 +74,8 @@ early_stopping_threshold = args.early_stopping
 
 args.runs = [int(item) for item in args.runs.split(',')]
 
-AE_like_models = ['nae-center', 'nae-corner', 'nae-external', 'vae', 'iwae', 'vae-iaf']
-# dirs = os.listdir(args.data_dir)
-# for d in dirs:
-#     print(d)
+AE_like_models = ['aef-center', 'aef-corner', 'aef-linear', 'vae', 'iwae', 'vae-iaf']
+
 for run_nr in args.runs:
     if args.custom_name is not None:
         run_name = args.custom_name
@@ -126,7 +124,7 @@ for run_nr in args.runs:
     if not os.path.isdir('./checkpoints'):
         os.mkdir('./checkpoints')
 
-    run = wandb.init(project=args.wandb_type, entity="nae",
+    run = wandb.init(project=args.wandb_project, entity=args.wandb_entity,
                      name=run_name, config=config)
     wandb.summary['n_parameters'] = count_parameters(model)
     print('Training ...')
@@ -323,7 +321,7 @@ for run_nr in args.runs:
     plt.close("all")
 
     # Clean up older artifacts
-    api = wandb.Api(overrides={"project": args.wandb_type, "entity": "nae"})
+    api = wandb.Api(overrides={"project": args.wandb_project, "entity": args.wandb_entity})
     artifact_type, artifact_name = 'model', f'{run_name}_latest'
     for version in api.artifact_versions(artifact_type, artifact_name):
         if len(version.aliases) == 0:
