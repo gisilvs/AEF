@@ -197,23 +197,23 @@ def bits_per_pixel(neg_log_prob, n_pixels, adjust_value=None):
 def get_center_mask(image_shape: List, core_size: int):
     mask = torch.zeros(image_shape)
     # for compatibility with phase1 models
-    if image_shape[0] == 1:
-        if core_size == 2:
-            mask[0, 13:15, 13] = 1
-        elif core_size == 4:
-            mask[0, 13:15, 13:15] = 1
-        elif core_size == 8:
-            mask[0, 12:16, 13:15] = 1
-        elif core_size == 16:
-            mask[0, 12:16, 12:16] = 1
-        elif core_size == 32:
-            mask[0, 10:18, 12:16] = 1
-        elif core_size == 64:
-            mask[0, 10:18, 10:18] = 1
-        else:
-            print('NOT IMPLEMENTED YET')
-            exit(1)
-        return mask
+    # if image_shape[0] == 1:
+    #     if core_size == 2:
+    #         mask[0, 13:15, 13] = 1
+    #     elif core_size == 4:
+    #         mask[0, 13:15, 13:15] = 1
+    #     elif core_size == 8:
+    #         mask[0, 12:16, 13:15] = 1
+    #     elif core_size == 16:
+    #         mask[0, 12:16, 12:16] = 1
+    #     elif core_size == 32:
+    #         mask[0, 10:18, 12:16] = 1
+    #     elif core_size == 64:
+    #         mask[0, 10:18, 10:18] = 1
+    #     else:
+    #         print('NOT IMPLEMENTED YET')
+    #         exit(1)
+    #     return mask
     width = image_shape[1]
     height = image_shape[2]
     n_channels = image_shape[0]

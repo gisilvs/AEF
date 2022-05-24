@@ -122,17 +122,20 @@ class LinearAEF(GaussianAutoEncoder):
         mu_z, sigma_z = self.encoder(x)
         core = core.view(n_samples, batch_size, -1)
         log_j_core_pre = log_j_core_pre.view(n_samples, batch_size)
-        z = (core - mu_z) / (sigma_z + self.eps)
-        log_j_z = torch.sum(-torch.log(sigma_z + self.eps), dim=[1])
-        mu_d, sigma_d = self.decoder(z.view(n_samples * batch_size, -1))
+        z_1 = mu_z + (sigma_z + self.eps) * core
+        log_j_z_1 = torch.sum(torch.log(sigma_z + self.eps), dim=[1])
+        mu_d, sigma_d = self.decoder(z_1.view(n_samples * batch_size, -1))
         mu_d = mu_d.view(n_samples, batch_size, self.image_shape[0], self.image_shape[1], self.image_shape[2])
         sigma_d = sigma_d.view(n_samples, batch_size, self.image_shape[0], self.image_shape[1], self.image_shape[2])
         deviations = (x - mu_d) / (sigma_d + self.eps)
         log_j_d = torch.sum(-torch.log(sigma_d + self.eps),
                             dim=[2, 3, 4])
-        z, log_j_core_post = self.prior_flow.inverse(z.view(n_samples * batch_size, -1))
-        log_j = log_j_preprocessing + log_j_core_pre + log_j_z + log_j_d + log_j_core_post.view(n_samples, batch_size)
-        return z.view(n_samples, batch_size, -1), deviations, log_j, core_log_prob
+        z_0, log_j_core_post = self.prior_flow.inverse(z_1.view(n_samples * batch_size, -1))
+        log_j = log_j_preprocessing + log_j_core_pre + log_j_z_1 + log_j_d + log_j_core_post.view(n_samples, batch_size)
+        return z_0.view(n_samples, batch_size, -1), deviations, log_j, core_log_prob
+
+    def approximate_marginal(self, images: Tensor, n_samples: int = 20):
+        return self.neg_log_likelihood(images, importance_sampling=True, n_samples=n_samples)
 
     def get_device(self):
         if self.device is None:
