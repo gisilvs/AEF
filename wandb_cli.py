@@ -277,7 +277,7 @@ for run_nr in args.runs:
         test_loss = test_loss_averager(None)
 
         # Approximate log likelihood if model in VAE family
-        if model_name in ['vae', 'iwae', 'vae-iaf']:
+        if model_name in ['vae', 'iwae', 'vae-iaf', 'aef-linear']:
             test_ll_averager = make_averager()
             for test_batch, _ in test_dataloader:
                 test_batch = dequantize(test_batch)
