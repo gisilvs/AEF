@@ -1,6 +1,6 @@
 # Closing the gap: Exact maximum likelihood training of generative autoencoders using invertible layers 
 
-This repository contains the code used to run the experiments detailed in our paper [Closing the gap: Exact maximum likelihood training of generative autoencoders using invertible layers](https://arxiv.org/abs/2205.09546v1).
+This repository contains the code used to run the experiments detailed in our paper [Closing the gap: Exact maximum likelihood training of generative autoencoders using invertible layers]
 
 ## Notebook
 
