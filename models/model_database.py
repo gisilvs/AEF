@@ -2,6 +2,7 @@ from typing import List
 
 from nflows.transforms import InverseTransform, AffineTransform, IdentityTransform
 
+import util
 from bijectors.actnorm import ActNorm
 from bijectors.masked_autoregressive_transform import get_masked_autoregressive_transform
 from bijectors.sigmoid import Sigmoid
@@ -11,11 +12,11 @@ from .autoencoder import IndependentVarianceDecoderSmall, LatentDependentDecoder
 from .denoising_ae import DeterministicConvolutionalEncoderSmall, DeterministicConvolutionalDecoderSmall, \
     DenoisingAutoEncoder
 from .iwae import IWAE, ExtendedIWAE, DenoisingIWAE
-from .nae_internal import InternalLatentAutoEncoder
+from .aef_internal import InternalAEF
 
 from .vae import VAE, ExtendedVAE, DenoisingVAE, ExtendedDenoisingVAE
 from .vae_iaf import VAEIAF, ExtendedVAEIAF, DenoisingVAEIAF
-from .nae_external import ExternalLatentAutoEncoder
+from .aef_linear import LinearAEF
 import numpy as np
 
 from .vdvae import FixedVarianceDecoderBig, IndependentVarianceDecoderBig, LatentDependentDecoderBig, \
@@ -33,9 +34,9 @@ def get_model(model_name: str, architecture_size: str, decoder: str,
     }
 
     model_dict = {
-        'nae-center': {'default': InternalLatentAutoEncoder, 'extended': InternalLatentAutoEncoder},
-        'nae-corner': {'default': InternalLatentAutoEncoder, 'extended': InternalLatentAutoEncoder},
-        'nae-external': {'default': ExternalLatentAutoEncoder, 'extended': ExternalLatentAutoEncoder},
+        'aef-center': {'default': InternalAEF, 'extended': InternalAEF},
+        'aef-corner': {'default': InternalAEF, 'extended': InternalAEF},
+        'aef-linear': {'default': LinearAEF, 'extended': LinearAEF},
         'vae': {'default': VAE, 'extended': ExtendedVAE},
         'iwae': {'default': IWAE, 'extended': ExtendedIWAE},
         'vae-iaf': {'default': VAEIAF, 'extended': VAEIAF}  # TODO: decide what to do here...
@@ -71,22 +72,22 @@ def get_model(model_name: str, architecture_size: str, decoder: str,
             decoder = decoder_dict[decoder]['big'](output_shape=img_shape, latent_dims=latent_dims)
             encoder = ConvolutionalEncoderBig(input_shape=img_shape, latent_dims=latent_dims)
 
-    if 'nae' in model_name:
-        core_flow_pre, core_flow_post = get_flows(latent_dims, model_name, posterior_flow_name, prior_flow_name,
+    if 'aef' in model_name:
+        core_encoder, prior_flow = get_flows(latent_dims, model_name, posterior_flow_name, prior_flow_name,
                                                   architecture_size)
-        if model_name == 'nae-center':
-            model = model_dict[model_name]['default'](encoder=encoder, decoder=decoder, core_flow_pre=core_flow_pre,
-                                                      core_flow_post=core_flow_post,
-                                                      preprocessing_layers=preprocessing_layers,
-                                                      center_mask=True)
-        elif model_name == 'nae-corner':
-            model = model_dict[model_name]['default'](encoder=encoder, decoder=decoder, core_flow_pre=core_flow_pre,
-                                                      core_flow_post=core_flow_post,
-                                                      preprocessing_layers=preprocessing_layers,
-                                                      center_mask=False)
-        elif model_name == 'nae-external':
-            model = model_dict[model_name]['default'](encoder=encoder, decoder=decoder, core_flow_pre=core_flow_pre,
-                                                      core_flow_post=core_flow_post,
+        if model_name == 'aef-center':
+            mask = util.get_center_mask(img_shape, latent_dims)
+            model = model_dict[model_name]['default'](encoder=encoder, decoder=decoder, core_encoder=core_encoder,
+                                                      prior_flow=prior_flow, mask=mask,
+                                                      preprocessing_layers=preprocessing_layers)
+        elif model_name == 'aef-corner':
+            mask = util.get_corner_mask(img_shape, latent_dims)
+            model = model_dict[model_name]['default'](encoder=encoder, decoder=decoder, core_encoder=core_encoder,
+                                                      prior_flow=prior_flow, mask=mask,
+                                                      preprocessing_layers=preprocessing_layers)
+        elif model_name == 'aef-linear':
+            model = model_dict[model_name]['default'](encoder=encoder, decoder=decoder, core_encoder=core_encoder,
+                                                      prior_flow=prior_flow,
                                                       preprocessing_layers=preprocessing_layers)
 
     elif (posterior_flow_name == 'none') and (prior_flow_name == 'none'):
@@ -101,7 +102,6 @@ def get_model(model_name: str, architecture_size: str, decoder: str,
 
 
 def get_flows(latent_dims, model_name, posterior_flow_name, prior_flow_name, architecture_size):
-    # TODO: check if correct
     if architecture_size == 'big':
         flow_features = 512
         num_layers = 8
@@ -125,7 +125,7 @@ def get_flows(latent_dims, model_name, posterior_flow_name, prior_flow_name, arc
                                                         act_norm_between_layers=True,
                                                         is_inverse=True)
     elif posterior_flow_name == 'none':
-        if 'nae' in model_name:
+        if 'aef' in model_name:
             post_flow = get_masked_autoregressive_transform(features=latent_dims,
                                                             hidden_features=flow_features,
                                                             num_layers=num_layers,
@@ -149,7 +149,7 @@ def get_flows(latent_dims, model_name, posterior_flow_name, prior_flow_name, arc
                                                          act_norm_between_layers=True,
                                                          is_inverse=True)
     elif prior_flow_name == 'none':
-        if 'nae' in model_name:
+        if 'aef' in model_name:
             prior_flow = get_masked_autoregressive_transform(features=latent_dims,
                                                              hidden_features=flow_features,
                                                              num_layers=num_layers,
@@ -202,17 +202,6 @@ def get_model_denoising(model_name: str, decoder: str, latent_dims: int, img_sha
         decoder = DeterministicConvolutionalDecoderSmall(vae_channels, output_shape=img_shape, latent_dims=latent_dims)
         model = DenoisingAutoEncoder(encoder, decoder)
         return model
-    elif model_name == 'maf':
-
-
-        flow_features = 256
-        num_layers = 4
-
-        model = MaskedAutoregressiveFlow(int(np.prod(img_shape)), hidden_features=flow_features,  # TODO: dont hardcode
-                                       num_layers=num_layers, num_blocks_per_layer=2,
-                                       preprocessing_layers=preprocessing_layers,
-                                       act_norm_between_layers=True)
-        return model
 
 
     vae_channels = 64
@@ -221,35 +210,37 @@ def get_model_denoising(model_name: str, decoder: str, latent_dims: int, img_sha
     encoder = ConvolutionalEncoderSmall(hidden_channels=vae_channels, input_shape=img_shape,
                                         latent_dims=latent_dims)
 
-    model_dict = {'nae-center': InternalLatentAutoEncoder,
-                  'nae-corner': InternalLatentAutoEncoder,
-                  'nae-external': ExternalLatentAutoEncoder,
+    model_dict = {'aef-center': InternalAEF,
+                  'aef-corner': InternalAEF,
+                  'aef-linear': LinearAEF,
                   'vae': DenoisingVAE,
                   'iwae': DenoisingIWAE,
                   'vae-iaf': DenoisingVAEIAF,
                   }
 
-    core_flow_pre = get_masked_autoregressive_transform(features=latent_dims,
+    core_encoder = get_masked_autoregressive_transform(features=latent_dims,
                                                         hidden_features=256,
                                                         num_layers=4,
                                                         num_blocks_per_layer=2,
                                                         act_norm_between_layers=True)
-    core_flow_post = get_masked_autoregressive_transform(features=latent_dims,
+    prior_flow = get_masked_autoregressive_transform(features=latent_dims,
                                                          hidden_features=256,
                                                          num_layers=4,
                                                          num_blocks_per_layer=2,
                                                          act_norm_between_layers=True)
-    if model_name == 'nae-center':
-        model = model_dict[model_name](encoder=encoder, decoder=decoder, core_flow_pre=core_flow_pre,
-                                       core_flow_post=core_flow_post, preprocessing_layers=preprocessing_layers,
-                                       center_mask=True)
-    elif model_name == 'nae-corner':
-        model = model_dict[model_name](encoder=encoder, decoder=decoder, core_flow_pre=core_flow_pre,
-                                       core_flow_post=core_flow_post, preprocessing_layers=preprocessing_layers,
-                                       center_mask=False)
-    elif model_name == 'nae-external':
-        model = model_dict[model_name](encoder=encoder, decoder=decoder, core_flow_pre=core_flow_pre,
-                                       core_flow_post=core_flow_post, preprocessing_layers=preprocessing_layers)
+    if model_name == 'aef-center':
+        mask = util.get_center_mask(img_shape, latent_dims)
+        model = model_dict[model_name](encoder=encoder, decoder=decoder, core_encoder=core_encoder,
+                                       prior_flow=prior_flow, mask=mask,
+                                       preprocessing_layers=preprocessing_layers)
+    elif model_name == 'aef-corner':
+        mask = util.get_corner_mask(img_shape, latent_dims)
+        model = model_dict[model_name](encoder=encoder, decoder=decoder, core_encoder=core_encoder,
+                                       prior_flow=prior_flow, mask=mask,
+                                       preprocessing_layers=preprocessing_layers)
+    elif model_name == 'aef-linear':
+        model = model_dict[model_name](encoder=encoder, decoder=decoder, core_encoder=core_encoder,
+                                       prior_flow=prior_flow, preprocessing_layers=preprocessing_layers)
     else:
         model = model_dict[model_name](encoder=encoder, decoder=decoder)
     return model
