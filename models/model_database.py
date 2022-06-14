@@ -195,7 +195,27 @@ def get_model_denoising(model_name: str, decoder: str, latent_dims: int, img_sha
 
         model = ExtendedDenoisingVAE(encoder, decoder, post_flow, prior_flow)
         return model
+    if model_name == 'vae-iaf-maf-independent':
+        vae_channels = 64
+        encoder = ConvolutionalEncoderSmall(vae_channels, input_shape=img_shape, latent_dims=latent_dims)
+        decoder = IndependentVarianceDecoderSmall(vae_channels, output_shape=img_shape, latent_dims=latent_dims)
 
+        flow_features = 256
+        num_layers = 4
+        prior_flow = get_masked_autoregressive_transform(features=latent_dims,
+                                                         hidden_features=flow_features,
+                                                         num_layers=num_layers,
+                                                         num_blocks_per_layer=2,
+                                                         act_norm_between_layers=True)
+        post_flow = get_masked_autoregressive_transform(features=latent_dims,
+                                                        hidden_features=flow_features,
+                                                        num_layers=num_layers,
+                                                        num_blocks_per_layer=2,
+                                                        act_norm_between_layers=True,
+                                                        is_inverse=True)
+
+        model = ExtendedDenoisingVAE(encoder, decoder, post_flow, prior_flow)
+        return model
     if model_name == 'ae':
         vae_channels = 64
         encoder = DeterministicConvolutionalEncoderSmall(vae_channels, input_shape=img_shape, latent_dims=latent_dims)

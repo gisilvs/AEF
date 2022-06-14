@@ -36,7 +36,7 @@ parser.add_argument('--batch-size', type=int, default=128,
 
 args = parser.parse_args()
 
-assert args.model in ['ae', 'nae-center', 'nae-corner', 'vae', 'iwae', 'vae-iaf', 'nae-external', 'vae-iaf-maf'] # 'maf',
+assert args.model in ['ae', 'nae-center', 'nae-corner', 'vae', 'iwae', 'vae-iaf', 'nae-external', 'vae-iaf-maf', 'vae-iaf-maf-independent'] # 'maf',
 assert args.dataset in ['mnist', 'kmnist', 'emnist', 'fashionmnist', 'cifar10', 'cifar']
 assert args.decoder in ['fixed', 'independent', 'dependent']
 
@@ -57,7 +57,7 @@ noise_level = args.noise_level
 
 args.runs = [int(item) for item in args.runs.split(',')]
 
-AE_like_models = ['nae-center', 'nae-corner', 'nae-external', 'vae', 'iwae', 'vae-iaf', 'ae', 'vae-iaf-maf']
+AE_like_models = ['nae-center', 'nae-corner', 'nae-external', 'vae', 'iwae', 'vae-iaf', 'ae', 'vae-iaf-maf', 'vae-iaf-maf-independent']
 flow_like_models = ['nae-center', 'nae-corner', 'nae-external', 'maf']
 
 for run_nr in args.runs:
@@ -100,7 +100,7 @@ for run_nr in args.runs:
     if not os.path.isdir('./checkpoints'):
         os.mkdir('./checkpoints')
 
-    run = wandb.init(project="denoising-experiments", entity="nae",
+    run = wandb.init(project="denoising-experiments-1", entity="nae",
                      name=run_name, config=config)
     wandb.summary['n_parameters'] = count_parameters(model)
     print('Training ...')
@@ -321,7 +321,7 @@ for run_nr in args.runs:
 
 
         # Approximate log likelihood if model in VAE family
-        if model_name in ['vae', 'iwae', 'vae-iaf']:
+        if model_name in ['vae', 'iwae', 'vae-iaf', 'vae-iaf-maf', 'vae-iaf-maf-independent']:
             test_ll_averager = make_averager()
             for test_batch, _ in test_dataloader:
                 test_batch = dequantize(test_batch)
@@ -374,7 +374,7 @@ for run_nr in args.runs:
     plt.close("all")
 
     # Clean up older artifacts
-    api = wandb.Api(overrides={"project": 'denoising-experiments', "entity": "nae"})
+    api = wandb.Api(overrides={"project": 'denoising-experiments-1', "entity": "nae"})
     artifact_type, artifact_name = 'model', f'{run_name}_latest'
     for version in api.artifact_versions(artifact_type, artifact_name):
         if len(version.aliases) == 0:
