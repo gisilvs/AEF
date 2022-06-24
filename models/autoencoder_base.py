@@ -1,3 +1,5 @@
+from typing import List
+
 import torch
 from torch import nn, Tensor, distributions
 from nflows.transforms import Transform, IdentityTransform
@@ -76,22 +78,40 @@ class GaussianAutoEncoder(AutoEncoder):
 
 class ExtendedGaussianAutoEncoder(GaussianAutoEncoder):
     def __init__(self, encoder: GaussianEncoder, decoder: GaussianDecoder, 
-                 posterior_bijector: Transform = IdentityTransform(), prior_bijector: Transform = IdentityTransform()):
+                 posterior_bijector: Transform = IdentityTransform(), prior_bijector: Transform = IdentityTransform(),
+                 preprocessing_layers: List = ()):
         super(ExtendedGaussianAutoEncoder, self).__init__(encoder, decoder)
         self.posterior_bijector = posterior_bijector
         self.prior_bijector = prior_bijector
+        self.preprocessing_layers = nn.ModuleList(preprocessing_layers)
 
     def sample(self, num_samples: int = 1, temperature: float = 1):
         self.set_device()
         z0 = self.prior.sample((num_samples,)) * temperature
         z, _ = self.prior_bijector.forward(z0)
-        return self.decoder(z)[0]
+        x, _ = self.decoder(z)
+
+        for i in range(len(self.preprocessing_layers) - 1, -1, -1):
+            x, _ = self.preprocessing_layers[i](x)
+
+        return x
+
     def encode(self, x: Tensor):
-        z0 = self.encoder(x)[0]
-        z = self.posterior_bijector.forward(z0)[0]
+        for layer in self.preprocessing_layers:
+            x, _ = layer.inverse(x)
+
+        z0, _ = self.encoder(x)
+        z, _ = self.posterior_bijector.forward(z0)
         return z
 
+    def decode(self, z: Tensor):
+        x, _ = self.decoder(z)
+        for i in range(len(self.preprocessing_layers) - 1, -1, -1):
+            x, _ = self.preprocessing_layers[i](x)
+        return x
+
     def approximate_marginal(self, images: Tensor, n_samples: int = 128):
+        # TODO: move towards implementations of base class
         batch_size = images.shape[0]
         mu_z, sigma_z = self.encoder(images)
         z0_samples = Normal(mu_z, sigma_z).sample([n_samples]).transpose(1, 0)

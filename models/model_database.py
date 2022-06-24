@@ -97,7 +97,7 @@ def get_model(model_name: str, architecture_size: str, decoder: str,
                                                architecture_size)
 
         model = model_dict[model_name]['extended'](encoder=encoder, decoder=decoder, posterior_bijector=posterior_flow,
-                                           prior_bijector=prior_flow)
+                                           prior_bijector=prior_flow, preprocessing_layers=preprocessing_layers)
     return model
 
 

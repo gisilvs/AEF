@@ -99,6 +99,7 @@ for run_nr in args.runs:
         "architecture_size": architecture_size,
         "posterior_flow": posterior_flow,
         "prior_flow": prior_flow,
+        "preprocessing": True
     }
 
     device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
