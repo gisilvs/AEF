@@ -5,6 +5,7 @@ import torch.distributions
 import torchvision
 
 import numpy as np
+from torch import Tensor
 from torch.utils.data import DataLoader
 
 from datasets import get_test_dataloader
@@ -38,7 +39,7 @@ def get_z_values(n_vals: int = 20, border: float = 0.15, latent_dims: int = 2):
 def plot_latent_space(model, test_loader, device):
     ''' Function to generate a plot of the latent space of a model. If there are more than 2 dimensions we use
     TSNE. '''
-    n_latent_dims = model.encoder.latent_dim
+    n_latent_dims = model.encoder.latent_dims
     if n_latent_dims == 2:
         return plot_latent_space_2d(model, test_loader, device)
 
@@ -193,61 +194,47 @@ def plot_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoader, de
     return fig
 
 
-def plot_noisy_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoader, device: torch.device,
+def plot_noisy_reconstructions(model: GaussianAutoEncoder, image_batch: Tensor, device: torch.device,
                                noise_distribution: torch.distributions.Distribution,
-                               img_shape: List = [1, 28, 28], n_rows: int = 6, hires=False,
-                               image_batch=None):
+                               img_shape: List = [1, 28, 28], n_rows: int = 6, n_cols: int = 6):
     '''
     Function to plot a grid (size n_rows x n_rows) of reconstructions given a model. Following row structure:
     1) image with noise 2) denoised image 3) original image
     '''
-    n_cols = n_rows
     n_images = n_rows * n_cols
     arr = torch.zeros((n_images, *img_shape))
 
+    assert n_rows % 3 == 0
+    assert n_images <= image_batch.shape[0]
+
     cur_row = 0
-    iter_test_loader = iter(test_loader)
-
     n_images_filled = 0
-
-    noise_to_device = image_batch is not None
+    n_images_out_of_batch = 0
 
     while cur_row < n_rows:
-        if image_batch is None:
-            image_batch, _ = next(iter_test_loader)
-
-        batch_idx = 0
         n_imgs_in_batch_left = image_batch.shape[0]
         while n_imgs_in_batch_left >= n_cols and cur_row < n_rows:
             n_imgs_in_batch_left -= n_cols  # We use the first n_cols images of the batch
 
-            row_batch = image_batch[batch_idx:batch_idx + n_cols]
-            batch_idx += n_cols
-
+            row_batch = image_batch[n_images_out_of_batch:n_images_out_of_batch + n_cols]
+            n_images_out_of_batch += n_cols
             noisy_batch = torch.clone(row_batch).detach()
-            noise = noise_distribution.sample()[:n_rows] # What would be faster: this or reinitializing a
+            noise = noise_distribution.sample()[:n_cols]  # What would be faster: this or reinitializing a
             # distribution of proper size each time?
-            if noise_to_device:
-                noise = noise.to(device)
             noisy_batch += noise
             noisy_batch = torch.clamp(noisy_batch, 0., 1.)
+
             # Fill noisy images
             arr[n_images_filled:n_images_filled + n_cols] = noisy_batch
 
             n_images_filled += n_cols
-            # row_batch = util.dequantize(row_batch)
 
             noisy_batch = noisy_batch.to(device)
             with torch.no_grad():
-                encode_output = model.encode(noisy_batch)
-                if isinstance(encode_output, tuple):
-                    z, _ = encode_output
-                else:
-                    z = encode_output
+                z = model.encode(noisy_batch)
+                if isinstance(z, tuple):
+                    z = z[0]
                 reconstruction = model.decode(z)
-                # NAE returns a single value, VAEs will return mu and sigma
-                if isinstance(reconstruction, tuple):
-                    reconstruction = reconstruction[0]
                 reconstruction = reconstruction.cpu().detach()
             # Fill reconstructions
             arr[n_images_filled:n_images_filled + n_cols] = reconstruction
@@ -258,10 +245,8 @@ def plot_noisy_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoad
             n_images_filled += n_cols
 
             cur_row += 3  # We filled three rows
-    if hires:
-        fig = plt.figure(figsize=(10, 10))
-    else:
-        fig = plt.figure(figsize=(10, 10))
+
+    fig = plt.figure(figsize=(10, 10))
     grid_img = torchvision.utils.make_grid(arr, padding=1, pad_value=0., nrow=n_rows)
     plt.imshow(grid_img.permute(1, 2, 0))
     plt.axis("off")

@@ -196,9 +196,9 @@ class FixedVarianceDecoderBig(ConvolutionalDecoderBig):
         return x, torch.ones_like(x)
 
 
-class IndependentVarianceDecoderBig(ConvolutionalDecoderBig):
+class LearnableVarianceDecoderBig(ConvolutionalDecoderBig):
     def __init__(self, output_shape: List, latent_dims: int, size: str = None):
-        super(IndependentVarianceDecoderBig, self).__init__(output_shape, latent_dims, size)
+        super(LearnableVarianceDecoderBig, self).__init__(output_shape, latent_dims, size)
         self.pre_sigma = nn.Parameter(torch.ones(output_shape))
 
     def forward(self, z):

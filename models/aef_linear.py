@@ -17,7 +17,7 @@ class LinearAEF(GaussianAutoEncoder):
                  external_net: nn.Module = None, preprocessing_layers=[]):
         super(LinearAEF, self).__init__(encoder, decoder)
 
-        self.core_size = self.encoder.latent_dim
+        self.core_size = self.encoder.latent_dims
         self.image_shape = self.encoder.input_shape
         self.core_encoder = core_encoder
         self.prior_flow = prior_flow
@@ -33,6 +33,7 @@ class LinearAEF(GaussianAutoEncoder):
 
 
     def embedding(self, x):
+        # TODO: rename?
         log_j_preprocessing = 0
         for layer in self.preprocessing_layers:
             x, log_j_transform = layer.inverse(x)
@@ -134,10 +135,11 @@ class LinearAEF(GaussianAutoEncoder):
         log_j = log_j_preprocessing + log_j_core_pre + log_j_z_1 + log_j_d + log_j_core_post.view(n_samples, batch_size)
         return z_0.view(n_samples, batch_size, -1), deviations, log_j, core_log_prob
 
-    def approximate_marginal(self, images: Tensor, n_samples: int = 20):
-        return self.neg_log_likelihood(images, importance_sampling=True, n_samples=n_samples)
+    def approximate_marginal(self, x: Tensor, n_samples: int = 128):
+        return self.neg_log_likelihood(x, importance_sampling=True, n_samples=n_samples)
 
     def get_device(self):
+        # TODO: check if necessary
         if self.device is None:
             self.device = next(self.parameters()).device
 

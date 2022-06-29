@@ -15,7 +15,7 @@ class InternalAEF(GaussianAutoEncoder):
                  mask: torch.Tensor, preprocessing_layers=[]):
         super(InternalAEF, self).__init__(encoder, decoder)
 
-        self.core_size = self.encoder.latent_dim
+        self.core_size = self.encoder.latent_dims
         self.image_shape = self.encoder.input_shape
         self.core_encoder = core_encoder
         self.prior_flow = prior_flow

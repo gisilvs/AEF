@@ -10,6 +10,9 @@ import torchvision
 
 import models.model_database
 
+def has_importance_sampling(model):
+    approximate_marginal = getattr(model, "approximate_marginal", None)
+    return callable(approximate_marginal)
 
 def get_avg_loss_over_iterations(iteration_losses: np.array, window_size: int, cur_iteration: int):
     low_window = max(0, cur_iteration - window_size)

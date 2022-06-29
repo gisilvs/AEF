@@ -13,7 +13,7 @@ class Sigmoid(Transform):
     def forward(self, inputs, context=None):
         outputs = torch.sigmoid(inputs)
         logabsdet = torchutils.sum_except_batch(
-            F.softplus(-inputs) - F.softplus(inputs)
+            - F.softplus(-inputs) - F.softplus(inputs)
         )
         return outputs, logabsdet
 
