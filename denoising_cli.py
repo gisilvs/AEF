@@ -134,10 +134,13 @@ for run_nr in args.runs:
             for training_batch, _ in train_dataloader:
                 training_batch = dequantize(training_batch)
                 training_batch = training_batch.to(device)
-                training_batch += noise_distribution.sample()[:training_batch.shape[0]]
-                training_batch = torch.clamp(training_batch, 0., 1.)
+                training_batch_noisy = torch.clone(training_batch).detach().to(device)
+                training_batch_noisy += noise_distribution.sample()[:training_batch.shape[0]]
+                training_batch_noisy = torch.clamp(training_batch_noisy, 0., 1.)
+                training_batch_noisy = training_batch_noisy.to(device)
 
-                loss = torch.mean(model.loss_function(training_batch))
+
+                loss = torch.mean(model.loss_function(training_batch_noisy))
 
                 iteration_losses[n_iterations_done] = loss.item()
                 metrics = {
