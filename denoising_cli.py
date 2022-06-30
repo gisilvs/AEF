@@ -39,6 +39,7 @@ parser.add_argument('--batch-size', type=int, default=128,
                     help='input batch size for training and testing (default: 128)')
 parser.add_argument('--data-dir', type=str, default="")
 parser.add_argument('--gpus', type=str, default="0", help="which gpu(s) to use (default: 0)")
+parser.add_argument('--early-stopping', type=int, default=20000)
 
 args = parser.parse_args()
 
@@ -61,6 +62,7 @@ architecture_size = args.architecture
 posterior_flow = args.posterior_flow
 prior_flow = args.prior_flow
 gpu_nrs = args.gpus
+early_stopping_threshold = args.early_stopping
 
 
 args.runs = [int(item) for item in args.runs.split(',')]
@@ -124,6 +126,7 @@ for run_nr in args.runs:
     iteration_losses = np.zeros((n_iterations,))
     validation_losses = []
     validation_reconstruction_errors = []
+    n_iterations_without_improvements = 0
 
     for it in range(n_iterations):
         torch.seed()  # Random seed since we fix it at test time
@@ -214,10 +217,13 @@ for run_nr in args.runs:
                             best_it = n_iterations_done
                             torch.save(model.state_dict(), f'checkpoints/{run_name}_best.pt')
                         # We save based on validation loss (in autoencoder models this is validation log-likelihood)
-                        elif validation_losses[-1] < best_loss:
+                        elif validation_losses[-1] < best_loss - 1.:
+                            n_iterations_without_improvements = 0
                             best_loss = validation_losses[-1]
                             torch.save(model.state_dict(), f'checkpoints/{run_name}_best.pt')
                             best_it = n_iterations_done
+                        else:
+                            n_iterations_without_improvements += validate_every_n_iterations
 
                         torch.save({
                             'n_iterations_done': n_iterations_done,
@@ -228,8 +234,12 @@ for run_nr in args.runs:
                             'best_loss': best_loss},
                             f'checkpoints/{run_name}_latest.pt')
 
-                        wandb.log({**metrics, **val_metrics, **image_dict})
+                        wandb.log({**metrics, **val_metrics, **image_dict, **{'iterations_without_improvement': n_iterations_without_improvements}})
                         plt.close("all")
+
+                        if n_iterations_without_improvements >= early_stopping_threshold:
+                            stop = True
+                            break
                 else:
                     wandb.log(metrics)
 
