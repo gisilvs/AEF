@@ -39,7 +39,7 @@ parser.add_argument('--batch-size', type=int, default=128,
                     help='input batch size for training and testing (default: 128)')
 parser.add_argument('--data-dir', type=str, default="")
 parser.add_argument('--gpus', type=str, default="0", help="which gpu(s) to use (default: 0)")
-parser.add_argument('--early-stopping', type=int, default=20000)
+parser.add_argument('--early-stopping', type=int, default=100000)
 
 args = parser.parse_args()
 
@@ -64,9 +64,12 @@ prior_flow = args.prior_flow
 gpu_nrs = args.gpus
 early_stopping_threshold = args.early_stopping
 
+os.environ["CUDA_VISIBLE_DEVICES"] = gpu_nrs
+gpu_nr = gpu_nrs[0]
 
 args.runs = [int(item) for item in args.runs.split(',')]
 
+device = torch.device(f"cuda:{gpu_nr}" if use_gpu and torch.cuda.is_available() else "cpu")
 
 for run_nr in args.runs:
     if args.custom_name is not None:
@@ -95,8 +98,6 @@ for run_nr in args.runs:
         "prior_flow": prior_flow,
         "preprocessing": True
     }
-
-    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
 
     p_validation = 0.1
     train_dataloader, validation_dataloader, image_dim, alpha = get_train_val_dataloaders(dataset, batch_size,
@@ -131,7 +132,8 @@ for run_nr in args.runs:
     for it in range(n_iterations):
         torch.seed()  # Random seed since we fix it at test time
         noise_distribution = torch.distributions.normal.Normal(torch.zeros(batch_size, *image_dim).to(device),
-                                                               noise_level * torch.ones(batch_size, *image_dim).to(device))
+                                                               noise_level * torch.ones(batch_size, *image_dim).to(
+                                                                   device))
 
         while not stop:
             for training_batch, _ in train_dataloader:
@@ -141,7 +143,6 @@ for run_nr in args.runs:
                 training_batch_noisy += noise_distribution.sample()[:training_batch.shape[0]]
                 training_batch_noisy = torch.clamp(training_batch_noisy, 0., 1.)
                 training_batch_noisy = training_batch_noisy.to(device)
-
 
                 loss = torch.mean(model.loss_function(training_batch_noisy))
 
@@ -179,7 +180,6 @@ for run_nr in args.runs:
                                                                                  n_rows=6, n_cols=6)
                         image_dict = {'training_reconstructions': training_reconstruction_fig}
 
-
                         # Validation loss and reconstruction error, in both cases using noisy images
                         val_loss_averager = make_averager()
                         val_reconstruction_averager = make_averager()
@@ -191,9 +191,7 @@ for run_nr in args.runs:
                             validation_batch_noisy += noise_distribution.sample()[:validation_batch.shape[0]]
                             validation_batch_noisy = torch.clamp(validation_batch_noisy, 0., 1.)
 
-
                             val_loss = torch.mean(model.loss_function(validation_batch_noisy))
-
                             val_loss_averager(val_loss.item())
 
                             z = model.encode(validation_batch_noisy)
@@ -234,7 +232,8 @@ for run_nr in args.runs:
                             'best_loss': best_loss},
                             f'checkpoints/{run_name}_latest.pt')
 
-                        wandb.log({**metrics, **val_metrics, **image_dict, **{'iterations_without_improvement': n_iterations_without_improvements}})
+                        wandb.log({**metrics, **val_metrics, **image_dict,
+                                   **{'iterations_without_improvement': n_iterations_without_improvements}})
                         plt.close("all")
 
                         if n_iterations_without_improvements >= early_stopping_threshold:
@@ -284,7 +283,6 @@ for run_nr in args.runs:
             test_batch_noisy = torch.clamp(test_batch_noisy, 0., 1.)
             test_batch_noisy = test_batch_noisy.to(device)
 
-
             # Test loss
             if model_name == 'maf':
                 test_batch = test_batch.view(-1, torch.prod(torch.tensor(image_dim)))
@@ -317,28 +315,27 @@ for run_nr in args.runs:
         wandb.summary['test_rce_without_noise'] = test_rce_without_noise
         wandb.summary['test_rce_with_noise'] = test_rce_with_noise
 
-
         # Approximate log likelihood if model in VAE family
-        if has_importance_sampling(model):
-            test_ll_averager = make_averager()
-            for test_batch, _ in test_dataloader:
-                test_batch = dequantize(test_batch)
-                test_batch = test_batch.to(device)
-                for iw_iter in range(20):
-                    log_likelihood = torch.mean(model.approximate_marginal(test_batch, n_samples=128))
-                    test_ll_averager(log_likelihood.item())
-            test_ll = test_ll_averager(None)
-            # We only add this value to the summary if we approximate the log likelihood (since we provide test_loss
-            # in both cases).
-            wandb.summary['test_log_likelihood'] = test_ll
-            bpp_test = bits_per_pixel(test_ll, n_pixels)
-            bpp_test_adjusted = bits_per_pixel(test_ll, n_pixels, adjust_value=256.)
-        else:
-            bpp_test = bits_per_pixel(test_loss, n_pixels)
-            bpp_test_adjusted = bits_per_pixel(test_loss, n_pixels, adjust_value=256.)
-
-        wandb.summary['test_bpp'] = bpp_test
-        wandb.summary['test_bpp_adjusted'] = bpp_test_adjusted
+        # if has_importance_sampling(model):
+        #     test_ll_averager = make_averager()
+        #     for test_batch, _ in test_dataloader:
+        #         test_batch = dequantize(test_batch)
+        #         test_batch = test_batch.to(device)
+        #         for iw_iter in range(20):
+        #             log_likelihood = torch.mean(model.approximate_marginal(test_batch, n_samples=128))
+        #             test_ll_averager(log_likelihood.item())
+        #     test_ll = test_ll_averager(None)
+        #     # We only add this value to the summary if we approximate the log likelihood (since we provide test_loss
+        #     # in both cases).
+        #     wandb.summary['test_log_likelihood'] = test_ll
+        #     bpp_test = bits_per_pixel(test_ll, n_pixels)
+        #     bpp_test_adjusted = bits_per_pixel(test_ll, n_pixels, adjust_value=256.)
+        # else:
+        #     bpp_test = bits_per_pixel(test_loss, n_pixels)
+        #     bpp_test_adjusted = bits_per_pixel(test_loss, n_pixels, adjust_value=256.)
+        #
+        # wandb.summary['test_bpp'] = bpp_test
+        # wandb.summary['test_bpp_adjusted'] = bpp_test_adjusted
 
         if model_name != 'ae':
             for i in range(5):
@@ -356,7 +353,6 @@ for run_nr in args.runs:
                                                             noise_distribution, image_dim, n_rows=9, n_cols=9)
             reconstruction_dict = {'final_noisy_reconstructions_test': reconstruction_fig}
             run.log(reconstruction_dict)
-
 
     artifact_best = wandb.Artifact(f'{run_name}_best', type='model')
     artifact_best.add_file(f'checkpoints/{run_name}_best.pt')
