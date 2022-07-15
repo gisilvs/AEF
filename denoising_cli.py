@@ -241,7 +241,7 @@ for run_nr in args.runs:
                             best_it = n_iterations_done
                             torch.save(model.state_dict(), f'checkpoints/{run_name}_best.pt')
                         # We save based on validation loss (in autoencoder models this is validation log-likelihood)
-                        elif validation_losses[-1] < best_loss - 1.:
+                        elif validation_losses[-1] < best_loss:  # best_loss - 1.
                             n_iterations_without_improvements = 0
                             best_loss = validation_losses[-1]
                             torch.save(model.state_dict(), f'checkpoints/{run_name}_best.pt')
