@@ -10,7 +10,8 @@ import wandb
 from datasets import get_train_val_dataloaders, get_test_dataloader
 from models.model_database import get_model
 
-from util import make_averager, dequantize, plot_image_grid, bits_per_pixel, count_parameters, has_importance_sampling
+from util import make_averager, dequantize, plot_image_grid, bits_per_pixel, count_parameters, has_importance_sampling, \
+    load_latest_model
 from visualize import plot_noisy_reconstructions
 
 parser = argparse.ArgumentParser(description='AEF Denoising Experiments')
@@ -41,6 +42,10 @@ parser.add_argument('--data-dir', type=str, default="")
 parser.add_argument('--gpus', type=str, default="0", help="which gpu(s) to use (default: 0)")
 parser.add_argument('--early-stopping', type=int, default=100000)
 
+parser.add_argument('--reload', type=int, default=0)
+parser.add_argument('--previous-val-iters', type=int, default=500, help='validate every x iterations (default: 500')
+parser.add_argument('--reload-from-project', type=str, default='prototyping')
+
 args = parser.parse_args()
 
 assert args.model in ['ae', 'aef-center', 'aef-corner', 'aef-linear', 'vae', 'iwae']
@@ -63,6 +68,7 @@ posterior_flow = args.posterior_flow
 prior_flow = args.prior_flow
 gpu_nrs = args.gpus
 early_stopping_threshold = args.early_stopping
+reload = True if args.reload == 1 else False
 
 os.environ["CUDA_VISIBLE_DEVICES"] = gpu_nrs
 gpu_nr = gpu_nrs[0]
@@ -129,6 +135,22 @@ for run_nr in args.runs:
     validation_reconstruction_errors = []
     n_iterations_without_improvements = 0
 
+    if reload:
+        # TODO: remove?
+        # samples = model.sample(2)
+        # model.loss_function(samples)
+        n_iterations_done, iteration_losses, validation_losses, best_loss, model, optimizer = load_latest_model(
+            run,
+            args.reload_from_project,
+            run_name,
+            device,
+            model,
+            optimizer,
+            validate_every_n_iterations=args.previous_val_iters,
+        )
+        model = model.to(device)
+    model.train()
+
     for it in range(n_iterations):
         torch.seed()  # Random seed since we fix it at test time
         noise_distribution = torch.distributions.normal.Normal(torch.zeros(batch_size, *image_dim).to(device),
@@ -154,7 +176,11 @@ for run_nr in args.runs:
                 optimizer.zero_grad()
                 loss.backward()
 
-                optimizer.step()
+                grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(),
+                                                           max_norm=1000.)  # TODO: decide on grad clipping vs batch skipping
+
+                if grad_norm < 300. or it < 10000:  # skip threshold
+                    optimizer.step()
 
                 # We validate first iteration, every n iterations, and at the last iteration
                 if (n_iterations_done % validate_every_n_iterations) == 0 or (n_iterations_done == n_iterations - 1):
