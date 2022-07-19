@@ -186,6 +186,78 @@ def update_nae_external():
             traceback.print_exc()
             continue
 
+def add_ife_single_run(project_name, run_name):
+    use_gpu = True
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+    image_dim = [1, 28, 28]
+
+    alpha = 1e-6
+
+    batch_size = 128
+    api = wandb.Api()
+    runs = api.runs(path=f"nae/{project_name}")
+    architecture_size = "small"
+    incept = metrics.InceptionV3().to(device)
+    for run in runs:
+        if run.name != run_name:
+            continue
+
+        # if 'fid' in run.summary.keys(): # 'test_rce' in run.summary.keys() and
+        #     if not run.summary['fid'] is None and np.isfinite(run.summary['fid']): #not run.summary['test_rce'] is None and np.isfinite(run.summary['test_rce']) and
+        #         continue
+
+        try:
+            model_name = get_field_from_config(run, "model")
+            dataset = get_field_from_config(run, "dataset")
+
+            decoder = get_field_from_config(run, "decoder")
+            latent_dims = get_field_from_config(run, "latent_dims", type="int")
+
+            architecture_size = get_field_from_config(run, "architecture_size")
+            if architecture_size is None:
+                architecture_size = "small"
+
+            posterior_flow = get_field_from_config(run, "posterior_flow")
+            if posterior_flow is None:
+                posterior_flow = 'none'
+            prior_flow = get_field_from_config(run, "prior_flow")
+            if prior_flow is None:
+                prior_flow = 'none'
+
+            noise_level = get_field_from_config(run, "noise_level")
+            noise_distribution = torch.distributions.normal.Normal(torch.zeros(batch_size, *image_dim).to(device),
+                                                                   noise_level * torch.ones(batch_size, *image_dim).to(
+                                                                       device))
+
+            model = get_model(model_name, architecture_size, decoder, latent_dims, image_dim, alpha, posterior_flow,
+                              prior_flow)
+
+            #model.loss_function(model.sample(10))  # needed as some components such as actnorm need to be initialized
+            artifact = api.artifact(f'nae/{project_name}/{run_name}_best:latest')
+            artifact_dir = artifact.download()
+            artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+            model.load_state_dict(torch.load(artifact_dir, map_location=device))
+            model = model.to(device)
+
+            model = model.eval()
+
+
+            try:
+                ife = metrics.calculate_ife(model, dataset, device, noise_distribution, batch_size=batch_size, incept=incept)
+
+                print(f'{run_name} {ife}')
+            except Exception as e:
+                print(e)
+                traceback.print_exc()
+                print(f'Failed FID in {run_name}')
+
+        except Exception as e:
+            print(e)
+            traceback.print_exc()
+            print(f'Failed to update {run_name}')
+            continue
+
+
 
 def update_log_likelihood():
     use_gpu = True
@@ -875,7 +947,7 @@ def check_runs_missing_artifact():
 
 
 if __name__ == '__main__':
-    update_nae_external()
+    #update_nae_external()
     # add_fid_cifar()
     # add_mse_fid_phase_1()
     # df = extract_data_from_runs('phase1')
@@ -901,4 +973,22 @@ if __name__ == '__main__':
 
     #add_mse_fid_phase_1()
 
+    add_ife_single_run('denoising-experiments-3', 'aef-linear_small_mnist_noise_0.25_run_4_decoder_independent_post_maf_prior_maf')
+    add_ife_single_run('denoising-experiments-3',
+                       'ae_small_mnist_noise_0.25_run_4_decoder_independent')
+    add_ife_single_run('denoising-experiments-3',
+                       'vae_small_mnist_noise_0.25_run_4_decoder_independent_post_iaf_prior_maf')
+    add_ife_single_run('denoising-experiments-3',
+                       'aef-linear_small_mnist_noise_0.5_run_0_decoder_independent_post_maf_prior_maf')
+    add_ife_single_run('denoising-experiments-3',
+                       'ae_small_mnist_noise_0.5_run_0_decoder_independent')
+    add_ife_single_run('denoising-experiments-3',
+                       'vae_small_mnist_noise_0.5_run_0_decoder_independent_post_iaf_prior_maf')
+
+    add_ife_single_run('denoising-experiments-3',
+                       'aef-linear_small_mnist_noise_0.75_run_0_decoder_independent_post_maf_prior_maf')
+    add_ife_single_run('denoising-experiments-3',
+                       'ae_small_mnist_noise_0.75_run_0_decoder_independent')
+    add_ife_single_run('denoising-experiments-3',
+                       'vae_small_mnist_noise_0.75_run_0_decoder_independent_post_iaf_prior_maf')
     exit()

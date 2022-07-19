@@ -88,7 +88,9 @@ for run_nr in args.runs:
         prior_flow_str = f"_prior_{prior_flow}" if prior_flow != 'none' else ""
         noise_level_str = f"_noise_{noise_level}"
         run_name = f'{args.model}{architecture_str}_{args.dataset}{noise_level_str}_run_{run_nr}{decoder_str}{post_flow_str}{prior_flow_str}'
-
+        if reload:
+            original_run_name = run_name
+            run_name += '_continued'
     config = {
         "model": model_name,
         "dataset": dataset,
@@ -123,10 +125,11 @@ for run_nr in args.runs:
     if not os.path.isdir('./checkpoints'):
         os.mkdir('./checkpoints')
 
+
     run = wandb.init(project=args.wandb_project, entity=args.wandb_entity,
-                     name=run_name, config=config)
+                         name=run_name, config=config)
     wandb.summary['n_parameters'] = count_parameters(model)
-    print('Training ...')
+
 
     stop = False
     n_iterations_done = 0
@@ -142,14 +145,18 @@ for run_nr in args.runs:
         n_iterations_done, iteration_losses, validation_losses, best_loss, model, optimizer = load_latest_model(
             run,
             args.reload_from_project,
-            run_name,
+            original_run_name,
             device,
             model,
             optimizer,
             validate_every_n_iterations=args.previous_val_iters,
         )
         model = model.to(device)
+
+        if len(iteration_losses) < n_iterations:
+            iteration_losses = np.append(iteration_losses, np.zeros((n_iterations - len(iteration_losses))))
     model.train()
+    print('Training...')
 
     for it in range(n_iterations):
         torch.seed()  # Random seed since we fix it at test time
@@ -285,7 +292,6 @@ for run_nr in args.runs:
                     break
 
     # Save latest and best model
-    # TODO: verify if needed
     artifact_latest = wandb.Artifact(f'{run_name}_latest', type='model')
     artifact_latest.add_file(f'checkpoints/{run_name}_latest.pt')
     run.log_artifact(artifact_latest)

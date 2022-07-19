@@ -157,9 +157,17 @@ def load_best_model(run, project_name, model_name, experiment_name, device, late
     return model
 
 def load_latest_model(run, project_name, experiment_name, device, model, optimizer, validate_every_n_iterations, version='latest'):
-    model_path = download_artifact_and_get_path(run, project_name, experiment_name, download_best=False, version=version)
-    checkpoint = torch.load(model_path, map_location=torch.device(device))
-    n_iterations_done = checkpoint['n_iterations_done']
+    latest_model_path = download_artifact_and_get_path(run, project_name, experiment_name, download_best=False, version=version)
+    best_model_path = download_artifact_and_get_path(run, project_name, experiment_name, download_best=True, version=version)
+
+    # Move files to checkpoints so that they can be uploaded
+    if not os.path.exists(f'checkpoints/{experiment_name}_continued_latest.pt'):
+        os.rename(latest_model_path, f'checkpoints/{experiment_name}_continued_latest.pt')
+    if not os.path.exists(f'checkpoints/{experiment_name}_continued_best.pt'):
+        os.rename(best_model_path, f'checkpoints/{experiment_name}_continued_best.pt')
+
+    checkpoint = torch.load(f'checkpoints/{experiment_name}_continued_latest.pt', map_location=torch.device(device))
+    n_iterations_done = checkpoint['n_iterations_done'] + 1
     iteration_losses = checkpoint['iteration_losses']
     validation_losses = checkpoint['validation_losses']
     best_loss = checkpoint['best_loss']
@@ -168,9 +176,9 @@ def load_latest_model(run, project_name, experiment_name, device, model, optimiz
     j = 0
     for i in range(n_iterations_done):
         log_dict = {'train_loss': iteration_losses[i]}
-        if i % validate_every_n_iterations == 0 and j<len(validation_losses):
+        if i % validate_every_n_iterations == 0 and j < len(validation_losses):
             log_dict['val_loss'] = validation_losses[j]
-            j+=1
+            j += 1
         run.log(log_dict)
     return n_iterations_done, iteration_losses, validation_losses, best_loss, model, optimizer
 
