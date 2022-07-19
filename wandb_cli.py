@@ -133,8 +133,8 @@ for run_nr in args.runs:
     n_iterations_without_improvements = 0
     if reload:
         # TODO: remove?
-        '''samples = model.sample(2)
-        model.loss_function(samples)'''
+        samples = model.sample(2)
+        model.loss_function(samples)
         n_iterations_done, iteration_losses, validation_losses, best_loss, model, optimizer = load_latest_model(
             run,
             args.reload_from_project,
@@ -162,7 +162,7 @@ for run_nr in args.runs:
 
                 optimizer.zero_grad()
                 loss.backward()
-                grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=200.)
+                grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1000.) # TODO: decide on grad clipping vs batch skipping
 
                 if grad_norm < 300. or it < 10000: # skip threshold
                     optimizer.step()
