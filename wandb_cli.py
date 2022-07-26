@@ -10,6 +10,7 @@ import wandb
 from datasets import get_train_val_dataloaders, get_test_dataloader
 from models.model_database import get_model
 
+from metrics import InceptionV3, calculate_fid
 from util import make_averager, dequantize, plot_image_grid, bits_per_pixel, count_parameters, load_latest_model, \
     has_importance_sampling
 from visualize import plot_reconstructions
@@ -309,6 +310,11 @@ for run_nr in args.runs:
             image_dict = {'final_samples': fig}
             run.log(image_dict)
 
+    # Calculate FID
+    incept = InceptionV3().to(device)
+    fid = calculate_fid(model, dataset, device, batch_size=128, incept=incept, data_dir=args.data_dir)
+    wandb.summary['fid'] = fid
+
     artifact_best = wandb.Artifact(f'{run_name}_best', type='model')
     artifact_best.add_file(f'checkpoints/{run_name}_best.pt')
     run.log_artifact(artifact_best)
@@ -317,7 +323,7 @@ for run_nr in args.runs:
     run.log_artifact(artifact_latest)
     wandb.summary['best_iteration'] = best_it
 
-    wandb.summary['n_parameters'] = count_parameters(model)
+
 
     run.finish()
 

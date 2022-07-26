@@ -146,8 +146,9 @@ def get_train_val_dataloaders(dataset: str = 'mnist', batch_size: int = 128, p_v
 
 
 def get_test_dataloader(dataset: str = 'mnist', batch_size: int = 128, shuffle=False, data_dir=""):
-
-    img_transform = get_transform(dataset)
+    img_transform = transforms.Compose([
+        transforms.ToTensor()
+    ])
 
     if dataset.lower() == 'mnist':
         test_dataset = MNIST(root='./data/MNIST', download=True, train=False, transform=img_transform)
