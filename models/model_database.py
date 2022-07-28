@@ -109,8 +109,8 @@ def get_model(model_name: str, architecture_size: str, decoder: str,
 
 def get_flows(latent_dims, model_name, posterior_flow_name, prior_flow_name, architecture_size):
     if architecture_size == 'big':
-        flow_features = 512
-        num_layers = 8
+        flow_features = 256
+        num_layers = 4
     elif architecture_size == 'small':
         flow_features = 256
         num_layers = 4
