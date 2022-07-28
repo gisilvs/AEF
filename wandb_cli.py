@@ -163,10 +163,10 @@ for run_nr in args.runs:
 
                 optimizer.zero_grad()
                 loss.backward()
-                grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1000.) # TODO: decide on grad clipping vs batch skipping
+                #grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1000.) # TODO: decide on grad clipping vs batch skipping
 
-                if grad_norm < 300. or it < 10000: # skip threshold
-                    optimizer.step()
+                #if grad_norm < 300. or it < 10000: # skip threshold
+                optimizer.step()
 
                 # We validate first iteration, every n iterations, and at the last iteration
                 if (n_iterations_done % validate_every_n_iterations) == 0 or (n_iterations_done == n_iterations - 1):
@@ -205,7 +205,7 @@ for run_nr in args.runs:
                         if n_iterations_done == 0:
                             best_loss = validation_losses[-1]
                             best_it = n_iterations_done
-                        elif validation_losses[-1] < best_loss - 1.:
+                        elif validation_losses[-1] < best_loss:
                             n_iterations_without_improvements = 0
                             best_loss = validation_losses[-1]
                             torch.save(model.state_dict(), f'checkpoints/{run_name}_best.pt')
