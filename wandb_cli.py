@@ -242,17 +242,6 @@ for run_nr in range(args.runs):
     run.log_artifact(artifact_best)
     wandb.summary['best_iteration'] = best_it
 
-    # Clean up older artifacts
-    api = wandb.Api(overrides={"project": args.wandb_project, "entity": args.wandb_entity})
-    artifact_type, artifact_name = 'model', f'{run_name}_latest'
-    for version in api.artifact_versions(artifact_type, artifact_name):
-        if len(version.aliases) == 0:
-            version.delete()
-    artifact_type, artifact_name = 'model', f'{run_name}_best'
-    for version in api.artifact_versions(artifact_type, artifact_name):
-        if len(version.aliases) == 0:
-            version.delete()
-
     # We calculate final results on the best model
     model.load_state_dict(torch.load(f'checkpoints/{run_name}_best.pt'))
     model.eval()
@@ -327,6 +316,18 @@ for run_nr in range(args.runs):
             traceback.print_exc()
 
     run.finish()
+
+    # Clean up older artifacts
+    api = wandb.Api(overrides={"project": args.wandb_project, "entity": args.wandb_entity})
+    artifact_type, artifact_name = 'model', f'{run_name}_latest'
+    for version in api.artifact_versions(artifact_type, artifact_name):
+        if len(version.aliases) == 0:
+            version.delete()
+    artifact_type, artifact_name = 'model', f'{run_name}_best'
+    for version in api.artifact_versions(artifact_type, artifact_name):
+        if len(version.aliases) == 0:
+            version.delete()
+
 
     # Delete local files if wanted
     delete_files_after_upload = False
