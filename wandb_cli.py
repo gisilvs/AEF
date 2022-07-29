@@ -40,7 +40,7 @@ parser.add_argument('--data-dir', type=str, default="")
 parser.add_argument('--reload', type=int, default=0)
 parser.add_argument('--previous-val-iters', type=int, default=500, help='validate every x iterations (default: 500')
 parser.add_argument('--reload-from-project', type=str, default='prototyping')
-parser.add_argument('--early-stopping', type=int, default=20000)
+parser.add_argument('--early-stopping', type=int, default=1000000)
 parser.add_argument('--gpus', type=str, default="0", help="which gpu(s) to use (default: 0)")
 
 args = parser.parse_args()

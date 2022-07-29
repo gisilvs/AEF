@@ -8,12 +8,14 @@ import numpy as np
 from torch import Tensor
 from torch.utils.data import DataLoader
 
+from analysis import get_field_from_config
 from datasets import get_test_dataloader
 import util
 import wandb
 from models import model_database
 from models.autoencoder_base import AutoEncoder, GaussianAutoEncoder
 import matplotlib.pyplot as plt
+from PIL import Image
 from sklearn.manifold import TSNE
 
 from models.model_database import get_model
@@ -123,7 +125,7 @@ def plot_latent_space_2d(model: AutoEncoder, test_loader, device, equal_axes=Tru
 
 
 def plot_samples(model: AutoEncoder, img_shape: List = [1, 28, 28], n_rows: int = 10, n_cols: int = 10,
-                 batch_size: int = 100, temperature: int = 1):
+                 batch_size: int = 100, temperature: int = 1, padding: int = 1):
     '''
     Function to plot a grid of samples given a model.
     '''
@@ -137,14 +139,82 @@ def plot_samples(model: AutoEncoder, img_shape: List = [1, 28, 28], n_rows: int 
         n_filled += n_to_sample
 
     fig = plt.figure(figsize=(10, 10))
-    grid_img = torchvision.utils.make_grid(arr, padding=1, pad_value=0., nrow=n_rows)
+    grid_img = torchvision.utils.make_grid(arr, padding=padding, pad_value=0., nrow=n_rows)
     plt.imshow(grid_img.permute(1, 2, 0))
     plt.axis("off")
     return fig
 
+def plot_samples_pil(model: AutoEncoder, img_shape: List = [1, 28, 28], n_rows: int = 10, n_cols: int = 10,
+                 batch_size: int = 100, temperature: int = 1, padding: int = 1):
+    '''
+    Function to plot a grid of samples given a model.
+    '''
+    n_samples = n_rows * n_cols
+    arr = torch.zeros((n_samples, *img_shape))
+    n_filled = 0
+    while n_filled < n_samples:
+        n_to_sample = min(batch_size, n_samples - n_filled)
+        with torch.no_grad():
+            arr[n_filled:n_filled + n_to_sample] = model.sample(n_to_sample, temperature=temperature).cpu().detach()
+        n_filled += n_to_sample
+
+    arr = np.clip(arr, 0., 1.)
+    grid = torchvision.utils.make_grid(arr, padding=padding, pad_value=0., nrow=n_rows, normalize=False)
+    img = torchvision.transforms.ToPILImage()(grid)
+    return img
+
+def plot_reconstructions_pil(model: GaussianAutoEncoder, test_loader: DataLoader, device: torch.device,
+                         img_shape: List = [1, 28, 28], n_rows: int = 4, skip_batches=0, padding: int = 1):
+    '''
+    Function to plot a grid (size n_rows x n_rows) of reconstructions given a model. Each roww of original samples is
+    followed by a row of reconstructions.
+    '''
+    n_cols = n_rows
+    n_images = n_rows * n_cols
+    arr = torch.zeros((n_images, *img_shape))
+
+    cur_row = 0
+    iter_test_loader = iter(test_loader)
+
+    n_images_filled = 0
+    batches_skipped = 0
+    while cur_row < n_rows:
+        while batches_skipped <= skip_batches:
+            image_batch, _ = next(iter_test_loader)
+            batches_skipped += 1
+        batch_idx = 0
+        n_imgs_in_batch_left = image_batch.shape[0]
+        while n_imgs_in_batch_left >= n_cols and cur_row < n_rows:
+            n_imgs_in_batch_left -= n_cols  # We use the first n_cols images of the batch
+            row_batch = image_batch[batch_idx:batch_idx + n_cols]
+            arr[n_images_filled:n_images_filled + n_cols] = row_batch
+            batch_idx += n_cols
+            n_images_filled += n_cols
+            row_batch = util.dequantize(row_batch)
+
+            row_batch = row_batch.to(device)
+            with torch.no_grad():
+
+                z = model.encode(row_batch)
+                if isinstance(z, tuple):
+                    z = z[0]
+                reconstruction = model.decode(z)
+                # NAE returns a single value, VAEs will return mu and sigma
+                if isinstance(reconstruction, tuple):
+                    reconstruction = reconstruction[0]
+                reconstruction = reconstruction.cpu().detach()
+            arr[n_images_filled:n_images_filled + n_cols] = reconstruction
+            n_images_filled += n_cols
+            cur_row += 2  # We filled two rows
+
+    arr = np.clip(arr, 0., 1.)
+    grid = torchvision.utils.make_grid(arr, padding=padding, pad_value=0., nrow=n_rows, normalize=False)
+    img = torchvision.transforms.ToPILImage()(grid)
+    return img
+
 
 def plot_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoader, device: torch.device,
-                         img_shape: List = [1, 28, 28], n_rows: int = 4, skip_batches=0):
+                         img_shape: List = [1, 28, 28], n_rows: int = 4, skip_batches=0, padding: int = 1):
     '''
     Function to plot a grid (size n_rows x n_rows) of reconstructions given a model. Each roww of original samples is
     followed by a row of reconstructions.
@@ -188,7 +258,7 @@ def plot_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoader, de
             cur_row += 2  # We filled two rows
 
     fig = plt.figure(figsize=(10, 10))
-    grid_img = torchvision.utils.make_grid(arr, padding=1, pad_value=0., nrow=n_rows)
+    grid_img = torchvision.utils.make_grid(arr, padding=padding, pad_value=0., nrow=n_rows)
     plt.imshow(grid_img.permute(1, 2, 0))
     plt.axis("off")
     return fig
@@ -251,6 +321,61 @@ def plot_noisy_reconstructions(model: GaussianAutoEncoder, image_batch: Tensor, 
     plt.imshow(grid_img.permute(1, 2, 0))
     plt.axis("off")
     return fig
+
+def plot_noisy_reconstructions_pil(model: GaussianAutoEncoder, image_batch: Tensor, device: torch.device,
+                               noise_distribution: torch.distributions.Distribution,
+                               img_shape: List = [1, 28, 28], n_rows: int = 6, n_cols: int = 6):
+    '''
+    Function to plot a grid (size n_rows x n_rows) of reconstructions given a model. Following row structure:
+    1) image with noise 2) denoised image 3) original image
+    '''
+    n_images = n_rows * n_cols
+    arr = torch.zeros((n_images, *img_shape))
+
+    assert n_rows % 3 == 0
+    assert n_images <= image_batch.shape[0]
+
+    cur_row = 0
+    n_images_filled = 0
+    n_images_out_of_batch = 0
+
+    while cur_row < n_rows:
+        n_imgs_in_batch_left = image_batch.shape[0]
+        while n_imgs_in_batch_left >= n_cols and cur_row < n_rows:
+            n_imgs_in_batch_left -= n_cols  # We use the first n_cols images of the batch
+
+            row_batch = image_batch[n_images_out_of_batch:n_images_out_of_batch + n_cols]
+            n_images_out_of_batch += n_cols
+            noisy_batch = torch.clone(row_batch).detach()
+            noise = noise_distribution.sample()[:n_cols]  # What would be faster: this or reinitializing a
+            # distribution of proper size each time?
+            noisy_batch += noise
+            noisy_batch = torch.clamp(noisy_batch, 0., 1.)
+
+            # Fill noisy images
+            arr[n_images_filled:n_images_filled + n_cols] = noisy_batch
+
+            n_images_filled += n_cols
+
+            noisy_batch = noisy_batch.to(device)
+            with torch.no_grad():
+                z = model.encode(noisy_batch)
+                if isinstance(z, tuple):
+                    z = z[0]
+                reconstruction = model.decode(z)
+                reconstruction = reconstruction.cpu().detach()
+            # Fill reconstructions
+            arr[n_images_filled:n_images_filled + n_cols] = reconstruction
+            n_images_filled += n_cols
+
+            # Fill originals
+            arr[n_images_filled:n_images_filled + n_cols] = row_batch
+            n_images_filled += n_cols
+
+            cur_row += 3  # We filled three rows
+
+    grid = torchvision.utils.make_grid(arr, padding=1, pad_value=0., nrow=n_rows, normalize=True)
+    return grid
 
 def generate_2d_grids():
     datasets = ['mnist', 'fashionmnist', 'kmnist']
@@ -920,7 +1045,561 @@ def generate_visualizations(do_plot_latent_space_greater_than_2=False,
                     plt.close('all')
     run.finish()
 
+def generate_celeba_samples_main():
+    fig, axs = plt.subplots(2, 3, figsize=(6.4, 4.8), dpi=300)
 
+    model_names = ['vae']
+    latent_sizes = [64, 128, 256]
+
+    project_name = 'phase2'
+
+    architecture_size = 'big'
+    img_dim = [3, 32, 32]
+    alpha = 0.05
+
+    api = wandb.Api()
+    use_gpu = True
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+
+    params = {
+        "text.usetex": True,
+        "font.family": "Times New Roman",
+        'axes.titlesize': 'xx-large',
+    }
+    plt.rcParams.update(params)
+    for i in range(10):
+        for model_idx, model_name in enumerate(model_names):
+            for latent_idx, latent_dims in enumerate(latent_sizes):
+                if model_name == 'vae':
+
+                    runs = api.runs(path="nae/phase2", filters={
+                        "config.latent_dims": latent_dims,
+                        "config.model": model_name,
+                        "config.preprocessing": True
+                    })
+                else:
+                    runs = api.runs(path="nae/phase2", filters={
+                        "config.latent_dims": latent_dims,
+                        "config.model": model_name,
+                    })
+                for run in runs:
+                    run_id = run.id
+                    experiment_name = run.name
+
+                    model_name = get_field_from_config(run, "model")
+                    if model_name == 'nae-external':
+                        model_name = 'aef-linear'
+
+                    dataset = get_field_from_config(run, "dataset")
+
+                    decoder = get_field_from_config(run, "decoder")
+                    latent_dims = get_field_from_config(run, "latent_dims", type="int")
+
+                    posterior_flow = get_field_from_config(run, 'posterior_flow')
+                    prior_flow = get_field_from_config(run, 'prior_flow')
+
+                    model = get_model(model_name, architecture_size, decoder, latent_dims, img_dim, alpha,
+                                      posterior_flow,
+                                      prior_flow)
+                    run_name = run.name
+                    artifact = api.artifact(
+                        f'nae/{project_name}/{run_name}_best:latest')  # run.restore(f'{run_name}_best:latest', run_path=run.path, root='./artifacts')
+                    artifact_dir = artifact.download()
+                    artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+                    model.load_state_dict(torch.load(artifact_dir, map_location=device))
+                    model = model.to(device)
+
+                    samples = model.sample(4).detach().cpu()
+                    grid_img = torchvision.utils.make_grid(samples, padding=0, pad_value=0., nrow=2)
+                    axs[model_idx, latent_idx].imshow(grid_img.permute(1, 2, 0))
+                    axs[model_idx, latent_idx].axis("off")
+                    if model_idx == 0:
+                        axs[model_idx, latent_idx].set_title(f'{latent_dims}')
+
+                    if latent_idx == 0:
+                        lbl = 'AEF' if model_idx == 0 else 'VAE'
+                        axs[model_idx, latent_idx].set_xlabel(lbl)
+        fig.tight_layout()
+        plt.savefig(f'plots/celeba_samples_{i}.pdf', dpi=300, bbox_inches='tight')
+        plt.show()
+
+
+def generate_denoising_reconstructions_main():
+    dataset = 'celebahq'
+    models = ['ae', 'vae', 'aef-linear']
+
+    latent_dims = 128
+    api = wandb.Api()
+    img_dim = [3, 32, 32]
+    alpha = 0.05
+    project_name = 'denoising-experiments-2'
+    noise_level = 0.1
+    architecture_size = 'big'
+
+    use_gpu = True
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+
+    noise_distribution = torch.distributions.normal.Normal(torch.zeros([60, *img_dim]),
+                                                           noise_level * torch.ones([60, *img_dim]))
+    test_loader = get_test_dataloader(dataset, data_dir='celebahq')
+    batch_iter = iter(test_loader)
+
+    for i in range(10):
+        image_batch = next(batch_iter)[0]
+        for model_name in models:
+            runs = api.runs(path=f"nae/{project_name}", filters={"config.dataset": dataset,
+                                                                 "config.latent_dims": latent_dims,
+                                                                 "config.model": model_name,
+                                                                 "config.noise_level": noise_level
+                                                                 })
+
+            for run in runs:
+                run_id = run.id
+                experiment_name = run.name
+                try:
+                    decoder = get_field_from_config(run, 'decoder')
+                    posterior_flow = get_field_from_config(run, 'posterior_flow')
+                    if posterior_flow is None:
+                        posterior_flow = 'none'
+                    prior_flow = get_field_from_config(run, 'prior_flow')
+                    if prior_flow is None:
+                        prior_flow = 'none'
+
+                    model = model_database.get_model(model_name, architecture_size, decoder, latent_dims, img_dim,
+                                                     alpha, posterior_flow, prior_flow)
+
+                    run_name = run.name
+                    artifact = api.artifact(
+                        f'nae/{project_name}/{run_name}_best:latest')  # run.restore(f'{run_name}_best:latest', run_path=run.path, root='./artifacts')
+                    artifact_dir = artifact.download()
+                    artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+                    model.load_state_dict(torch.load(artifact_dir, map_location=device))
+                    model = model.to(device)
+
+
+                    torch.manual_seed(3)
+
+                    fig = plot_noisy_reconstructions(model, image_batch, device, noise_distribution,
+                                                     img_dim, n_rows=6, n_cols=6)
+                    plt.savefig(f'denoising_main/denoising_{run_name}_{i}.pdf', bbox_inches='tight', pad_inches=0)
+                except Exception as E:
+                    print(E)
+                    print(f'Failed to plot latent space of {experiment_name}')
+                    traceback.print_exc()
+                    continue
+            plt.close('all')
+
+def generate_denoising_reconstructions_supp():
+    dataset = 'celebahq'
+    models = ['ae', 'vae', 'aef-linear']
+
+    latent_dims = 128
+    api = wandb.Api()
+    img_dim = [3, 32, 32]
+    alpha = 0.05
+    project_name = 'denoising-experiments-2'
+    noise_levels = [0.05, 0.1, 0.2]
+    architecture_size = 'big'
+
+    use_gpu = True
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+
+    for noise_level in noise_levels:
+        noise_distribution = torch.distributions.normal.Normal(torch.zeros([60, *img_dim]),
+                                                               noise_level * torch.ones([60, *img_dim]))
+        test_loader = get_test_dataloader(dataset, data_dir='celebahq')
+        batch_iter = iter(test_loader)
+
+        for i in range(12):
+            image_batch = next(batch_iter)[0]
+        for model_name in models:
+            runs = api.runs(path=f"nae/{project_name}", filters={"config.dataset": dataset,
+                                                                 "config.latent_dims": latent_dims,
+                                                                 "config.model": model_name,
+                                                                 "config.noise_level": noise_level
+                                                                 })
+
+            for run in runs:
+                run_id = run.id
+                experiment_name = run.name
+                try:
+                    decoder = get_field_from_config(run, 'decoder')
+                    posterior_flow = get_field_from_config(run, 'posterior_flow')
+                    if posterior_flow is None:
+                        posterior_flow = 'none'
+                    prior_flow = get_field_from_config(run, 'prior_flow')
+                    if prior_flow is None:
+                        prior_flow = 'none'
+
+                    model = model_database.get_model(model_name, architecture_size, decoder, latent_dims, img_dim,
+                                                     alpha, posterior_flow, prior_flow)
+
+                    run_name = run.name
+                    artifact = api.artifact(
+                        f'nae/{project_name}/{run_name}_best:latest')  # run.restore(f'{run_name}_best:latest', run_path=run.path, root='./artifacts')
+                    artifact_dir = artifact.download()
+                    artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+                    model.load_state_dict(torch.load(artifact_dir, map_location=device))
+                    model = model.to(device)
+
+
+                    torch.manual_seed(3)
+
+                    grid = plot_noisy_reconstructions_pil(model, image_batch, device, noise_distribution,
+                                                          img_dim, n_rows=6, n_cols=6)
+                    img = torchvision.transforms.ToPILImage()(grid)
+                    img.save(f'denoising_celeb/{run_name}.png')
+                    break
+                except Exception as E:
+                    print(E)
+                    print(f'Failed to plot latent space of {experiment_name}')
+                    traceback.print_exc()
+                    continue
+
+
+def generate_plots_abstract():
+    dataset = 'celebahq'
+    models = ['vae', '']
+
+    latent_dims = 256
+    api = wandb.Api()
+    img_dim = [3, 32, 32]
+    alpha = 0.05
+    project_name = 'phase2'
+
+    architecture_size = 'big'
+
+    use_gpu = True
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+
+
+
+    for model_name in models:
+        if model_name == 'vae':
+            runs = api.runs(path=f"nae/{project_name}", filters={"config.dataset": dataset,
+                                                                 "config.latent_dims": latent_dims,
+                                                                 "config.model": model_name,
+                                                                 "config.preprocessing": True
+                                                                 })
+        else:
+            runs = api.runs(path=f"nae/{project_name}", filters={"config.dataset": dataset,
+                                                                 "config.latent_dims": latent_dims,
+                                                                 "config.model": model_name,
+                                                                 })
+
+        for run in runs:
+            test_loader = get_test_dataloader(dataset, data_dir='celebahq')
+            batch_iter = iter(test_loader)
+            for i in range(10):
+                image_batch = next(batch_iter)[0]
+
+                run_id = run.id
+                experiment_name = run.name
+                try:
+                    decoder = get_field_from_config(run, 'decoder')
+                    posterior_flow = get_field_from_config(run, 'posterior_flow')
+                    if posterior_flow is None:
+                        posterior_flow = 'none'
+                    prior_flow = get_field_from_config(run, 'prior_flow')
+                    if prior_flow is None:
+                        prior_flow = 'none'
+
+                    model = model_database.get_model(model_name, architecture_size, decoder, latent_dims, img_dim,
+                                                     alpha, posterior_flow, prior_flow)
+
+                    run_name = run.name
+                    artifact = api.artifact(
+                        f'nae/{project_name}/{run_name}_best:latest')  # run.restore(f'{run_name}_best:latest', run_path=run.path, root='./artifacts')
+                    artifact_dir = artifact.download()
+                    artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+                    model.load_state_dict(torch.load(artifact_dir, map_location=device))
+                    model = model.to(device)
+
+                    torch.manual_seed(3)
+                    n_images = 6
+                    arr = torch.zeros((n_images, *img_dim))
+
+                    cur_row = 0
+
+                    row_batch = image_batch[:3]
+                    arr[:3] = row_batch
+
+                    row_batch = util.dequantize(row_batch)
+
+                    row_batch = row_batch.to(device)
+                    with torch.no_grad():
+
+                        z = model.encode(row_batch)
+                        if isinstance(z, tuple):
+                            z = z[0]
+                        reconstruction = model.decode(z)
+
+                        if isinstance(reconstruction, tuple):
+                            reconstruction = reconstruction[0]
+                        reconstruction = reconstruction.cpu().detach()
+                    arr[3:] = reconstruction
+
+                    fig = plt.figure(figsize=(10, 10))
+                    grid_img = torchvision.utils.make_grid(arr, padding=1, pad_value=0., nrow=3)
+                    plt.imshow(grid_img.permute(1, 2, 0))
+                    plt.axis("off")
+                    plt.savefig(f'plots/recs2/reconstruction_{run_name}_{i}.pdf', bbox_inches='tight', pad_inches=0)
+
+                    # fig = plot_samples(model, img_dim, n_rows=3, n_cols=2)
+                    # plt.savefig(f'plots/samples/samples_{run_name}_{i}.pdf', bbox_inches='tight', pad_inches=0)
+                except Exception as E:
+                    print(E)
+                    print(f'Failed to plot latent space of {experiment_name}')
+                    traceback.print_exc()
+                    continue
+            plt.close('all')
+
+def generate_celeba_samples_supp():
+    model_names = ['nae-external']
+    latent_sizes = [64, 128, 256]
+
+    project_name = 'phase2'
+
+    architecture_size = 'big'
+    img_dim = [3, 32, 32]
+    alpha = 0.05
+
+    api = wandb.Api()
+    use_gpu = True
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+
+    for model_idx, model_name in enumerate(model_names):
+        for latent_idx, latent_dims in enumerate(latent_sizes):
+            runs = api.runs(path="nae/phase2", filters={
+                "config.latent_dims": latent_dims,
+                "config.model": model_name,
+                #"config.preprocessing": True,
+            })
+            for run_idx, run in enumerate(runs):
+                run_id = run.id
+                experiment_name = run.name
+
+                model_name = get_field_from_config(run, "model")
+
+                dataset = get_field_from_config(run, "dataset")
+
+                decoder = get_field_from_config(run, "decoder")
+                latent_dims = get_field_from_config(run, "latent_dims", type="int")
+
+                posterior_flow = get_field_from_config(run, 'posterior_flow')
+                prior_flow = get_field_from_config(run, 'prior_flow')
+
+                model = get_model(model_name, architecture_size, decoder, latent_dims, img_dim, alpha,
+                                  posterior_flow,
+                                  prior_flow)
+                run_name = run.name
+                artifact = api.artifact(
+                    f'nae/{project_name}/{run_name}_best:latest')  # run.restore(f'{run_name}_best:latest', run_path=run.path, root='./artifacts')
+                artifact_dir = artifact.download()
+                artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+                model.load_state_dict(torch.load(artifact_dir, map_location=device))
+                model = model.to(device)
+                for temp in [0.4, 0.6, 0.8, 1.0]: #[0.4, 0.6, 0.8, 1.0]:
+                    for i in range(3):
+                        grid = plot_samples_pil(model, img_dim, n_rows=8, n_cols=8, batch_size=64, temperature=temp)
+                        img = torchvision.transforms.ToPILImage()(grid)
+                        img.save(f'samples/{run_name}_{temp}_{i}.png')
+
+                plt.close("all")
+
+def generate_celeba_samples_main():
+    model_names = ['vae']
+    latent_sizes = [64, 128, 256]
+
+    project_name = 'phase2'
+
+    architecture_size = 'big'
+    img_dim = [3, 32, 32]
+    alpha = 0.05
+
+    api = wandb.Api()
+    use_gpu = True
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+
+    for model_idx, model_name in enumerate(model_names):
+        for latent_idx, latent_dims in enumerate(latent_sizes):
+            runs = api.runs(path="nae/phase2", filters={
+                "config.latent_dims": latent_dims,
+                "config.model": model_name,
+                "config.preprocessing": True,
+            })
+            for run_idx, run in enumerate(runs):
+                run_id = run.id
+                experiment_name = run.name
+
+                model_name = get_field_from_config(run, "model")
+
+                dataset = get_field_from_config(run, "dataset")
+
+                decoder = get_field_from_config(run, "decoder")
+                latent_dims = get_field_from_config(run, "latent_dims", type="int")
+
+                posterior_flow = get_field_from_config(run, 'posterior_flow')
+                prior_flow = get_field_from_config(run, 'prior_flow')
+
+                model = get_model(model_name, architecture_size, decoder, latent_dims, img_dim, alpha,
+                                  posterior_flow,
+                                  prior_flow)
+                run_name = run.name
+                artifact = api.artifact(
+                    f'nae/{project_name}/{run_name}_best:latest')  # run.restore(f'{run_name}_best:latest', run_path=run.path, root='./artifacts')
+                artifact_dir = artifact.download()
+                artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+                model.load_state_dict(torch.load(artifact_dir, map_location=device))
+                model = model.to(device)
+
+                for i in range(5):
+                    img = plot_samples_pil(model, img_dim, n_rows=2, n_cols=2, batch_size=64, padding=0, temperature=0.8)
+
+                    img.save(f'celeba_samples2/{run_name}_{i}.png')
+
+
+
+
+def generate_celeba_reconstructions_supp():
+    model_names = ['vae']
+    latent_sizes = [64, 128, 256]
+
+    project_name = 'phase2'
+
+    architecture_size = 'big'
+    img_dim = [3, 32, 32]
+    alpha = 0.05
+
+    api = wandb.Api()
+    use_gpu = True
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+    k = 0
+    for model_idx, model_name in enumerate(model_names):
+        for latent_idx, latent_dims in enumerate(latent_sizes):
+            runs = api.runs(path="nae/phase2", filters={
+                "config.latent_dims": latent_dims,
+                "config.model": model_name,
+                "config.preprocessing": True
+            })
+            for run_idx, run in enumerate(runs):
+                run_id = run.id
+                experiment_name = run.name
+
+                model_name = get_field_from_config(run, "model")
+
+                dataset = get_field_from_config(run, "dataset")
+
+                decoder = get_field_from_config(run, "decoder")
+                latent_dims = get_field_from_config(run, "latent_dims", type="int")
+
+                posterior_flow = get_field_from_config(run, 'posterior_flow')
+                prior_flow = get_field_from_config(run, 'prior_flow')
+
+                model = get_model(model_name, architecture_size, decoder, latent_dims, img_dim, alpha,
+                                  posterior_flow,
+                                  prior_flow)
+                run_name = run.name
+                artifact = api.artifact(
+                    f'nae/{project_name}/{run_name}_best:latest')  # run.restore(f'{run_name}_best:latest', run_path=run.path, root='./artifacts')
+                artifact_dir = artifact.download()
+                artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+                model.load_state_dict(torch.load(artifact_dir, map_location=device))
+                model = model.to(device)
+                test_loader = get_test_dataloader(dataset, data_dir="celebahq")
+                for i in range(2):
+                    # fig = plot_reconstructions(model, test_loader, device, img_dim, n_rows=8,
+                    #                            skip_batches=k+i)
+                    #
+                    # plt.savefig(f'recs/{run_name}_{i}.pdf', pad_inches=0, bbox_inches='tight')
+                    grid = plot_reconstructions_pil(model, test_loader, device, img_dim, n_rows=8,
+                                               skip_batches=k+i)
+                    img = torchvision.transforms.ToPILImage()(grid)
+                    img.save(f'recspng/{run_name}_{i}.png')
+
+
+
+def generate_phase1_reconstructions_and_samples():
+
+    datasets = ['mnist', 'fashionmnist', 'kmnist']
+    model_names = ['vae']
+    latent_dims = 32
+    api = wandb.Api()
+    architecture_size = 'small'
+    img_dims = [1,28,28]
+    alpha = 1e-6
+
+    use_gpu = True
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+
+
+    for dataset in datasets:
+        for model_name in model_names:
+            if model_name == 'vae':
+                model_name = 'vae'
+                runs = api.runs(path=f"nae/phase1",
+                                filters={"config.dataset": dataset,
+                                         "config.latent_dims": latent_dims,
+                                         "config.model": 'vae',
+                                         "config.preprocessing": True
+                                         })
+            else:
+                runs = api.runs(path=f"nae/phase1",
+                                filters={"config.dataset": dataset,
+                                         "config.latent_dims": latent_dims,
+                                         "config.model": model_name,
+                                         })
+
+            for run in runs:
+                run_id = run.id
+                experiment_name = run.name
+
+                try:
+                    posterior_flow = get_field_from_config(run, 'posterior_flow')
+                    if posterior_flow is None:
+                        posterior_flow = 'none'
+                    prior_flow = get_field_from_config(run, 'prior_flow')
+                    if prior_flow is None:
+                        prior_flow = 'none'
+
+                    decoder = get_field_from_config(run, 'decoder')
+                    model = get_model(model_name, architecture_size, decoder, latent_dims, img_dims, alpha,
+                                      posterior_flow,
+                                      prior_flow)
+                    run_name = run.name
+                    artifact = api.artifact(
+                        f'nae/phase1/{run_name}_best:latest')  # run.restore(f'{run_name}_best:latest', run_path=run.path, root='./artifacts')
+                    artifact_dir = artifact.download()
+                    artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+                    model.load_state_dict(torch.load(artifact_dir, map_location=device))
+                    model = model.to(device)
+
+                    test_loader = get_test_dataloader(dataset)
+
+                    for i in range(5):
+                        img = plot_reconstructions_pil(model, test_loader, device, img_dims, n_rows=8,
+                                                        skip_batches=i)
+
+                        img.save(f'mnist_recs/{run_name}_{i}.png')
+
+                        img = plot_samples_pil(model, img_dims, n_rows=8, n_cols=8)
+
+                        img.save(f'mnist_samples/{run_name}_{i}.png')
+
+                except Exception as E:
+                    print(E)
+                    print(f'Failed to plot samples of {experiment_name}')
+                    traceback.print_exc()
+                    continue
+                break
 
 if __name__ == "__main__":
-    generate_denoising_reconstructions()
+    generate_celeba_samples_main()
+    #generate_celeba_samples_supp()
+    #generate_denoising_reconstructions_main()
+    # rc = {
+    #     "text.usetex": True,
+    #     "font.family": "Times New Roman",
+    # }
+    # plt.rcParams.update(rc)
+    # generate_denoising_reconstructions_main()
