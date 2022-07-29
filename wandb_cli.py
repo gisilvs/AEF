@@ -290,8 +290,8 @@ for run_nr in range(args.runs):
     with torch.no_grad():
         # Approximate log likelihood if model in VAE family
         try:
-            print(f'[Run {run_nr}] Approximating log-likelihood of test set...')
             if has_importance_sampling(model):
+                print(f'[Run {run_nr}] Approximating log-likelihood of test set...')
                 test_ll_averager = make_averager()
                 for test_batch, _ in test_dataloader:
                     test_batch = dequantize(test_batch)
