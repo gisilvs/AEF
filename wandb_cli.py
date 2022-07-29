@@ -37,9 +37,7 @@ parser.add_argument('--custom-name', type=str, help='custom name for wandb track
 parser.add_argument('--batch-size', type=int, default=128,
                     help='input batch size for training and testing (default: 128)')
 parser.add_argument('--data-dir', type=str, default="")
-parser.add_argument('--reload', type=int, default=0)
-parser.add_argument('--previous-val-iters', type=int, default=500, help='validate every x iterations (default: 500')
-parser.add_argument('--reload-from-project', type=str, default='prototyping')
+
 parser.add_argument('--early-stopping', type=int, default=1000000)
 parser.add_argument('--gpus', type=str, default="0", help="which gpu(s) to use (default: 0)")
 
@@ -65,7 +63,6 @@ upload_every_n_iterations = args.upload_iters
 architecture_size = args.architecture
 posterior_flow = args.posterior_flow
 prior_flow = args.prior_flow
-reload = True if args.reload == 1 else False
 early_stopping_threshold = args.early_stopping
 gpu_nrs = args.gpus
 
