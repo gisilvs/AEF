@@ -322,6 +322,7 @@ def plot_noisy_reconstructions(model: GaussianAutoEncoder, image_batch: Tensor, 
     plt.axis("off")
     return fig
 
+
 def plot_noisy_reconstructions_pil(model: GaussianAutoEncoder, image_batch: Tensor, device: torch.device,
                                noise_distribution: torch.distributions.Distribution,
                                img_shape: List = [1, 28, 28], n_rows: int = 6, n_cols: int = 6):
@@ -374,8 +375,10 @@ def plot_noisy_reconstructions_pil(model: GaussianAutoEncoder, image_batch: Tens
 
             cur_row += 3  # We filled three rows
 
-    grid = torchvision.utils.make_grid(arr, padding=1, pad_value=0., nrow=n_rows, normalize=True)
-    return grid
+    arr = np.clip(arr, 0., 1.)
+    grid = torchvision.utils.make_grid(arr, padding=1, pad_value=0., nrow=n_rows)
+    img = torchvision.transforms.ToPILImage()(grid)
+    return img
 
 def generate_2d_grids():
     datasets = ['mnist', 'fashionmnist', 'kmnist']
