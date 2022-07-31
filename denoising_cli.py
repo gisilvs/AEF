@@ -12,7 +12,7 @@ import metrics
 from models.model_database import get_model
 
 from util import make_averager, dequantize, plot_image_grid, bits_per_pixel, count_parameters, has_importance_sampling, \
-    load_latest_model
+    load_latest_model, get_random_id
 from visualize import plot_noisy_reconstructions, plot_noisy_reconstructions_pil
 
 parser = argparse.ArgumentParser(description='AEF Denoising Experiments')
@@ -115,14 +115,14 @@ for run_nr in range(args.runs):
     if args.custom_name is not None:
         run_name = args.custom_name
     else:
+        run_id = get_random_id(4)
         latent_size_str = f"_latent_size_{args.latent_dims}" if model_name != 'MAF' else ""
         decoder_str = f"_decoder_{args.decoder}" if model_name in model_name != 'MAF' else ""
         architecture_str = f"_{architecture_size}" if model_name in model_name != 'MAF' else ""
         post_flow_str = f"_post_{posterior_flow}" if posterior_flow != 'none' else ""
         prior_flow_str = f"_prior_{prior_flow}" if prior_flow != 'none' else ""
         noise_level_str = f"_noise_{noise_level}"
-        run_name = f'{args.model}{architecture_str}_{args.dataset}{noise_level_str}_run_{run_nr}{decoder_str}{post_flow_str}{prior_flow_str}'
-
+        run_name = f'{args.model}{architecture_str}_{args.dataset}{noise_level_str}{post_flow_str}{prior_flow_str}_{run_id}'
 
 
     run = wandb.init(project=args.wandb_project, entity=args.wandb_entity,
@@ -166,6 +166,8 @@ for run_nr in range(args.runs):
 
                 grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(),
                                                            max_norm=200.)
+
+                optimizer.step()
 
                 # We validate first iteration, every n iterations, and at the last iteration
                 if (n_iterations_done % validate_every_n_iterations) == 0 or (n_iterations_done == n_iterations - 1):
