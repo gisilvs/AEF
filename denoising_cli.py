@@ -67,6 +67,7 @@ posterior_flow = args.posterior_flow
 prior_flow = args.prior_flow
 gpu_nrs = args.gpus
 early_stopping_threshold = args.early_stopping
+data_dir = None if args.data_dir == "" else args.data_dir
 
 os.environ["CUDA_VISIBLE_DEVICES"] = gpu_nrs
 gpu_nr = gpu_nrs[0]
@@ -336,7 +337,8 @@ for run_nr in range(args.runs):
 
         # Calculate IFE
         incept = metrics.InceptionV3().to(device)
-        ife = metrics.calculate_ife(model, dataset, device, noise_distribution, batch_size=batch_size, incept=incept)
+        ife = metrics.calculate_ife(model, dataset, device, noise_distribution, batch_size=batch_size, incept=incept,
+                                    data_dir=data_dir)
         wandb.summary['ife'] = ife
 
     run.finish()
