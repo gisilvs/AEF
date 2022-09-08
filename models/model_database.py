@@ -81,7 +81,7 @@ def get_model(model_name: str, architecture_size: str, decoder: str,
 
         return StandardAutoEncoder(encoder, decoder, preprocessing_layers)
     if 'aef' in model_name:
-        core_encoder, prior_flow = get_flows(latent_dims, model_name, posterior_flow_name, prior_flow_name,
+        core_encoder, prior_flow = get_flows(latent_dims, posterior_flow_name, prior_flow_name,
                                                   architecture_size)
         if model_name == 'aef-center':
             mask = util.get_center_mask(img_shape, latent_dims)
@@ -99,7 +99,7 @@ def get_model(model_name: str, architecture_size: str, decoder: str,
                                                       preprocessing_layers=preprocessing_layers)
 
     else:
-        posterior_flow, prior_flow = get_flows(latent_dims, model_name, posterior_flow_name, prior_flow_name,
+        posterior_flow, prior_flow = get_flows(latent_dims, posterior_flow_name, prior_flow_name,
                                                architecture_size)
 
         model = model_dict[model_name](encoder=encoder, decoder=decoder, posterior_bijector=posterior_flow,
@@ -107,7 +107,7 @@ def get_model(model_name: str, architecture_size: str, decoder: str,
     return model
 
 
-def get_flows(latent_dims, model_name, posterior_flow_name, prior_flow_name, architecture_size):
+def get_flows(latent_dims, posterior_flow_name, prior_flow_name, architecture_size):
     if architecture_size == 'big':
         flow_features = 256
         num_layers = 4
@@ -131,8 +131,6 @@ def get_flows(latent_dims, model_name, posterior_flow_name, prior_flow_name, arc
                                                         act_norm_between_layers=True,
                                                         is_inverse=True)
     elif posterior_flow_name == 'none':
-        if 'aef' in model_name:
-            print('Warning: you have selected an AEF model without a posterior flow.')
         post_flow = IdentityTransform()
     else:
         raise ValueError
@@ -150,8 +148,6 @@ def get_flows(latent_dims, model_name, posterior_flow_name, prior_flow_name, arc
                                                          act_norm_between_layers=True,
                                                          is_inverse=True)
     elif prior_flow_name == 'none':
-        if 'aef' in model_name:
-            print('Warning: you have selected an AEF model without a prior flow.')
         prior_flow = IdentityTransform()
     else:
         raise ValueError
