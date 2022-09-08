@@ -13,7 +13,7 @@ from models.model_database import get_model
 
 from util import make_averager, dequantize, plot_image_grid, bits_per_pixel, count_parameters, has_importance_sampling, \
     load_latest_model, get_random_id
-from visualize import plot_noisy_reconstructions, plot_noisy_reconstructions_pil
+from visualize import plot_noisy_reconstructions, plot_noisy_reconstructions
 
 parser = argparse.ArgumentParser(description='AEF Denoising Experiments')
 parser.add_argument('--wandb-entity', type=str, default='nae', help='wandb entity')
@@ -182,10 +182,10 @@ for run_nr in range(args.runs):
                             log_dictionary['samples'] = sample_img
 
                         # Create reconstruction plot
-                        training_reconstruction_img = wandb.Image(plot_noisy_reconstructions_pil(model, training_batch,
-                                                                                 device,
-                                                                                 noise_distribution, image_dim,
-                                                                                 n_rows=6, n_cols=6))
+                        training_reconstruction_img = wandb.Image(plot_noisy_reconstructions(model, training_batch,
+                                                                                             device,
+                                                                                             noise_distribution, image_dim,
+                                                                                             n_rows=6, n_cols=6))
                         log_dictionary['training_reconstructions'] = training_reconstruction_img
 
                         # Validation loss and reconstruction error, in both cases using noisy images
@@ -331,8 +331,8 @@ for run_nr in range(args.runs):
         for i in range(5):
             test_batch, _ = next(test_iterator)
             test_batch = test_batch.to(device)
-            reconstruction_img = wandb.Image(plot_noisy_reconstructions_pil(model, test_batch, device,
-                                                            noise_distribution, image_dim, n_rows=9, n_cols=9))
+            reconstruction_img = wandb.Image(plot_noisy_reconstructions(model, test_batch, device,
+                                                                        noise_distribution, image_dim, n_rows=9, n_cols=9))
             run.log({'final_noisy_reconstructions_test': reconstruction_img})
 
         # Calculate IFE

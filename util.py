@@ -5,12 +5,13 @@ import pandas as pd
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
+import wandb
 from torch.distributions.normal import Normal
 
 import os
 import torchvision
 
-import models.model_database
+from models import model_database
 
 
 def has_importance_sampling(model):
@@ -156,7 +157,7 @@ def download_artifact_and_get_path(run, project_name, experiment_name, download_
 
 def load_best_model(run, project_name, model_name, experiment_name, device, latent_dims, image_dim, alpha,
                     decoder, architecture_size, prior_flow, posterior_flow, version='latest'):
-    model = models.get_model(model_name, architecture_size, decoder, latent_dims, image_dim, alpha, posterior_flow,
+    model = model_database.get_model(model_name, architecture_size, decoder, latent_dims, image_dim, alpha, posterior_flow,
                              prior_flow)  # needed as some components such as actnorm need to be initialized
     model.loss_function(model.sample(10))  # needed as some components such as actnorm need to be initialized
 
@@ -167,20 +168,24 @@ def load_best_model(run, project_name, model_name, experiment_name, device, late
 
 
 def load_latest_model(run, project_name, experiment_name, device, model, optimizer, validate_every_n_iterations,
-                      version='latest'):
+                      version='latest', log_only_on_val_points=True):
     latest_model_path = download_artifact_and_get_path(run, project_name, experiment_name, download_best=False,
                                                        version=version)
     best_model_path = download_artifact_and_get_path(run, project_name, experiment_name, download_best=True,
                                                      version=version)
 
     # Get previous val_iters
-
+    # No, we just assume val_iters is equal to what it was before
 
     # Move files to checkpoints so that they can be uploaded
     if not os.path.exists(f'checkpoints/{experiment_name}_continued_latest.pt'):
         os.rename(latest_model_path, f'checkpoints/{experiment_name}_continued_latest.pt')
+    else:
+        print(f'checkpoints/{experiment_name}_continued_latest.pt already exists. Using this file.')
     if not os.path.exists(f'checkpoints/{experiment_name}_continued_best.pt'):
         os.rename(best_model_path, f'checkpoints/{experiment_name}_continued_best.pt')
+    else:
+        print(f'checkpoints/{experiment_name}_continued_best.pt already exists. Using this file.')
 
     checkpoint = torch.load(f'checkpoints/{experiment_name}_continued_latest.pt', map_location=torch.device(device))
     n_iterations_done = checkpoint['n_iterations_done'] + 1
@@ -189,14 +194,24 @@ def load_latest_model(run, project_name, experiment_name, device, model, optimiz
     best_loss = checkpoint['best_loss']
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
+    # TODO: return best iteration val_loss
+    val_iters_arr = np.array(validation_losses)
+    best_iteration = np.argmin(val_iters_arr) * validate_every_n_iterations
+
+    # Upload previous losses to wandb
+    # TODO: check if there's a faster/better way
     j = 0
     for i in range(n_iterations_done):
         log_dict = {'train_loss': iteration_losses[i]}
-        if i % validate_every_n_iterations == 0 and j < len(validation_losses):
+        if (i % validate_every_n_iterations == 0) and (j < len(validation_losses)) or (i == n_iterations_done - 1):
             log_dict['val_loss'] = validation_losses[j]
             j += 1
-        run.log(log_dict)
-    return n_iterations_done, iteration_losses, validation_losses, best_loss, model, optimizer
+            if log_only_on_val_points:
+                run.log(log_dict, step=i)
+        if not log_only_on_val_points:
+            run.log(log_dict)
+    return n_iterations_done, iteration_losses, validation_losses, best_loss, model, optimizer, best_iteration
 
 
 def plot_image_grid(samples, cols, padding=1, pad_value=0.):
@@ -330,3 +345,11 @@ def get_corner_mask(image_shape: List, core_size: int):
                     row = base_number_rows
                     column = base_number_cols
     return mask
+
+def get_posterior_scale_aef_linear(dataset, latent_dims):
+    dict = {'mnist': {2: 2, 4: 0.1, 8: 0.01, 16: 0.001, 32: 0.0005},
+            'fashionmnist': {2: 2, 4: 0.1, 8: 0.01, 16: 0.005, 32: 0.0005},
+            'kmnist': {2: 2, 4: 0.075, 8: 0.025, 16: 0.005, 32: 0.00075},
+            'celebahq': {64: 0.01, 128: 0.01, 256: 0.00025},
+            'celebahq64': {128: 1, 256: 1, 512: 1}}
+    return dict[dataset][latent_dims]

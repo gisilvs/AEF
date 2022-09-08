@@ -2,7 +2,6 @@ import argparse
 import os
 import traceback
 
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
@@ -11,18 +10,19 @@ from datasets import get_train_val_dataloaders, get_test_dataloader
 from models.model_database import get_model
 
 from metrics import InceptionV3, calculate_fid
-from util import make_averager, dequantize, plot_image_grid, bits_per_pixel, count_parameters, load_latest_model, \
-    has_importance_sampling, get_random_id
-from visualize import plot_reconstructions, plot_reconstructions_pil
+from util import make_averager, dequantize, plot_image_grid, bits_per_pixel, count_parameters, \
+    has_importance_sampling, get_random_id, get_posterior_scale_aef_linear
+from visualize import plot_reconstructions
 
 parser = argparse.ArgumentParser(description='AEF Experiments')
 parser.add_argument('--wandb-entity', type=str, help='wandb entity')
 parser.add_argument('--wandb-project', type=str, help='wandb project')
-parser.add_argument('--model', type=str, help='aef-center | aef-corner | aef-linear | vae | iwae | vae-iaf | maf')
+parser.add_argument('--model', type=str, help='aef-center | aef-corner | aef-linear | vae')
 parser.add_argument('--architecture', type=str, default='small', help='big | small (default)')
 parser.add_argument('--posterior-flow', type=str, default='none', help='none (default) | maf | iaf')
 parser.add_argument('--prior-flow', type=str, default='none', help='none (default) | maf | iaf')
-parser.add_argument('--dataset', type=str, help='mnist | kmnist | fashionmnist | cifar10')
+parser.add_argument('--dataset', type=str, help='mnist | kmnist | fashionmnist | cifar10 | celebahq | celebahq64 | '
+                                                'imagenet')
 parser.add_argument('--latent-dims', type=int, help='size of the latent space')
 parser.add_argument('--runs', type=int, default=1, help='number of runs to exceute')
 parser.add_argument('--iterations', type=int, default=100000, help='amount of iterations to train (default: 100,000)')
@@ -72,14 +72,18 @@ gpu_nr = gpu_nrs[0]
 device = torch.device(f"cuda:{gpu_nr}" if use_gpu and torch.cuda.is_available() else "cpu")
 
 print(f"Starting {args.runs} runs with the following configuration:")
-print(f"Model: {model_name}\nDataset: {dataset}\nLatent dimensions: {latent_dims}\nDecoder: {decoder}\nLearning rate: {learning_rate}\nNumber of iterations: {n_iterations}\nBatch size: {batch_size}")
+print(f"Model: {model_name}\nPosterior flow: {posterior_flow}\nPrior flow: {prior_flow}\nDataset: {dataset}\n"
+      f"Latent dimensions: {latent_dims}\nArchitecture size: {architecture_size}\nDecoder: {decoder}\n"
+      f"Learning rate: {learning_rate}\nNumber of iterations: {n_iterations}\nBatch size: {batch_size}\n"
+      f"Early stopping threshold: {early_stopping_threshold}")
 
 for run_nr in range(args.runs):
     p_validation = 0.1
     if dataset == 'imagenet':
         p_validation = 0.01
     train_dataloader, validation_dataloader, image_dim, alpha = get_train_val_dataloaders(dataset, batch_size,
-                                                                                          p_validation, seed=args.seed,                                                                           data_dir=args.data_dir)
+                                                                                          p_validation, seed=args.seed,
+                                                                                          data_dir=args.data_dir)
     reconstruction_dataloader = get_test_dataloader(dataset, batch_size, shuffle=True, data_dir=args.data_dir)
     test_dataloader = get_test_dataloader(dataset, batch_size, data_dir=args.data_dir)
     n_pixels = np.prod(image_dim)
@@ -106,7 +110,8 @@ for run_nr in range(args.runs):
         "posterior_flow": posterior_flow,
         "prior_flow": prior_flow,
         "preprocessing": True,
-        "early_stopping": early_stopping_threshold
+        "early_stopping": early_stopping_threshold,
+        "validate_every_n_iterations": validate_every_n_iterations
     }
 
     if args.custom_name is not None:
@@ -168,8 +173,8 @@ for run_nr in range(args.runs):
 
 
                         if model_name != 'maf':
-                            reconstruction_img = wandb.Image(plot_reconstructions_pil(model, reconstruction_dataloader, device,
-                                                                      image_dim, n_rows=4))
+                            reconstruction_img = wandb.Image(plot_reconstructions(model, reconstruction_dataloader, device,
+                                                                                  image_dim, n_rows=4))
                             log_dictionary['reconstructions'] = reconstruction_img
 
                         val_loss_averager = make_averager()
@@ -274,18 +279,30 @@ for run_nr in range(args.runs):
 
     # This can run out of memory, so we do this at the end
     with torch.no_grad():
-        # Approximate log likelihood if model in VAE family
+        # Approximate log likelihood if model is not exact
         try:
             if has_importance_sampling(model):
                 print(f'[Run {run_nr}] Approximating log-likelihood of test set...')
-                test_ll_averager = make_averager()
-                for test_batch, _ in test_dataloader:
-                    test_batch = dequantize(test_batch)
-                    test_batch = test_batch.to(device)
-                    for iw_iter in range(20):
-                        log_likelihood = torch.mean(model.approximate_marginal(test_batch, n_samples=128))
-                        test_ll_averager(log_likelihood.item())
-                test_ll = test_ll_averager(None)
+                if model_name == 'aef-linear':
+                    sigma_importance = get_posterior_scale_aef_linear(dataset, latent_dims)
+                    test_ll_averager = make_averager()
+                    for test_batch, _ in test_dataloader:
+                        test_batch = dequantize(test_batch)
+                        test_batch = test_batch.to(device)
+                        for iw_iter in range(20):
+                            log_likelihood = torch.mean(model.approximate_marginal(test_batch, std=sigma_importance,
+                                                                                   n_samples=128))
+                            test_ll_averager(log_likelihood.item())
+                    test_ll = test_ll_averager(None)
+                else:
+                    test_ll_averager = make_averager()
+                    for test_batch, _ in test_dataloader:
+                        test_batch = dequantize(test_batch)
+                        test_batch = test_batch.to(device)
+                        for iw_iter in range(20):
+                            log_likelihood = torch.mean(model.approximate_marginal(test_batch, n_samples=128))
+                            test_ll_averager(log_likelihood.item())
+                    test_ll = test_ll_averager(None)
                 # We only add this value to the summary if we approximate the log likelihood (since we provide test_loss
                 # in both cases).
 
@@ -305,7 +322,7 @@ for run_nr in range(args.runs):
             # Calculate FID
             print(f'[Run {run_nr}] Calculating FID score...')
             incept = InceptionV3().to(device)
-            fid = calculate_fid(model, dataset, device, batch_size=128, incept=incept, data_dir=args.data_dir)
+            fid = calculate_fid(model, dataset, device, batch_size=batch_size, incept=incept, data_dir=args.data_dir)
             wandb.summary['fid'] = fid
         except Exception as e:
             print(f'Failed to calculate FID due to error below.')
