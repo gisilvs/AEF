@@ -6,12 +6,13 @@ import torch
 import torch.nn.functional as F
 
 import metrics
+import util
 import wandb
 import pandas as pd
 
 from models.model_database import get_model
-from util import load_best_model, vae_log_prob, make_averager, dequantize, bits_per_pixel
-from datasets import get_test_dataloader
+from util import load_best_model, vae_log_prob, make_averager, dequantize, bits_per_pixel, has_importance_sampling
+from datasets import get_test_dataloader, get_train_val_dataloaders
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -628,267 +629,7 @@ def generate_denoising_table(df, latent_dims=32):
 
 
 
-def denoising_plot(df):
-    datasets = ['mnist', 'kmnist', 'fashionmnist']
-    dataset_titles = {'mnist':'MNIST', 'kmnist': 'KMNIST', 'fashionmnist' : 'FashionMNIST'}
-    models = ['ae', 'nae-external', 'vae-iaf-maf']
-    model_titles = ['AE', 'VAE-IAF', 'IAE (linear)']
-    noise_levels = [0.25, 0.5, 0.75]
 
-
-    # for dataset_idx, dataset in enumerate(datasets):
-    #     mean_rce = np.zeros((len(models), len(noise_levels)))
-    #     se_rce = np.zeros((len(models), len(noise_levels)))
-    #     for model_idx, model_name in enumerate(models):
-    #             for noise_idx, noise_level in enumerate(noise_levels):
-    #                 runs = df.loc[(df.loc[:, 'model'] == model_name) & (df.loc[:, 'dataset'] == dataset) & (
-    #                             df.loc[:, 'noise_level'] == noise_level)]
-    #                 # print(f'{model_name} {dataset} {noise_level} nr. of runs: {len(runs)}')
-    #                 mean_rce[model_idx, dataset_idx, noise_idx] = runs.loc[:, 'test_rce_with_noise'].mean(axis=0)
-    #                 se_rce[model_idx, dataset_idx] = 1.96 * runs.loc[:, 'test_rce_with_noise'].sem(axis=0)
-    # Replace values
-
-    plt.rcParams['axes.axisbelow'] = True
-    row_indexer = (df.loc[:, 'model'] == 'vae') \
-                  & (df.loc[:, 'posterior_flow'] == 'iaf') \
-                  & (df.loc[:, 'prior_flow'] == 'maf')
-    df.loc[row_indexer, 'model'] = 'vae-iaf-maf'
-
-    for dataset in datasets:
-        df_to_use = df.loc[df.loc[:, 'dataset'] == dataset]
-        df_to_use = df_to_use.loc[df_to_use.loc[:, 'noise_level'].isin(noise_levels)]
-        df_to_use = df_to_use.loc[df_to_use.loc[:, 'model'].isin(models)]
-        df_to_use = df_to_use.replace(to_replace={'ae': "AE", 'vae-iaf-maf': "VAE-IAF-MAF", 'nae-external': 'AEF'})
-        df_to_use = df_to_use.sort_values(by=['model'])
-
-        fig = plt.figure()
-        ax = sns.pointplot(x="noise_level", y="test_rce_with_noise", hue="model", data=df_to_use, ci=95)
-        ax.set_facecolor('lavender')
-        ax.yaxis.set_major_locator(plt.MaxNLocator(4))
-        ax.grid(visible=True, which='major', axis='both', color='w')
-
-        ax.legend(ncol=3)
-        ax.set_xlabel('Noise level')
-        ax.set_ylabel('Avg. reconstruction error')
-        plt.title(dataset_titles[dataset])
-        plt.savefig(f'plots/denoising_{dataset}.pdf')
-
-def phase1_bpp_plot(df, broken_axis=True):
-    datasets = ['mnist', 'kmnist', 'fashionmnist']
-    models = ['ae', 'vae-iaf', 'nae-external']
-    dataset_titles = {'mnist': 'MNIST', 'kmnist': 'KMNIST', 'fashionmnist': 'FashionMNIST'}
-
-
-    vae_models = ['vae', 'iwae', 'vae-iaf']
-    nae_models = ['nae-external', 'nae-corner', 'nae-center']
-
-    # Replace names
-
-
-
-    df_fixed = df.loc[(df.loc[:,'latent_dims'] <= 32) & (df.loc[:, 'model'] != 'maf'), :]
-    row_indexer = (df_fixed.loc[:, 'model'] == 'vae') \
-                  & (df_fixed.loc[:, 'posterior_flow'] == 'iaf') \
-                  & (df_fixed.loc[:, 'prior_flow'] == 'maf')
-    df_fixed.loc[row_indexer, 'model'] = 'vae-iaf-maf'
-
-
-    # todo
-    # rc = {
-    #     "text.usetex": True,
-    #     "font.family": "Times New Roman",
-    #     }
-    # plt.rcParams.update(rc)
-
-    for dataset in datasets:
-
-        maf_mean = df.loc[(df.loc[:, 'model'] == 'maf') & (df.loc[:, 'dataset'] == dataset), 'test_bpp_adjusted'].mean()
-
-        df_to_use = df_fixed[df.loc[:, 'dataset'] == dataset]
-        #df_to_use = df_to_use[df.loc[:, 'model'].isin(['vae', 'vae-iaf', 'iwae'])]
-        df_to_use = df_to_use.replace(to_replace={'iwae': "vae-iwae"}) #hack to get right ordering
-        df_to_use = df_to_use.sort_values(by=['model'])
-        df_to_use = df_to_use.replace(to_replace={'vae-iwae': "iwae"})
-        df_to_use = df_to_use.replace(to_replace={'vae': "VAE",
-                                     'iwae': "IWAE",
-                                     'vae-iaf': "VAE-IAF",
-                                     'vae-iaf-maf': "VAE-IAF-MAF",
-                                     'nae-center': 'IAE (center)',
-                                     'nae-corner': 'IAE (corner)',
-                                     'nae-external': 'IAE (linear)'})
-
-        if not broken_axis:
-            ax = sns.pointplot(x="latent_dims", y="test_bpp_adjusted", hue="model", data=df_to_use, ci=95)
-        else:
-
-            top_scores = df_to_use.loc[df.loc[:, 'model'].isin(vae_models), 'test_bpp_adjusted']
-            bottom_scores = df_to_use.loc[df.loc[:, 'model'].isin(nae_models), 'test_bpp_adjusted']
-            max_top, min_top = top_scores.max(), top_scores.min()
-            top_range = max_top - min_top
-            max_bottom, min_bottom = bottom_scores.max(), bottom_scores.min()
-            bottom_range = max_bottom - min_bottom
-
-
-            fig, (ax_top, ax_bottom) = plt.subplots(2, 1, sharex=True, dpi=300, figsize=(6,6))
-            fig.subplots_adjust(hspace=0.05)  # adjust space between axes
-
-            sns.pointplot(x="latent_dims", y="test_bpp_adjusted", hue="model", data=df_to_use, ci=95, ax=ax_top)
-            # ax_top.xaxis.set_major_locator(MultipleLocator(top_range/6))
-            # ax_top.yaxis.set_major_locator(MultipleLocator(top_range/6))
-
-            #sns.set_theme()
-            sns.pointplot(x="latent_dims", y="test_bpp_adjusted", hue="model", data=df_to_use, ci=95, ax=ax_bottom)
-
-            maf_line_handle = ax_bottom.axhline(y=maf_mean, c='k', linestyle='--', label='MAF')
-
-            ax_top.grid(visible=True, which='major', axis='both', color='w')
-            ax_bottom.grid(visible=True, which='major', axis='both', color='w')
-            #sns.set_theme()
-            ax_top.set_facecolor('lavender')
-            ax_bottom.set_facecolor('lavender')
-            ax_top.yaxis.set_major_locator(plt.MaxNLocator(4))
-            ax_bottom.yaxis.set_major_locator(plt.MaxNLocator(4))
-
-
-
-            ax_top.set_ylim(min_top - 0.2 * top_range, max_top + 0.5 * top_range)
-            ax_bottom.set_ylim(min_bottom - 0.2 * bottom_range, max_bottom + 0.2 * bottom_range)
-
-            sns.despine(ax=ax_bottom)
-            sns.despine(ax=ax_top, bottom=True)
-
-
-            ax = ax_top
-            d = .015  # how big to make the diagonal lines in axes coordinates
-            # arguments to pass to plot, just so we don't keep repeating them
-            kwargs = dict(transform=ax.transAxes, color='k', clip_on=False)
-            ax.plot((-d, +d), (-d, +d), **kwargs)  # top-left diagonal
-
-            ax2 = ax_bottom
-            kwargs.update(transform=ax2.transAxes)  # switch to the bottom axes
-            ax2.plot((-d, +d), (1 - d, 1 + d), **kwargs)  # bottom-left diagonal
-
-            # remove one of the legend
-
-
-            ax_top.tick_params(bottom=False)
-
-            #ax_bottom.set_xlabel('Nr. of latent dimensions')
-            ax_top.set_xlabel('')
-            ax_top.set_ylabel('')
-            ax_bottom.set_xlabel('')
-            ax_bottom.set_ylabel('')
-            #ax.set_ylabel('Bits per pixel')
-            fig.add_subplot(111, frameon=False)
-            plt.xlabel("Nr. of latent dimensions")
-            # hide tick and tick label of the big axis
-            plt.tick_params(labelcolor='none', which='both', top=False, bottom=False, left=False, right=False)
-
-            #ax_bottom.set_xlabel("Nr. of latent dimensions")
-            #plt.ylabel("Bits per pixel")
-            fig.text(0.005, 0.5, 'Bits per pixel', va='center', rotation='vertical')
-
-            handles, labels = ax_top.get_legend_handles_labels()
-            handles.append(maf_line_handle)
-            labels.append("MAF")
-            ax_top.legend(handles=handles, labels=labels, loc='upper center', ncol=3)#, bbox_to_anchor=(0.5, -0.1))
-            ax_bottom.legend_.remove()
-
-            #fig.subplots_adjust(bottom=0.2)
-            # handles = ax_top.legend_.data.values()
-            # labels = ax_top.legend_.data.keys()
-            #
-            # ax_bottom.legend(handles=handles, labels=labels, loc='lower center', ncol=6)
-
-            # Shrink current axis's height by 10% on the bottom
-            # box = ax.get_position()
-            # ax.set_position([box.x0, box.y0 + box.height * 0.1,
-            #                  box.width, box.height * 0.9])
-
-            ax_top.set_title(dataset_titles[dataset])
-        plt.savefig(f'plots/phase1_{dataset}.png')
-
-def phase1_fid_plot(df):
-    datasets = ['mnist', 'kmnist', 'fashionmnist']
-    models = ['ae', 'vae-iaf', 'nae-external']
-    dataset_titles = {'mnist': 'MNIST', 'kmnist': 'KMNIST', 'fashionmnist': 'FashionMNIST'}
-
-
-    vae_models = ['vae', 'iwae', 'vae-iaf']
-    nae_models = ['nae-external', 'nae-corner', 'nae-center']
-
-    # Replace names
-
-    df_fixed = df.loc[(df.loc[:,'latent_dims'] <= 32) & (df.loc[:, 'model'] != 'maf'), :]
-    row_indexer = (df_fixed.loc[:, 'model'] == 'vae') \
-                  & (df_fixed.loc[:, 'posterior_flow'] == 'iaf') \
-                  & (df_fixed.loc[:, 'prior_flow'] == 'maf')
-    df_fixed.loc[row_indexer, 'model'] = 'vae-iaf-maf'
-
-    # todo
-    # rc = {
-    #     "text.usetex": True,
-    #     "font.family": "Times New Roman",
-    #     }
-    # plt.rcParams.update(rc)
-
-    for dataset in datasets:
-
-        maf_mean = df.loc[(df.loc[:, 'model'] == 'maf') & (df.loc[:, 'dataset'] == dataset), 'fid'].mean()
-
-        df_to_use = df_fixed[df.loc[:, 'dataset'] == dataset]
-        #df_to_use = df_to_use[df.loc[:, 'model'].isin(['vae', 'vae-iaf', 'iwae'])]
-        df_to_use = df_to_use.replace(to_replace={'iwae': "vae-iwae"}) #hack to get right ordering
-        df_to_use = df_to_use.sort_values(by=['model'])
-        df_to_use = df_to_use.replace(to_replace={'vae-iwae': "iwae"})
-        df_to_use = df_to_use.replace(to_replace={'vae': "VAE",
-                                     'iwae': "IWAE",
-                                     'vae-iaf': "VAE-IAF",
-                                     'vae-iaf-maf': "VAE-IAF-MAF",
-                                     'nae-center': 'IAE (center)',
-                                     'nae-corner': 'IAE (corner)',
-                                     'nae-external': 'IAE (linear)'})
-
-
-
-        fig = plt.figure(dpi=300, figsize=(6,6))
-        ax = fig.gca()
-        sns.pointplot(x="latent_dims", y="fid", hue="model", data=df_to_use, ci=95)
-
-        maf_line_handle = ax.axhline(y=maf_mean, c='k', linestyle='--', label='MAF')
-
-        bottom, top = plt.ylim()  # return the current ylim
-        plt.ylim((bottom, top+20))  # set the ylim to bottom, top
-
-        ax.grid(visible=True, which='major', axis='both', color='w')
-
-        #sns.set_theme()
-        ax.set_facecolor('lavender')
-
-        # p.yaxis.set_major_locator(plt.MaxNLocator(4))
-        # ax_bottom.yaxis.set_major_locator(plt.MaxNLocator(4))
-        plt.ylim()
-        plt.ylabel('FID score')
-        plt.xlabel("Nr. of latent dimensions")
-
-        handles, labels = ax.get_legend_handles_labels()
-        # handles.append(maf_line_handle)
-        # labels.append("MAF")
-        ax.legend(handles=handles, labels=labels, loc='upper center', ncol=3)#, bbox_to_anchor=(0.5, -0.1))
-
-        #fig.subplots_adjust(bottom=0.2)
-        # handles = ax_top.legend_.data.values()
-        # labels = ax_top.legend_.data.keys()
-        #
-        # ax_bottom.legend(handles=handles, labels=labels, loc='lower center', ncol=6)
-
-        # Shrink current axis's height by 10% on the bottom
-        # box = ax.get_position()
-        # ax.set_position([box.x0, box.y0 + box.height * 0.1,
-        #                  box.width, box.height * 0.9])
-
-        ax.set_title(dataset_titles[dataset])
-        plt.savefig(f'plots/fid_phase1_{dataset}.png')
 
 def check_nr_experiments(df):
     datasets = ['mnist', 'cifar', 'fashionmnist', 'kmnist']
@@ -945,8 +686,488 @@ def check_runs_missing_artifact():
             traceback.print_exc()
             print(run.name)
 
+def print_vae_performance(latent_dims):
+    n_batches = 16
+
+    model_name = 'vae'
+
+    project_name = 'phase1'
+    dataset = 'mnist'
+    architecture_size = 'small'
+    img_dim = [1, 28, 28]
+    alpha = 1e-6
+
+    api = wandb.Api()
+    use_gpu = True
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+
+    runs = api.runs(path=f"nae/{project_name}", filters={
+        "config.latent_dims": latent_dims,
+        "config.model": model_name,
+        "config.dataset": dataset,
+        "config.preprocessing": True
+    })
+    for run_idx, run in enumerate(runs):
+        experiment_name = run.name
+
+        decoder = get_field_from_config(run, "decoder")
+        latent_dims = get_field_from_config(run, "latent_dims", type="int")
+
+        posterior_flow = get_field_from_config(run, 'posterior_flow')
+        prior_flow = get_field_from_config(run, 'prior_flow')
+
+        model = get_model(model_name, architecture_size, decoder, latent_dims, img_dim, alpha,
+                          posterior_flow,
+                          prior_flow)
+        run_name = run.name
+        artifact = api.artifact(
+            f'nae/{project_name}/{run_name}_best:latest')  # run.restore(f'{run_name}_best:latest', run_path=run.path, root='./artifacts')
+        artifact_dir = artifact.download()
+        artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+        model.load_state_dict(torch.load(artifact_dir, map_location=device))
+        model = model.to(device)
+
+        model.eval()
+        train_dataloader, validation_dataloader, image_dim, alpha = get_train_val_dataloaders(dataset, 128)
+        with torch.no_grad():
+            batch_loss_printed = False
+
+            approximate_ll_averager = make_averager()
+            val_loss_averager = make_averager()
+            n_batches_done = 0
+            for batch, batch_y in validation_dataloader:
+
+                batch = dequantize(batch)
+                batch = batch.to(device)
+
+                batch_loss = torch.mean(model.loss_function(batch))
+                val_loss_averager(batch_loss.item())
+                for iw_iter in range(20):
+                    log_likelihood = torch.mean(model.approximate_marginal(batch, n_samples=128))
+                    approximate_ll_averager(log_likelihood.item())
+
+                n_batches_done += 1
+                if n_batches_done > n_batches:
+                    break
+
+            approximate_ll = approximate_ll_averager(None)
+            if not batch_loss_printed:
+                print(f'VAE Validation loss: {val_loss_averager(None)}')
+                batch_loss_printed = True
+            print(f'VAE approximate LL: {approximate_ll}')
+        break
+
+def print_aef_center_corner_performance(dataset, latent_dims, n_batches=16):
+
+    model_names = ['aef-center', 'aef-corner']
+
+    project_name = 'phase1'
+    dataset = 'mnist'
+    architecture_size = 'small'
+    img_dim = [1, 28, 28]
+    alpha = 1e-6
+
+    api = wandb.Api()
+    use_gpu = True
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+    for model_name in model_names:
+        runs = api.runs(path=f"nae/{project_name}", filters={
+            "config.latent_dims": latent_dims,
+            "config.model": model_name,
+            "config.dataset": dataset,
+            "config.preprocessing": True
+        })
+        for run_idx, run in enumerate(runs):
+            experiment_name = run.name
+
+            decoder = get_field_from_config(run, "decoder")
+            latent_dims = get_field_from_config(run, "latent_dims", type="int")
+
+            posterior_flow = get_field_from_config(run, 'posterior_flow')
+            prior_flow = get_field_from_config(run, 'prior_flow')
+
+            model = get_model(model_name, architecture_size, decoder, latent_dims, img_dim, alpha,
+                              posterior_flow,
+                              prior_flow)
+            run_name = run.name
+            artifact = api.artifact(
+                f'nae/{project_name}/{run_name}_best:latest')  # run.restore(f'{run_name}_best:latest', run_path=run.path, root='./artifacts')
+            artifact_dir = artifact.download()
+            artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+            model.load_state_dict(torch.load(artifact_dir, map_location=device))
+            model = model.to(device)
+
+            model.eval()
+            train_dataloader, validation_dataloader, image_dim, alpha = get_train_val_dataloaders(dataset, 128)
+            with torch.no_grad():
+
+                val_loss_averager = make_averager()
+                n_batches_done = 0
+                for batch, batch_y in validation_dataloader:
+
+                    batch = dequantize(batch)
+                    batch = batch.to(device)
+
+                    batch_loss = torch.mean(model.loss_function(batch))
+                    val_loss_averager(batch_loss.item())
+
+                    n_batches_done += 1
+                    if n_batches_done > n_batches:
+                        break
+
+                print(f'{model_name} log-likelihood: {val_loss_averager(None)}')
+            break
+
+
+
+def find_sigma():
+
+    runs_per_latent = 2
+
+    model_name = 'aef-linear'
+
+    # latent_sizes = [256]
+    # project_name = 'phase21'
+    # dataset = 'celebahq'
+    # data_dir = dataset
+    # img_dim = [3, 32, 32]
+    # alpha = 0.05
+    # n_batches = 128
+    # batch_size = 16
+
+    # latent_sizes = [512]
+    # project_name = 'phase21'
+    # dataset = 'celebahq64'
+    # data_dir = 'celebahq64'
+    # #data_dir = 'data/celebahq64'
+    # img_dim = [3, 64, 64]
+    # alpha = 0.05
+    # n_batches = 16 * 32
+    # iw_batch_size = 4
+    # val_batch_size = 16
+    # val_batches = 128
+
+    latent_sizes = [32]
+    project_name = 'phase1'
+    dataset = 'mnist'
+    data_dir = ""
+    img_dim = [1, 28, 28]
+    alpha = 1e-6
+    n_batches = 16
+    iw_batch_size = 128
+    val_batch_size = 16
+    val_batches = 128
+
+
+    api = wandb.Api()
+    use_gpu = True
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+
+    #sigmas = [5, 3, 2.5, 2, 1.5, 1, 0.5, 0.1, 0.01, 0.001]
+    #sigmas = [0.5, 0.1, 0.075, 0.05, 0.025]
+    # sigmas = [0.1, 0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001, 0.00001]
+    # sigmas = [0.05, 0.025, 0.01, 0.005, 0.001, 0.0001]
+    #sigmas = [0.1, 0.05, 0.01, 0.075, 0.005, 0.001, 0.00075, 0.0005, 0.00025, 0.0001, 0.00001]
+    #sigmas = [0.5, 0.3, 0.2, 0.1, 0.05]
+    #sigmas = [20, 10, 5, 2.5, 1, 0.5, 0.25, 0.1, 0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001, 0.00001]
+    #sigmas = [0.0005, 0.00025, 0.0001, 0.00005]
+    #sigmas = [2, 1, 0.1]#[0.1, 0.001, 0.001]#[5, 2, 1]
+    sigmas = [0.00075, 0.00065, 0.0005, 0.0004, 0.0003]
+    print(dataset)
+    print(f'n_batches: {n_batches}')
+    print(f'batch_size: {iw_batch_size}')
+    for latent_idx, latent_dims in enumerate(latent_sizes):
+        print(f"Latent dims: {latent_dims}")
+        runs = api.runs(path=f"nae/{project_name}", filters={
+            "config.latent_dims": latent_dims,
+            "config.model": model_name,
+            "config.dataset": dataset,
+        })
+        runs_done_latent = 0
+        for run_idx, run in enumerate(runs):
+
+            if runs_done_latent == 0:
+                runs_done_latent += 1
+                continue
+
+            experiment_name = run.name
+
+            print(experiment_name)
+
+            decoder = get_field_from_config(run, "decoder")
+            latent_dims = get_field_from_config(run, "latent_dims", type="int")
+
+            posterior_flow = get_field_from_config(run, 'posterior_flow')
+            prior_flow = get_field_from_config(run, 'prior_flow')
+            architecture_size = get_field_from_config(run, "architecture_size")
+            model = get_model(model_name, architecture_size, decoder, latent_dims, img_dim, alpha,
+                                     posterior_flow,
+                                     prior_flow)
+            run_name = run.name
+            artifact = api.artifact(
+                f'nae/{project_name}/{run_name}_best:latest')  # run.restore(f'{run_name}_best:latest', run_path=run.path, root='./artifacts')
+            artifact_dir = artifact.download()
+            artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+            model.load_state_dict(torch.load(artifact_dir, map_location=device))
+            model = model.to(device)
+
+            model.eval()
+
+
+            with torch.no_grad():
+                print('Calculating val loss')
+                _, validation_dataloader, image_dim, _ = get_train_val_dataloaders(dataset, val_batch_size,
+                                                                                   data_dir=data_dir)
+                val_loss_averager = make_averager()
+                val_batches_done = 0
+                for batch, _ in validation_dataloader:
+                    batch = dequantize(batch)
+                    batch = batch.to(device)
+                    batch_loss = torch.mean(model.loss_function(batch))
+                    val_loss_averager(batch_loss.item())
+                    val_batches_done += 1
+                    if val_batches_done >= val_batches:
+                        break
+                print(f'Validation loss: {val_loss_averager(None)}.')
+
+                _, validation_dataloader, image_dim, _ = get_train_val_dataloaders(dataset, iw_batch_size,
+                                                                                   data_dir=data_dir)
+                for sigma in sigmas:
+                    print(f'Sigma {sigma}: ', end='')
+                    approximate_ll_averager = make_averager()
+
+                    n_batches_done = 0
+                    count_nans_iw = 0
+
+                    for batch, _ in validation_dataloader:
+                        batch = dequantize(batch)
+                        batch = batch.to(device)
+
+                        for iw_iter in range(10):
+                            try:
+                                log_likelihood = torch.mean(model.approximate_marginal(batch, n_samples=64, std=sigma))
+                                approximate_ll_averager(log_likelihood.item())
+                            except Exception as E:
+                                count_nans_iw += 1
+
+                                # print(E)
+                                # traceback.print_exc()
+                                # return
+                                continue
+                            if count_nans_iw > 40:
+                                break
+
+                        n_batches_done += 1
+                        if n_batches_done >= n_batches:
+                            break
+                    if count_nans_iw > 40:
+                        print('too many NANs.')
+                        continue
+                    approximate_ll = approximate_ll_averager(None)
+                    print(f'Sigma {sigma}: {approximate_ll} ll. NANs: {count_nans_iw}')
+
+            runs_done_latent += 1
+            if runs_done_latent >= runs_per_latent:
+                break
+
+
+def add_ll_phase1():
+    use_gpu = True
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+    project_name = 'phase1'
+    image_dim = [1, 28, 28]
+    n_pixels = np.prod(image_dim)
+
+    alpha = 1e-6
+
+    batch_size = 128
+
+    api = wandb.Api()
+    for dataset in ['mnist', 'fashionmnist', 'kmnist']:
+        test_dataloader = get_test_dataloader(dataset, batch_size)
+        runs = api.runs(path=f"nae/{project_name}", filters={
+            "config.model": 'aef-linear',
+            "config.dataset": dataset,
+        })
+        for run in runs:
+            try:
+                model_name = get_field_from_config(run, "model")
+
+                dataset = get_field_from_config(run, "dataset")
+
+                decoder = get_field_from_config(run, "decoder")
+                latent_dims = get_field_from_config(run, "latent_dims", type="int")
+
+                architecture_size = get_field_from_config(run, "architecture_size")
+                if architecture_size is None:
+                    architecture_size = "small"
+
+                posterior_flow = get_field_from_config(run, "posterior_flow")
+                if posterior_flow is None:
+                    posterior_flow = 'none'
+                prior_flow = get_field_from_config(run, "prior_flow")
+                if prior_flow is None:
+                    prior_flow = 'none'
+
+                model = get_model(model_name, architecture_size, decoder, latent_dims, image_dim, alpha, posterior_flow,
+                                  prior_flow)
+                #model.loss_function(model.sample(10))  # needed as some components such as actnorm need to be initialized
+                run_name = run.name
+                artifact = api.artifact(f'nae/{project_name}/{run_name}_best:latest')
+                artifact_dir = artifact.download()
+                artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+                model.load_state_dict(torch.load(artifact_dir, map_location=device))
+                model = model.to(device)
+
+                model = model.eval()
+
+                importance_std = util.get_posterior_scale_aef_linear(dataset, latent_dims)
+
+                with torch.no_grad():
+                    # Approximate log likelihood if model in VAE family
+
+                    if has_importance_sampling(model):
+
+                        test_ll_averager = make_averager()
+                        for test_batch, _ in test_dataloader:
+                            test_batch = dequantize(test_batch)
+                            test_batch = test_batch.to(device)
+                            for iw_iter in range(20):
+                                log_likelihood = torch.mean(model.approximate_marginal(test_batch, n_samples=128, std=importance_std))
+                                test_ll_averager(log_likelihood.item())
+                        test_ll = test_ll_averager(None)
+                        # We only add this value to the summary if we approximate the log likelihood (since we provide test_loss
+                        # in both cases).
+
+                        bpp_test = bits_per_pixel(test_ll, n_pixels)
+                        bpp_test_adjusted = bits_per_pixel(test_ll, n_pixels, adjust_value=256.)
+
+                        run.summary['test_log_likelihood'] = test_ll
+                        run.summary['test_bpp'] = bpp_test
+                        run.summary['test_bpp_adjusted'] = bpp_test_adjusted
+                        run.summary.update()
+                        print(f"Updated {run_name}")
+                    else:
+                        print('Something went wrong')
+
+            except Exception as e:
+                print(e)
+                traceback.print_exc()
+                print(f'Failed to update {run_name}')
+                continue
+
+def add_ll_phase2():
+    use_gpu = True
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+    #device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+
+    latent_sizes = [256]
+    project_name = 'phase21'
+    dataset = 'celebahq'
+    data_dir = 'data/celebahq/celebahq'
+    img_dim = [3, 32, 32]
+    alpha = 0.05
+    n_batches = 128
+    batch_size = 32
+
+    # latent_sizes = [512]
+    # project_name = 'phase21'
+    # dataset = 'celebahq64'
+    # data_dir = 'data/celebahq64'
+    # img_dim = [3, 64, 64]
+    # alpha = 0.05
+    # n_batches = 16 * (128 // 4)
+    # batch_size = 4
+
+    n_pixels = np.prod(img_dim)
+
+    api = wandb.Api()
+    for latent_dims in latent_sizes:
+        test_dataloader = get_test_dataloader(dataset, batch_size, data_dir=data_dir)
+        runs = api.runs(path=f"nae/{project_name}", filters={
+            "config.model": 'vae',
+            "config.dataset": dataset,
+            "config.latent_dims": latent_dims
+        })
+        for run in runs:
+            # if 'test_log_likelihood' in run.summary.keys():  # 'test_rce' in run.summary.keys() and
+            #     if not run.summary['test_log_likelihood'] is None and np.isfinite(run.summary[
+            #                                                           'test_log_likelihood']):  # not run.summary['test_rce'] is None and np.isfinite(run.summary['test_rce']) and
+            #         continue
+            try:
+                model_name = get_field_from_config(run, "model")
+
+                dataset = get_field_from_config(run, "dataset")
+
+                decoder = get_field_from_config(run, "decoder")
+                latent_dims = get_field_from_config(run, "latent_dims", type="int")
+
+                architecture_size = get_field_from_config(run, "architecture_size")
+                if architecture_size is None:
+                    architecture_size = "small"
+
+                posterior_flow = get_field_from_config(run, "posterior_flow")
+                if posterior_flow is None:
+                    posterior_flow = 'none'
+                prior_flow = get_field_from_config(run, "prior_flow")
+                if prior_flow is None:
+                    prior_flow = 'none'
+
+                model = get_model(model_name, architecture_size, decoder, latent_dims, img_dim, alpha, posterior_flow,
+                                  prior_flow)
+                #model.loss_function(model.sample(10))  # needed as some components such as actnorm need to be initialized
+                run_name = run.name
+                artifact = api.artifact(f'nae/{project_name}/{run_name}_best:latest')
+                artifact_dir = artifact.download()
+                artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+                model.load_state_dict(torch.load(artifact_dir, map_location=device))
+                model = model.to(device)
+                model.loss_function(model.sample(10))
+
+                model = model.eval()
+
+                importance_std = util.get_posterior_scale_aef_linear(dataset, latent_dims)
+                print(f'Approximating LL of {run.name}')
+                with torch.no_grad():
+                    # Approximate log likelihood if model in VAE family
+
+                    if has_importance_sampling(model):
+
+                        test_ll_averager = make_averager()
+                        for test_batch, _ in test_dataloader:
+                            test_batch = dequantize(test_batch)
+                            test_batch = test_batch.to(device)
+                            for iw_iter in range(20):
+                                log_likelihood = torch.mean(model.approximate_marginal(test_batch, n_samples=128))
+                                # log_likelihood = torch.mean(model.approximate_marginal(test_batch, n_samples=128, std=importance_std))
+                                test_ll_averager(log_likelihood.item())
+                        test_ll = test_ll_averager(None)
+                        # We only add this value to the summary if we approximate the log likelihood (since we provide test_loss
+                        # in both cases).
+
+                        bpp_test = bits_per_pixel(test_ll, n_pixels)
+                        bpp_test_adjusted = bits_per_pixel(test_ll, n_pixels, adjust_value=256.)
+
+                        run.summary['test_log_likelihood'] = test_ll
+                        run.summary['test_bpp'] = bpp_test
+                        run.summary['test_bpp_adjusted'] = bpp_test_adjusted
+                        run.summary.update()
+                        print(f"Updated {run_name}")
+                    else:
+                        print('Something went wrong')
+
+            except Exception as e:
+                print(e)
+                traceback.print_exc()
+                print(f'Failed to update {run_name}')
+                continue
+
 
 if __name__ == '__main__':
+    add_ll_phase2()
+    #add_ll_phase1()
+    #find_sigma()
+    #find_optimal_fid_celeba(False)
     #update_nae_external()
     # add_fid_cifar()
     # add_mse_fid_phase_1()
@@ -956,8 +1177,8 @@ if __name__ == '__main__':
     # phase1_fid_plot(df)
     # check_nr_experiments(df)
     # check_runs_missing_artifact()
-    # df = extract_data_from_runs('denoising-experiments-1')
-    # df.to_pickle('denoising-experiments-1.pkl')
+    # df = extract_data_from_runs('phase1')
+    # df.to_pickle('phase1_before_ll_update_01_09.pkl')
     # df = pd.read_pickle('denoising-experiments-1.pkl')
     # generate_denoising_table(df)
     #denoising_plot(df)
@@ -973,22 +1194,23 @@ if __name__ == '__main__':
 
     #add_mse_fid_phase_1()
 
-    add_ife_single_run('denoising-experiments-3', 'aef-linear_small_mnist_noise_0.25_run_4_decoder_independent_post_maf_prior_maf')
-    add_ife_single_run('denoising-experiments-3',
-                       'ae_small_mnist_noise_0.25_run_4_decoder_independent')
-    add_ife_single_run('denoising-experiments-3',
-                       'vae_small_mnist_noise_0.25_run_4_decoder_independent_post_iaf_prior_maf')
-    add_ife_single_run('denoising-experiments-3',
-                       'aef-linear_small_mnist_noise_0.5_run_0_decoder_independent_post_maf_prior_maf')
-    add_ife_single_run('denoising-experiments-3',
-                       'ae_small_mnist_noise_0.5_run_0_decoder_independent')
-    add_ife_single_run('denoising-experiments-3',
-                       'vae_small_mnist_noise_0.5_run_0_decoder_independent_post_iaf_prior_maf')
+    # add_ife_single_run('denoising-experiments-3', 'aef-linear_small_mnist_noise_0.25_run_4_decoder_independent_post_maf_prior_maf')
+    # add_ife_single_run('denoising-experiments-3',
+    #                    'ae_small_mnist_noise_0.25_run_4_decoder_independent')
+    # add_ife_single_run('denoising-experiments-3',
+    #                    'vae_small_mnist_noise_0.25_run_4_decoder_independent_post_iaf_prior_maf')
+    # add_ife_single_run('denoising-experiments-3',
+    #                    'aef-linear_small_mnist_noise_0.5_run_0_decoder_independent_post_maf_prior_maf')
+    # add_ife_single_run('denoising-experiments-3',
+    #                    'ae_small_mnist_noise_0.5_run_0_decoder_independent')
+    # add_ife_single_run('denoising-experiments-3',
+    #                    'vae_small_mnist_noise_0.5_run_0_decoder_independent_post_iaf_prior_maf')
+    #
+    # add_ife_single_run('denoising-experiments-3',
+    #                    'aef-linear_small_mnist_noise_0.75_run_0_decoder_independent_post_maf_prior_maf')
+    # add_ife_single_run('denoising-experiments-3',
+    #                    'ae_small_mnist_noise_0.75_run_0_decoder_independent')
+    # add_ife_single_run('denoising-experiments-3',
+    #                    'vae_small_mnist_noise_0.75_run_0_decoder_independent_post_iaf_prior_maf')
 
-    add_ife_single_run('denoising-experiments-3',
-                       'aef-linear_small_mnist_noise_0.75_run_0_decoder_independent_post_maf_prior_maf')
-    add_ife_single_run('denoising-experiments-3',
-                       'ae_small_mnist_noise_0.75_run_0_decoder_independent')
-    add_ife_single_run('denoising-experiments-3',
-                       'vae_small_mnist_noise_0.75_run_0_decoder_independent_post_iaf_prior_maf')
     exit()
