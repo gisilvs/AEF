@@ -26,7 +26,7 @@ from datetime import date
 import traceback
 
 
-def get_z_values(n_vals: int = 20, border: float = 0.15, latent_dims: int = 2):
+def get_z_values(n_vals: int = 20, border: float = 0.10, latent_dims: int = 2):
     ''' Get z values needed to plot a grid of samples from the latent space. Grid over two dimensional z. '''
     lin_vals = torch.linspace(1-border,border, steps=n_vals)
     lin_vals_1 = torch.linspace(border,1-border, steps=n_vals)
@@ -38,9 +38,9 @@ def get_z_values(n_vals: int = 20, border: float = 0.15, latent_dims: int = 2):
     return torch.index_select(z_vals, 1, torch.tensor([1,0]))
 
 
-def plot_latent_space_2d(model: AutoEncoder, test_loader, device, equal_axes=True, max_val=None):
+def plot_latent_space_2d(model: AutoEncoder, test_loader, device, equal_axes=True, max_val=None, colorbar=True,
+                         add_prior_flow=False):
     '''
-
     :param model:
     :param test_loader:
     :param device:
@@ -58,16 +58,20 @@ def plot_latent_space_2d(model: AutoEncoder, test_loader, device, equal_axes=Tru
                 mu, _ = model.encode(image_batch)
             else:
                 mu = output
+            if add_prior_flow:
+                mu, _ = model.prior_bijector.inverse(mu)
         arr[n_added:n_added + len(image_batch), :2] = mu.cpu().detach().numpy()
         arr[n_added:n_added + len(image_batch), 2] = image_labels
         n_added += len(image_batch)
     plt.rcParams['axes.axisbelow'] = True
-    fig = plt.figure(figsize=(6, 6))
+    fig = plt.figure(figsize=(6, 6), dpi=300)
     ax = fig.gca()
 
-    #plt.style.use('seaborn')
-    scat = plt.scatter(arr[:, 0], arr[:, 1], s=10, c=arr[:, 2], cmap=plt.get_cmap('tab10'), alpha=0.8)
-    cb = plt.colorbar(scat, spacing='uniform')
+    # plt.style.use('seaborn')
+    scat = plt.scatter(arr[:, 0], arr[:, 1], s=10, c=arr[:, 2], cmap=plt.get_cmap('tab10'), alpha=0.8, rasterized=True,
+                       linewidths=0)
+    # cb = plt.colorbar(scat, spacing='uniform', ticks=np.linspace(0, 9, 10))
+
     ax.set_facecolor('lavender')
     ax.grid(visible=True, which='major', axis='both', color='w', )
 
@@ -76,11 +80,32 @@ def plot_latent_space_2d(model: AutoEncoder, test_loader, device, equal_axes=Tru
     if equal_axes:
         plt.axis('equal')
     if max_val is not None:
-        cur_min_x, cur_max_x = np.min(arr[:, 0]), np.max(arr[:, 0])
-        cur_min_y, cur_max_y = np.min(arr[:, 1]), np.max(arr[:, 1])
+        # cur_min_x, cur_max_x = np.min(arr[:, 0]), np.max(arr[:, 0])
+        # cur_min_y, cur_max_y = np.min(arr[:, 1]), np.max(arr[:, 1])
+        #
+        # cur_min = min(cur_min_x, cur_min_y)
+        # cur_max = max(cur_max_x, cur_max_y)
+        #
+        # if cur_min < -max_val or cur_max > max_val:
+        #     lim = max_val
+        # else:
+        #     lim = max(-1 * cur_min, cur_max)
+        lim = max_val
+        # plt.ylim((max(cur_min_x, -max_val), min(cur_max_x, max_val)))  # Why are these reversed?
+        # plt.xlim((max(cur_min_y, -max_val), min(cur_max_y, max_val)))
 
-        plt.ylim((max(cur_min_x, -max_val), min(cur_max_x, max_val)))  # Why are these reversed?
-        plt.xlim((max(cur_min_y, -max_val), min(cur_max_y, max_val)))
+        plt.ylim((-lim, lim))  # Why are these reversed?
+        plt.xlim((-lim, lim))
+    else:
+        left, right = plt.xlim()
+        max_lr = max(-left, right)
+        plt.xlim((-max_lr, max_lr))
+
+    if colorbar:
+        plt.clim(-0.5, 10 - 0.5)
+        cb = plt.colorbar(scat, ticks=range(0, 10), spacing='uniform')
+        cb.ax.tick_params(length=0)
+
     return fig
 
 
