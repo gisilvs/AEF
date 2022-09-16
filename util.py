@@ -351,5 +351,5 @@ def get_posterior_scale_aef_linear(dataset, latent_dims):
             'fashionmnist': {2: 2, 4: 0.1, 8: 0.01, 16: 0.005, 32: 0.0005},
             'kmnist': {2: 2, 4: 0.075, 8: 0.025, 16: 0.005, 32: 0.00075},
             'celebahq': {64: 0.01, 128: 0.01, 256: 0.00025},
-            'celebahq64': {128: 1, 256: 1, 512: 1}}
+            'celebahq64': {64: 1, 128: 1, 256: 1, 512: 1}}
     return dict[dataset][latent_dims]
