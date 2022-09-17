@@ -18,7 +18,7 @@ import seaborn as sns
 
 from matplotlib.ticker import (AutoMinorLocator, MultipleLocator)
 
-def extract_data_from_runs(project_name='phase1'):
+def extract_data_from_runs(project_name='phase1', runs_finished=True):
     api = wandb.Api(timeout=19)
 
     model_names = []
@@ -44,7 +44,7 @@ def extract_data_from_runs(project_name='phase1'):
 
     runs = api.runs(path=f"nae/{project_name}")
     for run in runs:
-        if run.state != 'finished':
+        if runs_finished and run.state != 'finished':
             continue
         dataset.append(get_field_from_config(run, "dataset"))
         decoder.append(get_field_from_config(run, "decoder"))
@@ -193,27 +193,23 @@ def update_nae_external():
             traceback.print_exc()
             continue
 
-def add_ife_single_run(project_name, run_name):
+def add_ife():
     use_gpu = True
     device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
-    image_dim = [1, 28, 28]
+    image_dim = [3, 32, 32]
 
-    alpha = 1e-6
+    alpha = 0.05
 
     batch_size = 128
     api = wandb.Api()
+    project_name = 'denoising-experiments-6'
     runs = api.runs(path=f"nae/{project_name}")
-    architecture_size = "small"
+    data_dir = 'celebahq'
     incept = metrics.InceptionV3().to(device)
     for run in runs:
-        if run.name != run_name:
-            continue
-
-        # if 'fid' in run.summary.keys(): # 'test_rce' in run.summary.keys() and
-        #     if not run.summary['fid'] is None and np.isfinite(run.summary['fid']): #not run.summary['test_rce'] is None and np.isfinite(run.summary['test_rce']) and
-        #         continue
 
         try:
+            run_name = run.name
             model_name = get_field_from_config(run, "model")
             dataset = get_field_from_config(run, "dataset")
 
@@ -221,8 +217,6 @@ def add_ife_single_run(project_name, run_name):
             latent_dims = get_field_from_config(run, "latent_dims", type="int")
 
             architecture_size = get_field_from_config(run, "architecture_size")
-            if architecture_size is None:
-                architecture_size = "small"
 
             posterior_flow = get_field_from_config(run, "posterior_flow")
             if posterior_flow is None:
@@ -232,6 +226,7 @@ def add_ife_single_run(project_name, run_name):
                 prior_flow = 'none'
 
             noise_level = get_field_from_config(run, "noise_level")
+            torch.manual_seed(3)  # Seed noise for equal test comparison
             noise_distribution = torch.distributions.normal.Normal(torch.zeros(batch_size, *image_dim).to(device),
                                                                    noise_level * torch.ones(batch_size, *image_dim).to(
                                                                        device))
@@ -248,11 +243,12 @@ def add_ife_single_run(project_name, run_name):
 
             model = model.eval()
 
-
             try:
-                ife = metrics.calculate_ife(model, dataset, device, noise_distribution, batch_size=batch_size, incept=incept)
+                ife = metrics.calculate_ife(model, dataset, device, noise_distribution, batch_size=batch_size, incept=incept, data_dir=data_dir)
+                run.summary['ife'] = ife
+                run.summary.update()
+                print(f'{run_name} updated.')
 
-                print(f'{run_name} {ife}')
             except Exception as e:
                 print(e)
                 traceback.print_exc()
@@ -619,7 +615,7 @@ def generate_denoising_table(df, latent_dims=32):
     datasets = ['mnist', 'fashionmnist', 'kmnist']
     models = ['ae', 'vae', 'aef-linear']
     model_titles = ['AE', 'VAE', 'AEF (linear)']
-    noise_levels = [0.25, 0.5, 0.75]
+    noise_levels = [0.25, 0.5, 0.75, 1.0]
 
     mean_rce = np.zeros((len(models), len(datasets), len(noise_levels)))
     se_rce = np.zeros((len(models), len(datasets), len(noise_levels)))
@@ -846,28 +842,28 @@ def find_sigma():
     # n_batches = 128
     # batch_size = 16
 
-    # latent_sizes = [512]
-    # project_name = 'phase21'
-    # dataset = 'celebahq64'
-    # data_dir = 'celebahq64'
-    # #data_dir = 'data/celebahq64'
-    # img_dim = [3, 64, 64]
-    # alpha = 0.05
-    # n_batches = 16 * 32
-    # iw_batch_size = 4
-    # val_batch_size = 16
-    # val_batches = 128
-
-    latent_sizes = [32]
-    project_name = 'phase1'
-    dataset = 'mnist'
-    data_dir = ""
-    img_dim = [1, 28, 28]
-    alpha = 1e-6
-    n_batches = 16
-    iw_batch_size = 128
+    latent_sizes = [64]
+    project_name = 'phase21'
+    dataset = 'celebahq64'
+    data_dir = 'celebahq64'
+    #data_dir = 'data/celebahq64'
+    img_dim = [3, 64, 64]
+    alpha = 0.05
+    n_batches = 16 * 4
+    iw_batch_size = 32
     val_batch_size = 16
     val_batches = 128
+
+    # latent_sizes = [32]
+    # project_name = 'phase1'
+    # dataset = 'mnist'
+    # data_dir = ""
+    # img_dim = [1, 28, 28]
+    # alpha = 1e-6
+    # n_batches = 16
+    # iw_batch_size = 128
+    # val_batch_size = 16
+    # val_batches = 128
 
 
     api = wandb.Api()
@@ -883,7 +879,7 @@ def find_sigma():
     #sigmas = [20, 10, 5, 2.5, 1, 0.5, 0.25, 0.1, 0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001, 0.00001]
     #sigmas = [0.0005, 0.00025, 0.0001, 0.00005]
     #sigmas = [2, 1, 0.1]#[0.1, 0.001, 0.001]#[5, 2, 1]
-    sigmas = [0.00075, 0.00065, 0.0005, 0.0004, 0.0003]
+    sigmas = [2, 1, 0.5]
     print(dataset)
     print(f'n_batches: {n_batches}')
     print(f'batch_size: {iw_batch_size}')
@@ -1289,23 +1285,25 @@ def add_ll_denoising_phase1():
 if __name__ == '__main__':
     # add_ll_phase2()
     #add_ll_phase1()
-    #find_sigma()
+    # add_ife()
     #find_optimal_fid_celeba(False)
     #update_nae_external()
     # add_fid_cifar()
     # add_mse_fid_phase_1()
     # df = extract_data_from_runs('phase1')
     # df.to_pickle('phase1.pkl')
-    # df = pd.read_pickle('phase1.pkl')
+    df = pd.read_pickle('phase1.pkl')
+    generate_phase1_table(df, 2)
+    generate_phase1_table(df, 32)
     # phase1_fid_plot(df)
     # check_nr_experiments(df)
     # check_runs_missing_artifact()
-    df = extract_data_from_runs('phase21')
-    df.to_pickle('phase21.pkl')
+    # df = extract_data_from_runs('phase21')
+    # df.to_pickle('phase21.pkl')
     # df = pd.read_pickle('phase1.pkl')
-    generate_phase2_table(df, 64)
-    generate_phase2_table(df, 128)
-    generate_phase2_table(df, 256)
+    # generate_phase2_table(df, 64)
+    # generate_phase2_table(df, 128)
+    # generate_phase2_table(df, 256)
 
 
     # generate_denoising_table(df)
@@ -1322,23 +1320,6 @@ if __name__ == '__main__':
 
     #add_mse_fid_phase_1()
 
-    # add_ife_single_run('denoising-experiments-3', 'aef-linear_small_mnist_noise_0.25_run_4_decoder_independent_post_maf_prior_maf')
-    # add_ife_single_run('denoising-experiments-3',
-    #                    'ae_small_mnist_noise_0.25_run_4_decoder_independent')
-    # add_ife_single_run('denoising-experiments-3',
-    #                    'vae_small_mnist_noise_0.25_run_4_decoder_independent_post_iaf_prior_maf')
-    # add_ife_single_run('denoising-experiments-3',
-    #                    'aef-linear_small_mnist_noise_0.5_run_0_decoder_independent_post_maf_prior_maf')
-    # add_ife_single_run('denoising-experiments-3',
-    #                    'ae_small_mnist_noise_0.5_run_0_decoder_independent')
-    # add_ife_single_run('denoising-experiments-3',
-    #                    'vae_small_mnist_noise_0.5_run_0_decoder_independent_post_iaf_prior_maf')
-    #
-    # add_ife_single_run('denoising-experiments-3',
-    #                    'aef-linear_small_mnist_noise_0.75_run_0_decoder_independent_post_maf_prior_maf')
-    # add_ife_single_run('denoising-experiments-3',
-    #                    'ae_small_mnist_noise_0.75_run_0_decoder_independent')
-    # add_ife_single_run('denoising-experiments-3',
-    #                    'vae_small_mnist_noise_0.75_run_0_decoder_independent_post_iaf_prior_maf')
+
 
     exit()

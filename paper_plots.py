@@ -586,7 +586,7 @@ def denoising_plot_phase1(df):
     dataset_titles = {'mnist':'MNIST', 'kmnist': 'KMNIST', 'fashionmnist' : 'FashionMNIST'}
     models = ['ae', 'vae', 'aef-linear']
     model_titles = ['AE', 'VAE', 'AEF (linear)']
-    noise_levels = [0.25, 0.5, 0.75]
+    noise_levels = [0.25, 0.5, 0.75, 1]
     latent_sizes = [2, 32]
 
     rc = {
@@ -618,22 +618,60 @@ def denoising_plot_phase1(df):
             df_to_use = df_to_use.replace(to_replace={'ae': "AE", 'vae': "VAE", 'aef-linear': 'AEF (linear)'})
             df_to_use = df_to_use.sort_values(by=['model'])
 
-            fig = plt.figure()
+            fig = plt.figure(dpi=300, figsize=(6,3))
             ax = sns.pointplot(x="noise_level", y="ife", hue="model", data=df_to_use, ci=95)
+
+            bottom, top = plt.ylim()  # return the current ylim
+            plt.ylim((bottom, top + 0.01))  # set the ylim to bottom, top
+
             ax.set_facecolor('lavender')
             ax.yaxis.set_major_locator(plt.MaxNLocator(4))
             ax.grid(visible=True, which='major', axis='both', color='w')
 
-            ax.legend(ncol=3)
+            ax.legend(ncol=3, loc='upper center')
             ax.set_xlabel('Noise level')
             ax.set_ylabel('IFE')
             plt.title(dataset_titles[dataset])
-            plt.savefig(f'plots/iclr/denoising_{dataset}_latents_{latent_dims}.pdf')
+            plt.savefig(f'plots/iclr/denoising_{dataset}_latents_{latent_dims}.pdf', bbox_inches='tight')
+
+def denoising_plot_phase2(df):
+    models = ['ae', 'vae', 'aef-linear']
+    model_titles = ['AE', 'VAE', 'AEF (linear)']
+    noise_levels = [0.05, 0.1, 0.2]
+
+    rc = {
+        "text.usetex": True,
+        "font.family": "Times New Roman",
+    }
+    plt.rcParams.update(rc)
+
+    plt.rcParams['axes.axisbelow'] = True
+
+    df_to_use = df
+    df_to_use = df_to_use.loc[df_to_use.loc[:, 'noise_level'].isin(noise_levels)]
+    df_to_use = df_to_use.replace(to_replace={'ae': "AE", 'vae': "VAE", 'aef-linear': 'AEF (linear)'})
+    df_to_use = df_to_use.sort_values(by=['model'])
+
+    fig = plt.figure(dpi=300, figsize=(6,3))
+    ax = sns.pointplot(x="noise_level", y="ife", hue="model", data=df_to_use, ci=95)
+    bottom, top = plt.ylim()  # return the current ylim
+    plt.ylim((bottom, top + 0.01))  # set the ylim to bottom, top
+
+    ax.set_facecolor('lavender')
+    ax.yaxis.set_major_locator(plt.MaxNLocator(4))
+    ax.grid(visible=True, which='major', axis='both', color='w')
+
+    ax.legend(ncol=3, loc='upper center')
+    ax.set_xlabel('Noise level')
+    ax.set_ylabel('IFE')
+    plt.title('CelebA-HQ (32x32)')
+    plt.savefig(f'plots/iclr/denoising_celebahq.pdf', bbox_inches='tight')
 
 
 def phase1_bpp_fid_plot(df):
     datasets = ['mnist', 'kmnist', 'fashionmnist']
-    models = ['vae', 'aef-linear', 'aef-corner', 'aef-center']
+    models_main = ['vae', 'aef-linear']
+    models_full = ['vae', 'aef-linear' , 'aef-corner', 'aef-center']
     dataset_titles = {'mnist': 'MNIST', 'kmnist': 'KMNIST', 'fashionmnist': 'FashionMNIST'}
 
     # todo
@@ -646,23 +684,46 @@ def phase1_bpp_fid_plot(df):
 
     for dataset in datasets:
 
-        df_to_use = df[(df.loc[:, 'dataset'] == dataset) & (df.loc[:, 'preprocessing'] == True)]
+        df_to_use = df[(df.loc[:, 'dataset'] == dataset) & (df.loc[:, 'preprocessing'] == True) & (df.loc[:, 'model'].isin(models_main))]
         df_to_use = df_to_use.replace(to_replace={'vae': "VAE",
                                      'aef-center': 'AEF (center)',
                                      'aef-corner': 'AEF (corner)',
                                      'aef-linear': 'AEF (linear)'})
+        df_to_use = df_to_use.sort_values(by='model', axis=0)
 
         fig = plt.figure()
         ax = sns.pointplot(x="latent_dims", y="test_bpp_adjusted", hue="model", data=df_to_use, ci=95)
+
+
         ax.set_facecolor('lavender')
         #ax.yaxis.set_major_locator(plt.MaxNLocator(4))
         ax.grid(visible=True, which='major', axis='both', color='w')
 
-        ax.legend(ncol=3)
+        ax.legend(ncol=2, loc='upper center')
         ax.set_xlabel('Latent dimensions')
         ax.set_ylabel('BPP')
         plt.title(dataset_titles[dataset])
-        plt.savefig(f'plots/iclr/bpp_{dataset}.pdf')
+        plt.savefig(f'plots/iclr/bpp_{dataset}_main.pdf', bbox_inches='tight')
+
+        df_to_use = df[(df.loc[:, 'dataset'] == dataset) & (df.loc[:, 'preprocessing'] == True) & (
+            df.loc[:, 'model'].isin(models_full))]
+        df_to_use = df_to_use.replace(to_replace={'vae': "VAE",
+                                                  'aef-center': 'AEF (center)',
+                                                  'aef-corner': 'AEF (corner)',
+                                                  'aef-linear': 'AEF (linear)'})
+        df_to_use = df_to_use.sort_values(by='model', axis=0)
+
+        fig = plt.figure()
+        ax = sns.pointplot(x="latent_dims", y="test_bpp_adjusted", hue="model", data=df_to_use, ci=95)
+        ax.set_facecolor('lavender')
+        # ax.yaxis.set_major_locator(plt.MaxNLocator(4))
+        ax.grid(visible=True, which='major', axis='both', color='w')
+
+        ax.legend(ncol=2, loc='upper center')
+        ax.set_xlabel('Latent dimensions')
+        ax.set_ylabel('BPP')
+        plt.title(dataset_titles[dataset])
+        plt.savefig(f'plots/iclr/bpp_{dataset}_supp.pdf', bbox_inches='tight')
 
         fig = plt.figure()
         ax = sns.pointplot(x="latent_dims", y="fid", hue="model", data=df_to_use, ci=95)
@@ -670,93 +731,12 @@ def phase1_bpp_fid_plot(df):
         # ax.yaxis.set_major_locator(plt.MaxNLocator(4))
         ax.grid(visible=True, which='major', axis='both', color='w')
 
-        ax.legend(ncol=3)
+        ax.legend(ncol=2, loc='upper center')
         ax.set_xlabel('Latent dimensions')
         ax.set_ylabel('FID')
         plt.title(dataset_titles[dataset])
-        plt.savefig(f'plots/iclr/fid_{dataset}.pdf')
+        plt.savefig(f'plots/iclr/fid_{dataset}.pdf', bbox_inches='tight')
 
-def phase1_fid_plot(df):
-    datasets = ['mnist', 'kmnist', 'fashionmnist']
-    models = ['ae', 'vae-iaf', 'nae-external']
-    dataset_titles = {'mnist': 'MNIST', 'kmnist': 'KMNIST', 'fashionmnist': 'FashionMNIST'}
-
-
-    vae_models = ['vae', 'iwae', 'vae-iaf']
-    nae_models = ['nae-external', 'nae-corner', 'nae-center']
-
-    # Replace names
-
-    df_fixed = df.loc[(df.loc[:,'latent_dims'] <= 32) & (df.loc[:, 'model'] != 'maf'), :]
-    row_indexer = (df_fixed.loc[:, 'model'] == 'vae') \
-                  & (df_fixed.loc[:, 'posterior_flow'] == 'iaf') \
-                  & (df_fixed.loc[:, 'prior_flow'] == 'maf')
-    df_fixed.loc[row_indexer, 'model'] = 'vae-iaf-maf'
-
-    # todo
-    # rc = {
-    #     "text.usetex": True,
-    #     "font.family": "Times New Roman",
-    #     }
-    # plt.rcParams.update(rc)
-
-    for dataset in datasets:
-
-        maf_mean = df.loc[(df.loc[:, 'model'] == 'maf') & (df.loc[:, 'dataset'] == dataset), 'fid'].mean()
-
-        df_to_use = df_fixed[df.loc[:, 'dataset'] == dataset]
-        #df_to_use = df_to_use[df.loc[:, 'model'].isin(['vae', 'vae-iaf', 'iwae'])]
-        df_to_use = df_to_use.replace(to_replace={'iwae': "vae-iwae"}) #hack to get right ordering
-        df_to_use = df_to_use.sort_values(by=['model'])
-        df_to_use = df_to_use.replace(to_replace={'vae-iwae': "iwae"})
-        df_to_use = df_to_use.replace(to_replace={'vae': "VAE",
-                                     'iwae': "IWAE",
-                                     'vae-iaf': "VAE-IAF",
-                                     'vae-iaf-maf': "VAE-IAF-MAF",
-                                     'nae-center': 'IAE (center)',
-                                     'nae-corner': 'IAE (corner)',
-                                     'nae-external': 'IAE (linear)'})
-
-
-
-        fig = plt.figure(dpi=300, figsize=(6,6))
-        ax = fig.gca()
-        sns.pointplot(x="latent_dims", y="fid", hue="model", data=df_to_use, ci=95)
-
-        maf_line_handle = ax.axhline(y=maf_mean, c='k', linestyle='--', label='MAF')
-
-        bottom, top = plt.ylim()  # return the current ylim
-        plt.ylim((bottom, top+20))  # set the ylim to bottom, top
-
-        ax.grid(visible=True, which='major', axis='both', color='w')
-
-        #sns.set_theme()
-        ax.set_facecolor('lavender')
-
-        # p.yaxis.set_major_locator(plt.MaxNLocator(4))
-        # ax_bottom.yaxis.set_major_locator(plt.MaxNLocator(4))
-        plt.ylim()
-        plt.ylabel('FID score')
-        plt.xlabel("Nr. of latent dimensions")
-
-        handles, labels = ax.get_legend_handles_labels()
-        # handles.append(maf_line_handle)
-        # labels.append("MAF")
-        ax.legend(handles=handles, labels=labels, loc='upper center', ncol=3)#, bbox_to_anchor=(0.5, -0.1))
-
-        #fig.subplots_adjust(bottom=0.2)
-        # handles = ax_top.legend_.data.values()
-        # labels = ax_top.legend_.data.keys()
-        #
-        # ax_bottom.legend(handles=handles, labels=labels, loc='lower center', ncol=6)
-
-        # Shrink current axis's height by 10% on the bottom
-        # box = ax.get_position()
-        # ax.set_position([box.x0, box.y0 + box.height * 0.1,
-        #                  box.width, box.height * 0.9])
-
-        ax.set_title(dataset_titles[dataset])
-        plt.savefig(f'plots/fid_phase1_{dataset}.png')
 
 def phase2_bpp_fid_plot(df):
     datasets = ['celebahq', 'celebahq64']
@@ -766,11 +746,11 @@ def phase2_bpp_fid_plot(df):
     # Replace names
 
     # todo
-    # rc = {
-    #     "text.usetex": True,
-    #     "font.family": "Times New Roman",
-    #     }
-    # plt.rcParams.update(rc)
+    rc = {
+        "text.usetex": True,
+        "font.family": "Times New Roman",
+        }
+    plt.rcParams.update(rc)
 
     for dataset in datasets:
 
@@ -779,13 +759,13 @@ def phase2_bpp_fid_plot(df):
         df_to_use = df_to_use.replace(to_replace={'vae': "VAE",
                                      'aef-linear': 'AEF (linear)'})
 
-        fig = plt.figure(dpi=300, figsize=(6, 6))
+        fig = plt.figure(dpi=300, figsize=(6, 4))
         ax = fig.gca()
 
         ## FID
         sns.pointplot(x="latent_dims", y="fid", hue="model", data=df_to_use, ci=95, rug_kws=dict(rasterized=True, zorder=1), ax=ax)
         bottom, top = plt.ylim()  # return the current ylim
-        #plt.ylim((bottom, top+20))  # set the ylim to bottom, top
+        plt.ylim((bottom, top+10))  # set the ylim to bottom, top
 
         ax.grid(visible=True, which='major', axis='both', color='w', zorder=0.1)
         ax.set_facecolor('lavender')
@@ -798,11 +778,11 @@ def phase2_bpp_fid_plot(df):
         ax.legend(handles=handles, labels=labels, loc='upper center', ncol=2)#, bbox_to_anchor=(0.5, -0.1))
 
         ax.set_title(dataset_titles[dataset])
-        plt.savefig(f'plots/fid_phase21_{dataset}.pdf')
+        plt.savefig(f'plots/iclr/fid_phase21_{dataset}.pdf', bbox_inches='tight')
         plt.clf()
         ##
         ## BPP
-        fig = plt.figure(dpi=300, figsize=(6, 6))
+        fig = plt.figure(dpi=300, figsize=(6, 4))
         ax = fig.gca()
 
         sns.pointplot(x="latent_dims", y="test_bpp_adjusted", hue="model", data=df_to_use, ci=95, rug_kws=dict(rasterized=True, zorder=1), ax=ax)
@@ -810,7 +790,7 @@ def phase2_bpp_fid_plot(df):
         ax.set_facecolor('lavender')
         ax.set_axisbelow(True)
         bottom, top = plt.ylim()  # return the current ylim
-        #plt.ylim((bottom, top + 0.2))  # set the ylim to bottom, top
+        plt.ylim((bottom, top + 0.2))  # set the ylim to bottom, top
 
 
         plt.ylim()
@@ -821,7 +801,7 @@ def phase2_bpp_fid_plot(df):
         ax.legend(handles=handles, labels=labels, loc='upper center', ncol=2)  # , bbox_to_anchor=(0.5, -0.1))
 
         ax.set_title(dataset_titles[dataset])
-        plt.savefig(f'plots/bpp_phase21_{dataset}.pdf')
+        plt.savefig(f'plots/iclr/bpp_phase21_{dataset}.pdf', bbox_inches='tight')
         plt.clf()
 
 
@@ -879,7 +859,70 @@ def mnist_latent_space_grid():
             img = plot_image_grid(output, cols=20, padding=0)
             img.save(f'plots/iclr/latent_spaces_grids/grid_{run_name}.png')
 
+def phase1_old_bpp_fid(df):
+    datasets = ['mnist', 'kmnist', 'fashionmnist']
+    models_full = ['vae', 'nae-external', 'nae-corner', 'nae-center']
+    models_main = ['vae', 'nae-external']
+    dataset_titles = {'mnist': 'MNIST', 'kmnist': 'KMNIST', 'fashionmnist': 'FashionMNIST'}
 
+    # todo
+    rc = {
+        "text.usetex": True,
+        "font.family": "Times New Roman",
+        "axes.axisbelow": True,
+    }
+    plt.rcParams.update(rc)
+
+    for dataset in datasets:
+        df_to_use = df[(df.loc[:, 'dataset'] == dataset) & (df.loc[:, 'model'].isin(models_main))]
+        df_to_use = df_to_use.sort_values(by='model', axis=0)
+        df_to_use = df_to_use.replace(to_replace={'vae': "VAE",
+                                                  'nae-center': 'AEF (center)',
+                                                  'nae-corner': 'AEF (corner)',
+                                                  'nae-external': 'AEF (linear)'})
+
+        fig = plt.figure(dpi=300, figsize=(6, 3))
+        ax = sns.pointplot(x="latent_dims", y="test_bpp_adjusted", hue="model", data=df_to_use, ci=95)
+        ax.set_facecolor('lavender')
+        # ax.yaxis.set_major_locator(plt.MaxNLocator(4))
+        ax.grid(visible=True, which='major', axis='both', color='w')
+
+        ax.legend(ncol=2, loc='upper center')
+        ax.set_xlabel('Latent dimensions')
+        ax.set_ylabel('BPP')
+        plt.title(dataset_titles[dataset])
+        plt.savefig(f'plots/iclr/bpp_{dataset}_old_main.pdf', bbox_inches='tight')
+
+        df_to_use = df[(df.loc[:, 'dataset'] == dataset) & (df.loc[:, 'model'].isin(models_full))]
+        df_to_use = df_to_use.sort_values(by='model', axis=0)
+        df_to_use = df_to_use.replace(to_replace={'vae': "VAE",
+                                                  'nae-center': 'AEF (center)',
+                                                  'nae-corner': 'AEF (corner)',
+                                                  'nae-external': 'AEF (linear)'})
+
+        fig = plt.figure(dpi=300, figsize=(6, 3))
+        ax = sns.pointplot(x="latent_dims", y="test_bpp_adjusted", hue="model", data=df_to_use, ci=95)
+        ax.set_facecolor('lavender')
+        # ax.yaxis.set_major_locator(plt.MaxNLocator(4))
+        ax.grid(visible=True, which='major', axis='both', color='w')
+
+        ax.legend(ncol=2, loc='upper center')
+        ax.set_xlabel('Latent dimensions')
+        ax.set_ylabel('BPP')
+        plt.title(dataset_titles[dataset])
+        plt.savefig(f'plots/iclr/bpp_{dataset}_old_full.pdf', bbox_inches='tight')
+
+        fig = plt.figure(dpi=300, figsize=(6, 3))
+        ax = sns.pointplot(x="latent_dims", y="fid", hue="model", data=df_to_use, ci=95)
+        ax.set_facecolor('lavender')
+        # ax.yaxis.set_major_locator(plt.MaxNLocator(4))
+        ax.grid(visible=True, which='major', axis='both', color='w')
+
+        ax.legend(ncol=2, loc='upper center')
+        ax.set_xlabel('Latent dimensions')
+        ax.set_ylabel('FID')
+        plt.title(dataset_titles[dataset])
+        plt.savefig(f'plots/iclr/fid_{dataset}_old.pdf', bbox_inches='tight')
 
 if __name__ == "__main__":
     #generate_celeba_samples_main()
@@ -900,10 +943,18 @@ if __name__ == "__main__":
     # df = extract_data_from_runs('phase1')
     # df.to_pickle('phase1.pkl')
     # df = pd.read_pickle('phase1.pkl')
-    df = extract_data_from_runs('denoising-experiments-5')
-    df.to_pickle('denoising-experiments-5.pkl')
-    #df = pd.read_pickle('phase1.pkl')
-    denoising_plot_phase1(df)
-    #phase1_bpp_fid_plot(df)
+    # df = extract_data_from_runs('denoising-experiments-5')
+    # df.to_pickle('denoising-experiments-5.pkl')
+    # #df = pd.read_pickle('phase21.pkl')
+    # df = pd.read_pickle('denoising-experiments-5.pkl')
+    # denoising_plot_phase1(df)
+    # df = extract_data_from_runs('denoising-experiments-6', runs_finished=False)
+    # df.to_pickle('denoising-experiments-6.pkl')
+    df = pd.read_pickle('denoising-experiments-6.pkl')
+    denoising_plot_phase2(df)
+    #phase2_bpp_fid_plot(df)
+    # df = pd.read_pickle('phase1.pkl')
+    # phase1_bpp_fid_plot(df)
+    # phase1_old_bpp_fid(df)
     sys.exit(0)
     # generate_denoising_reconstructions_main()
