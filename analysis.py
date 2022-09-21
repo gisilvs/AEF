@@ -44,6 +44,8 @@ def extract_data_from_runs(project_name='phase1', runs_finished=True):
 
     runs = api.runs(path=f"nae/{project_name}")
     for run in runs:
+        if run.state == 'running':
+            continue
         if runs_finished and run.state != 'finished':
             continue
         dataset.append(get_field_from_config(run, "dataset"))
@@ -610,31 +612,36 @@ def generate_phase2_table(df, latent_dims=2):
             print(f'{model_name} BPP {mean_bpp} +- {se_bpps}')
             print(f'{model_name} FID {mean_fid} +- {se_fid}')
 
-def generate_denoising_table(df, latent_dims=32):
+def generate_denoising_table(df):
 
     datasets = ['mnist', 'fashionmnist', 'kmnist']
     models = ['ae', 'vae', 'aef-linear']
-    model_titles = ['AE', 'VAE', 'AEF (linear)']
+
     noise_levels = [0.25, 0.5, 0.75, 1.0]
-
-    mean_rce = np.zeros((len(models), len(datasets), len(noise_levels)))
-    se_rce = np.zeros((len(models), len(datasets), len(noise_levels)))
-    for model_idx, model_name in enumerate(models):
+    latent_sizes = [2, 32]
+    for latent_dims in latent_sizes:
+        print(latent_dims)
         for dataset_idx, dataset in enumerate(datasets):
-            for noise_idx, noise_level in enumerate(noise_levels):
-                runs = df.loc[(df.loc[:, 'model'] == model_name) & (df.loc[:, 'dataset'] == dataset) & (df.loc[:, 'noise_level'] == noise_level)]
-                print(f'{model_name} {dataset} {noise_level} nr. of runs: {len(runs)}')
-                mean_rce[model_idx, dataset_idx, noise_idx] = runs.loc[:, 'test_rce_with_noise'].mean(axis=0)
-                se_rce[model_idx, dataset_idx] = runs.loc[:, 'test_rce_with_noise'].sem(axis=0)
-
-    for row_idx in range(len(models)):
-        print(model_titles[row_idx], end=' ')
-        for dataset_idx in range(len(datasets)):
-            for noise_level_idx in range(len(noise_levels)):
-                print(f'& ${mean_rce[row_idx, dataset_idx, noise_level_idx]:.3f} \pm {se_rce[row_idx, dataset_idx, noise_level_idx]:.3f}$', end=' ')
-        print('\\\\')
+            for model_idx, model_name in enumerate(models):
+                    for noise_idx, noise_level in enumerate(noise_levels):
+                        runs = df.loc[(df.loc[:, 'latent_dims'] == latent_dims) & (df.loc[:, 'model'] == model_name) & (df.loc[:, 'dataset'] == dataset) & (df.loc[:, 'noise_level'] == noise_level)]
+                        val = runs.loc[:, 'ife'].mean(axis=0)
+                        print(f'{dataset} {model_name} sigma {noise_level} IFE: {val}')
 
 
+
+
+def generate_denoising_table_celeba(df):
+
+    models = ['ae', 'vae', 'aef-linear']
+    noise_levels = [0.05, 0.1, 0.2]
+
+    for model_idx, model_name in enumerate(models):
+        for noise_idx, noise_level in enumerate(noise_levels):
+
+            runs = df.loc[(df.loc[:, 'model'] == model_name) & (df.loc[:, 'noise_level'] == noise_level)]
+            val = runs.loc[:, 'ife'].mean(axis=0)
+            print(f'{model_name} sigma {noise_level}: {val}')
 
 
 
@@ -842,12 +849,12 @@ def find_sigma():
     # n_batches = 128
     # batch_size = 16
 
-    latent_sizes = [64]
+    latent_sizes = [256]
     project_name = 'phase21'
-    dataset = 'celebahq64'
-    data_dir = 'celebahq64'
+    dataset = 'imagenet'
+    data_dir = 'imagenet'
     #data_dir = 'data/celebahq64'
-    img_dim = [3, 64, 64]
+    img_dim = [3, 32, 32]
     alpha = 0.05
     n_batches = 16 * 4
     iw_batch_size = 32
@@ -879,7 +886,7 @@ def find_sigma():
     #sigmas = [20, 10, 5, 2.5, 1, 0.5, 0.25, 0.1, 0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001, 0.00001]
     #sigmas = [0.0005, 0.00025, 0.0001, 0.00005]
     #sigmas = [2, 1, 0.1]#[0.1, 0.001, 0.001]#[5, 2, 1]
-    sigmas = [2, 1, 0.5]
+    sigmas = [0.00075, 0.00005, 0.00001, 0.000005, 0.000001]
     print(dataset)
     print(f'n_batches: {n_batches}')
     print(f'batch_size: {iw_batch_size}')
@@ -1068,11 +1075,11 @@ def add_ll_phase2():
     device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
     #device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
 
-    latent_sizes = [256]
+    latent_sizes = [64]
     project_name = 'phase21'
-    dataset = 'celebahq'
-    data_dir = 'data/celebahq/celebahq'
-    img_dim = [3, 32, 32]
+    dataset = 'celebahq64'
+    data_dir = 'celebahq64'
+    img_dim = [3, 64, 64]
     alpha = 0.05
     n_batches = 128
     batch_size = 32
@@ -1092,7 +1099,7 @@ def add_ll_phase2():
     for latent_dims in latent_sizes:
         test_dataloader = get_test_dataloader(dataset, batch_size, data_dir=data_dir)
         runs = api.runs(path=f"nae/{project_name}", filters={
-            "config.model": 'vae',
+            "config.model": 'aef-linear',
             "config.dataset": dataset,
             "config.latent_dims": latent_dims
         })
@@ -1145,8 +1152,8 @@ def add_ll_phase2():
                             test_batch = dequantize(test_batch)
                             test_batch = test_batch.to(device)
                             for iw_iter in range(20):
-                                log_likelihood = torch.mean(model.approximate_marginal(test_batch, n_samples=128))
-                                # log_likelihood = torch.mean(model.approximate_marginal(test_batch, n_samples=128, std=importance_std))
+                                # log_likelihood = torch.mean(model.approximate_marginal(test_batch, n_samples=128))
+                                log_likelihood = torch.mean(model.approximate_marginal(test_batch, n_samples=128, std=importance_std))
                                 test_ll_averager(log_likelihood.item())
                         test_ll = test_ll_averager(None)
                         # We only add this value to the summary if we approximate the log likelihood (since we provide test_loss
@@ -1159,10 +1166,16 @@ def add_ll_phase2():
                         run.summary['test_bpp'] = bpp_test
                         run.summary['test_bpp_adjusted'] = bpp_test_adjusted
                         run.summary.update()
-                        print(f"Updated {run_name}")
+                        print(f"Updated LL of {run_name}")
                     else:
                         print('Something went wrong')
 
+                    if model_name == 'vae':
+                        incept = metrics.InceptionV3().to(device)
+                        fid = metrics.calculate_fid(model, dataset, device, batch_size=batch_size, incept=incept,
+                                                    data_dir=data_dir)
+                        run.summary['fid'] = fid
+                        run.summary.update()
             except Exception as e:
                 print(e)
                 traceback.print_exc()
@@ -1281,20 +1294,112 @@ def add_ll_denoising_phase1():
                 print(f'Failed to update {run_name}')
                 continue
 
+def add_ll_imagenet():
+    use_gpu = True
+    device = torch.device("cuda:0" if use_gpu and torch.cuda.is_available() else "cpu")
+
+    project_name = 'phase21'
+    dataset = 'imagenet'
+    data_dir = 'imagenet'
+    img_dim = [3, 32, 32]
+    alpha = 0.05
+    batch_size = 16
+
+    n_pixels = np.prod(img_dim)
+
+    to_do = ['aef-linear_big_imagenet_latent_size_256_post_maf_prior_maf_4JtW_continued',
+             'aef-linear_big_imagenet_latent_size_128_post_maf_prior_maf_TNWh_continued',
+             'aef-linear_big_imagenet_latent_size_256_post_maf_prior_maf_wzhK_continued',
+             'aef-linear_big_imagenet_latent_size_128_post_maf_prior_maf_IwmN_continued',
+             'vae_big_imagenet_latent_size_256_post_iaf_prior_maf_6ghG_continued']
+
+    api = wandb.Api()
+    test_dataloader = get_test_dataloader(dataset, batch_size, data_dir=data_dir)
+    runs = api.runs(path=f"nae/{project_name}", filters={
+        "config.dataset": dataset,
+    })
+    for run in runs:
+        if run.name not in to_do:
+            continue
+        try:
+            model_name = get_field_from_config(run, "model")
+            dataset = get_field_from_config(run, "dataset")
+            decoder = get_field_from_config(run, "decoder")
+            latent_dims = get_field_from_config(run, "latent_dims", type="int")
+            architecture_size = get_field_from_config(run, "architecture_size")
+
+            posterior_flow = get_field_from_config(run, "posterior_flow")
+            prior_flow = get_field_from_config(run, "prior_flow")
+
+            model = get_model(model_name, architecture_size, decoder, latent_dims, img_dim, alpha, posterior_flow,
+                              prior_flow)
+            run_name = run.name
+            artifact = api.artifact(f'nae/{project_name}/{run_name}_best:latest')
+            artifact_dir = artifact.download()
+            artifact_dir = artifact_dir + '/' + os.listdir(artifact_dir)[0]
+            model.load_state_dict(torch.load(artifact_dir, map_location=device))
+            model = model.to(device)
+            model.loss_function(model.sample(10))
+
+            model = model.eval()
+
+            if model_name == 'aef-linear':
+                importance_std = util.get_posterior_scale_aef_linear(dataset, latent_dims)
+            print(f'Approximating LL of {run.name}')
+            with torch.no_grad():
+                # Approximate log likelihood if model in VAE family
+
+                if has_importance_sampling(model):
+
+                    test_ll_averager = make_averager()
+                    for test_batch, _ in test_dataloader:
+                        test_batch = dequantize(test_batch)
+                        test_batch = test_batch.to(device)
+                        for iw_iter in range(20):
+                            if model_name == 'vae':
+                                log_likelihood = torch.mean(model.approximate_marginal(test_batch, n_samples=128))
+                            else:
+                                log_likelihood = torch.mean(model.approximate_marginal(test_batch, n_samples=128, std=importance_std))
+                            test_ll_averager(log_likelihood.item())
+                    test_ll = test_ll_averager(None)
+                    # We only add this value to the summary if we approximate the log likelihood (since we provide test_loss
+                    # in both cases).
+
+                    bpp_test = bits_per_pixel(test_ll, n_pixels)
+                    bpp_test_adjusted = bits_per_pixel(test_ll, n_pixels, adjust_value=256.)
+
+                    run.summary['test_log_likelihood'] = test_ll
+                    run.summary['test_bpp'] = bpp_test
+                    run.summary['test_bpp_adjusted'] = bpp_test_adjusted
+                    run.summary.update()
+                    print(f"Updated {run_name}")
+                else:
+                    print('Something went wrong')
+
+        except Exception as e:
+            print(e)
+            traceback.print_exc()
+            print(f'Failed to update {run_name}')
+            continue
+
+
 
 if __name__ == '__main__':
-    # add_ll_phase2()
+    add_ll_imagenet()
+    # find_sigma()
+    #add_ll_phase2()
     #add_ll_phase1()
     # add_ife()
     #find_optimal_fid_celeba(False)
     #update_nae_external()
     # add_fid_cifar()
     # add_mse_fid_phase_1()
-    # df = extract_data_from_runs('phase1')
-    # df.to_pickle('phase1.pkl')
-    df = pd.read_pickle('phase1.pkl')
-    generate_phase1_table(df, 2)
-    generate_phase1_table(df, 32)
+    # df = extract_data_from_runs('denoising-experiments-5')
+    # df.to_pickle('denoising-experiments-5.pkl')
+    #df = pd.read_pickle('denoising-experiments-5.pkl')
+    #generate_denoising_table(df)
+    # generate_phase1_table(df, 2)
+    # generate_phase1_table(df, 32)
     # phase1_fid_plot(df)
     # check_nr_experiments(df)
     # check_runs_missing_artifact()
