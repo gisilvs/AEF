@@ -3,7 +3,7 @@
 
 This repository contains the official implementation of our paper "[Closing the gap: Exact maximum likelihood training of generative autoencoders using invertible layers]".
 
-![Image from abstract](figs/abstract-1-1.png)
+![Image from abstract](figs/readme_samples_celeba64.png)
 
 In this work, we provide an exact likelihood alternative to the variational training of generative autoencoders. This is achieved while leaving complete freedom in the choice of encoder, decoder and prior architectures, making our approach a drop-in replacement for the training of existing VAEs and VAE-style models. We show that the approach results in strikingly higher performance than architecturally equivalent VAEs in term of log-likelihood, sample quality and denoising performance. 
 
@@ -17,7 +17,7 @@ To run experiments we provide a command line interface with the file `main_cli.p
 
     ./main_cli.py --model aef-center --dataset mnist --latent-dims 2 
 
-We provide implementations of baseline models such as vanilla VAEs, VAEs with inverse autoregressive flows, and more. Additional parameters can be specified such as number of training iterations, learning rate, and batch size. For more details, please consult `main_cli.py`.
+ For more details, please consult `main_cli.py`.
 
 ## Samples
 
