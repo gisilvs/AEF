@@ -1,14 +1,22 @@
+import string
+import random
 from typing import Mapping, Union, Optional, Callable, List
 import pandas as pd
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
+import wandb
 from torch.distributions.normal import Normal
 
 import os
 import torchvision
 
-import models.model_database
+from models import model_database
+
+
+def has_importance_sampling(model):
+    approximate_marginal = getattr(model, "approximate_marginal", None)
+    return callable(approximate_marginal)
 
 
 def get_avg_loss_over_iterations(iteration_losses: np.array, window_size: int, cur_iteration: int):
@@ -16,14 +24,14 @@ def get_avg_loss_over_iterations(iteration_losses: np.array, window_size: int, c
     high_window = cur_iteration + 1
     return np.mean(iteration_losses[low_window:high_window])
 
+
 def plot_loss_over_iterations(iterations_losses: np.array, val_losses: List = None,
                               val_iterations: List = None, window_size: int = 10):
     def moving_average(a, n=window_size):
         ret = np.cumsum(a, dtype=float)
-        ret[n:] = (ret[n:] - ret[:-n])/n
-        ret[:n] = ret[:n] / np.arange(1, n+1)
+        ret[n:] = (ret[n:] - ret[:-n]) / n
+        ret[:n] = ret[:n] / np.arange(1, n + 1)
         return ret
-
 
     plt.figure()
 
@@ -34,6 +42,7 @@ def plot_loss_over_iterations(iterations_losses: np.array, val_losses: List = No
     plt.xlabel("Iteration")
     plt.ylabel("Negative log likelihood")
     plt.show()
+
 
 def make_averager() -> Callable[[Optional[float]], float]:
     """ Returns a function that maintains a running average
@@ -86,6 +95,7 @@ def run_on_testbatch(df_log, vae, epoch, x, y, device=None):
 
     return save_in_dataframe(df_log, y, mus, stddevs, epoch)
 
+
 def plot_loss(train_loss, val_loss=None):
     plt.figure()
     plt.plot(np.arange(len(train_loss)), train_loss, color='tab:blue')
@@ -96,31 +106,34 @@ def plot_loss(train_loss, val_loss=None):
     plt.ylabel("Negative log likelihood")
     plt.show()
 
+
 def refresh_bar(bar, desc):
     bar.set_description(desc)
     bar.refresh()
 
-def dequantize(batch): # TODO: move somewhere else
+
+def dequantize(batch):  # TODO: move somewhere else
     noise = torch.rand(*batch.shape)
     batch = (batch * 255. + noise) / 256.
     return batch
+
 
 def vae_log_prob(vae, images, n_samples):
     '''
     Implementation of importance sampling marginal likelihood for VAEs
     :return:
     '''
-    #todo: needs further testing
+    # todo: needs further testing
     batch_size = images.shape[0]
     mu_z, sigma_z = vae.encode(images)
-    samples = Normal(mu_z, sigma_z).sample([n_samples]).transpose(1,0)
-    mu_x, sigma_x = vae.decode(samples.reshape(batch_size*n_samples, -1))
+    samples = Normal(mu_z, sigma_z).sample([n_samples]).transpose(1, 0)
+    mu_x, sigma_x = vae.decode(samples.reshape(batch_size * n_samples, -1))
     mu_x, sigma_x = mu_x.view(batch_size, n_samples, -1), sigma_x.view(batch_size, n_samples, -1)
-    p_x_z = Normal(mu_x, sigma_x).log_prob(images.view(batch_size,1, -1)).sum([2]).view(batch_size,n_samples)
-    p_latent = Normal(0,1).log_prob(samples).sum([-1])
+    p_x_z = Normal(mu_x, sigma_x).log_prob(images.view(batch_size, 1, -1)).sum([2]).view(batch_size, n_samples)
+    p_latent = Normal(0, 1).log_prob(samples).sum([-1])
     q_latent = Normal(mu_z.unsqueeze(1), sigma_z.unsqueeze(1)).log_prob(samples).sum([-1])
 
-    #return torch.log(torch.mean(torch.exp(p_x_z+p_latent-q_latent)))
+    # return torch.log(torch.mean(torch.exp(p_x_z+p_latent-q_latent)))
     return torch.mean(torch.logsumexp(p_x_z + p_latent - q_latent, [1]) - torch.log(torch.tensor(n_samples)))
 
 
@@ -142,57 +155,84 @@ def download_artifact_and_get_path(run, project_name, experiment_name, download_
     return artifact_dir + '/' + os.listdir(artifact_dir)[0]
 
 
-
 def load_best_model(run, project_name, model_name, experiment_name, device, latent_dims, image_dim, alpha,
                     decoder, architecture_size, prior_flow, posterior_flow, version='latest'):
-    model = models.get_model(model_name, architecture_size, decoder, latent_dims, image_dim, alpha, posterior_flow, prior_flow) # needed as some components such as actnorm need to be initialized
-    model.loss_function(model.sample(10)) # needed as some components such as actnorm need to be initialized
+    model = model_database.get_model(model_name, architecture_size, decoder, latent_dims, image_dim, alpha, posterior_flow,
+                             prior_flow)  # needed as some components such as actnorm need to be initialized
+    model.loss_function(model.sample(10))  # needed as some components such as actnorm need to be initialized
 
     model_path = download_artifact_and_get_path(run, project_name, experiment_name, download_best=True, version=version)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model = model.to(device)
     return model
 
-def load_latest_model(run, project_name, experiment_name, device, model, optimizer, validate_every_n_iterations, version='latest'):
-    model_path = download_artifact_and_get_path(run, project_name, experiment_name, download_best=False, version=version)
-    checkpoint = torch.load(model_path, map_location=torch.device(device))
-    n_iterations_done = checkpoint['n_iterations_done']
+
+def load_latest_model(run, project_name, experiment_name, device, model, optimizer, validate_every_n_iterations,
+                      version='latest', log_only_on_val_points=True):
+    latest_model_path = download_artifact_and_get_path(run, project_name, experiment_name, download_best=False,
+                                                       version=version)
+    best_model_path = download_artifact_and_get_path(run, project_name, experiment_name, download_best=True,
+                                                     version=version)
+
+    # Get previous val_iters
+    # No, we just assume val_iters is equal to what it was before
+
+    # Move files to checkpoints so that they can be uploaded
+    if not os.path.exists(f'checkpoints/{experiment_name}_continued_latest.pt'):
+        os.rename(latest_model_path, f'checkpoints/{experiment_name}_continued_latest.pt')
+    else:
+        print(f'checkpoints/{experiment_name}_continued_latest.pt already exists. Using this file.')
+    if not os.path.exists(f'checkpoints/{experiment_name}_continued_best.pt'):
+        os.rename(best_model_path, f'checkpoints/{experiment_name}_continued_best.pt')
+    else:
+        print(f'checkpoints/{experiment_name}_continued_best.pt already exists. Using this file.')
+
+    checkpoint = torch.load(f'checkpoints/{experiment_name}_continued_latest.pt', map_location=torch.device(device))
+    n_iterations_done = checkpoint['n_iterations_done'] + 1
     iteration_losses = checkpoint['iteration_losses']
     validation_losses = checkpoint['validation_losses']
     best_loss = checkpoint['best_loss']
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
+    # TODO: return best iteration val_loss
+    val_iters_arr = np.array(validation_losses)
+    best_iteration = np.argmin(val_iters_arr) * validate_every_n_iterations
+
+    # Upload previous losses to wandb
+    # TODO: check if there's a faster/better way
     j = 0
     for i in range(n_iterations_done):
         log_dict = {'train_loss': iteration_losses[i]}
-        if i % validate_every_n_iterations == 0 and j<len(validation_losses):
+        if (i % validate_every_n_iterations == 0) and (j < len(validation_losses)) or (i == n_iterations_done - 1):
             log_dict['val_loss'] = validation_losses[j]
-            j+=1
-        run.log(log_dict)
-    return n_iterations_done, iteration_losses, validation_losses, best_loss, model, optimizer
+            j += 1
+            if log_only_on_val_points:
+                run.log(log_dict, step=i)
+        if not log_only_on_val_points:
+            run.log(log_dict)
+    return n_iterations_done, iteration_losses, validation_losses, best_loss, model, optimizer, best_iteration
 
-def plot_image_grid(samples, cols, padding=2, title=None, hires=False):
+
+def plot_image_grid(samples, cols, padding=1, pad_value=0.):
     '''
     Samples should be a torch aray with dimensions BxCxWxH
     '''
-    if hires:
-        fig = plt.figure(figsize=(10, 10), dpi=300)
-    else:
-        fig = plt.figure()
-    grid_img = torchvision.utils.make_grid(samples, padding=padding, pad_value=1., nrow=cols)
-    plt.imshow(grid_img.permute(1, 2, 0))
-    plt.axis("off")
-    if title:
-        plt.suptitle(title)
-    return fig
+    samples = np.clip(samples, 0., 1.)
+    grid = torchvision.utils.make_grid(samples, padding=padding, pad_value=pad_value, nrow=cols, normalize=False)
+    img = torchvision.transforms.ToPILImage()(grid)
+    return img
 
-        
+def get_random_id(length=4):
+    return ''.join(random.choices(string.ascii_uppercase + string.digits + string.ascii_lowercase, k=length))
+
 def bits_per_pixel(neg_log_prob, n_pixels, adjust_value=None):
     if adjust_value:
-        neg_log_prob += (n_pixels*torch.log(torch.ones(1)*adjust_value))[0]
-    log_prob_base_2 = neg_log_prob/torch.log(torch.ones(1)*2.)
+        neg_log_prob += (n_pixels * torch.log(torch.ones(1) * adjust_value))[0]
+    log_prob_base_2 = neg_log_prob / torch.log(torch.ones(1) * 2.)
 
-    return log_prob_base_2/n_pixels
+    return log_prob_base_2 / n_pixels
+
 
 def get_center_mask(image_shape: List, core_size: int):
     mask = torch.zeros(image_shape)
@@ -242,12 +282,13 @@ def get_center_mask(image_shape: List, core_size: int):
         row_dir_temp = -col_dir
         col_dir = row_dir
         row_dir = row_dir_temp
-        steps_counter +=1
+        steps_counter += 1
         if steps_counter == 2:
             steps_counter = 0
-            n_steps+=1
+            n_steps += 1
 
     return mask
+
 
 def get_corner_mask(image_shape: List, core_size: int):
     '''
@@ -304,3 +345,12 @@ def get_corner_mask(image_shape: List, core_size: int):
                     row = base_number_rows
                     column = base_number_cols
     return mask
+
+def get_posterior_scale_aef_linear(dataset, latent_dims):
+    dict = {'mnist': {2: 2, 4: 0.1, 8: 0.01, 16: 0.001, 32: 0.0005},
+            'fashionmnist': {2: 2, 4: 0.1, 8: 0.01, 16: 0.005, 32: 0.0005},
+            'kmnist': {2: 2, 4: 0.075, 8: 0.025, 16: 0.005, 32: 0.00075},
+            'celebahq': {64: 0.01, 128: 0.01, 256: 0.00025},
+            'celebahq64': {64: 1, 128: 1, 256: 1, 512: 1},
+            'imagenet': {128: 0.0001, 256: 0.00009}}
+    return dict[dataset][latent_dims]

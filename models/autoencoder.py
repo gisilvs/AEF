@@ -7,24 +7,21 @@ import torch.nn.functional as F
 
 
 class Coder(nn.Module):
+    """ Base class for an encoder or decoder. """
     def __init__(self, latent_dims: int):
         super(Coder, self).__init__()
-        self.latent_dim = latent_dims
+        self.latent_dims = latent_dims
 
     def forward(self, x: Tensor) -> Tensor:
         raise NotImplementedError
 
 
 class GaussianCoder(Coder):
+    """ Base class for an encoder/decoder that returns a Gaussian distribution (i.e. mu and sigma). """
     def __init__(self, latent_dims: int):
         super(GaussianCoder, self).__init__(latent_dims)
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor]:
-        '''
-        A GaussianCoder returns a mu and sigma with the same shape as x.
-        :param x:
-        :return: mu, sigma
-        '''
         raise NotImplementedError
 
 
@@ -42,12 +39,6 @@ class GaussianDecoder(GaussianCoder):
 
 class ConvolutionalEncoderSmall(GaussianEncoder):
     def __init__(self, hidden_channels: int, input_shape: List, latent_dims: int):
-        '''
-        Default convolutional encoder class.
-        :param hidden_channels:
-        :param input_shape: [C,H,W]
-        :param latent_dims:
-        '''
         super(ConvolutionalEncoderSmall, self).__init__(input_shape=input_shape, latent_dims=latent_dims)
         self.conv1 = nn.Conv2d(in_channels=input_shape[0],
                                out_channels=hidden_channels,
@@ -69,10 +60,6 @@ class ConvolutionalEncoderSmall(GaussianEncoder):
         self.activation = nn.ReLU()
 
     def forward(self, x: torch.Tensor):
-        """
-        :param x: batch of images with shape [batch, channels, w, h]
-        :returns: mu(x), softplus(sigma(x))
-        """
         batch_size = x.shape[0]
         x = self.activation(self.conv1(x))
         x = self.activation(self.conv2(x))
@@ -87,6 +74,7 @@ class ConvolutionalEncoderSmall(GaussianEncoder):
         return z_mu, z_sigma
 
 class ConvolutionalDecoderSmall(GaussianDecoder):
+    """ Base class for a small convolutional decoder. """
     def __init__(self, hidden_channels: int, output_shape: List, latent_dims: int):
         super(ConvolutionalDecoderSmall, self).__init__(output_shape=output_shape, latent_dims=latent_dims)
 
@@ -114,7 +102,7 @@ class ConvolutionalDecoderSmall(GaussianDecoder):
 class LatentDependentDecoderSmall(ConvolutionalDecoderSmall):
     def __init__(self, hidden_channels: int, output_shape: List, latent_dims: int):
         """
-        Convolutional decoder where sigma is not dependent on z (but is learned).
+        Convolutional decoder where sigma is dependent on z, i.e. forward returns mu(z), sigma(z).
         """
         super(LatentDependentDecoderSmall, self).__init__(hidden_channels, output_shape, latent_dims)
         #  Our last convolutional layer encodes both mu and sigma
@@ -127,10 +115,6 @@ class LatentDependentDecoderSmall(ConvolutionalDecoderSmall):
         self.activation = nn.ReLU()
 
     def forward(self, z: torch.Tensor):
-        """
-        :param z:
-        :returns: mu(z), sigma(z)
-        """
         x = self.fc(z)
         x = x.view(x.size(0), self.hidden_channels * 2, self.output_shape[1] // 4, self.output_shape[2] // 4)
         x = self.activation(self.conv2(x))
@@ -140,17 +124,15 @@ class LatentDependentDecoderSmall(ConvolutionalDecoderSmall):
         return x_mu, x_sigma
 
 
-class IndependentVarianceDecoderSmall(ConvolutionalDecoderSmall):
+class LearnableVarianceDecoderSmall(ConvolutionalDecoderSmall):
+    """
+    Convolutional decoder where sigma is not dependent on z, but is learned during training.
+    """
     def __init__(self, hidden_channels: int, output_shape: List, latent_dims: int):
-        super(IndependentVarianceDecoderSmall, self).__init__(hidden_channels, output_shape, latent_dims)
-
+        super(LearnableVarianceDecoderSmall, self).__init__(hidden_channels, output_shape, latent_dims)
         self.pre_sigma = nn.Parameter(torch.zeros(output_shape))
 
     def forward(self, z: torch.Tensor):
-        """
-        :param z: input batch from latent space
-        :returns: mu(x), sigma (learned constant)
-        """
         x = self.fc(z)
         x = x.view(x.size(0), self.hidden_channels * 2, self.output_shape[1] // 4, self.output_shape[2] // 4)
         x = self.activation(self.conv2(x))
@@ -161,14 +143,13 @@ class IndependentVarianceDecoderSmall(ConvolutionalDecoderSmall):
 
 
 class FixedVarianceDecoderSmall(ConvolutionalDecoderSmall):
+    """
+    Convolutional decoder where sigma is fixed to 1.
+    """
     def __init__(self, hidden_channels: int, output_shape: List, latent_dims: int):
         super(FixedVarianceDecoderSmall, self).__init__(hidden_channels, output_shape, latent_dims)
 
     def forward(self, z: torch.Tensor):
-        """
-        :param z: input batch from latent space
-        :returns: mu(x), sigma (equal to 1 for each dimension)
-        """
         x = self.fc(z)
         x = x.view(x.size(0), self.hidden_channels * 2, self.output_shape[1] // 4, self.output_shape[2] // 4)
         x = self.activation(self.conv2(x))

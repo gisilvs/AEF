@@ -1,26 +1,37 @@
+from typing import List
+
 import torch
 from torch import nn, Tensor, distributions
 from nflows.transforms import Transform, IdentityTransform
 
-from models.autoencoder import GaussianEncoder, GaussianDecoder
+from models.autoencoder import GaussianEncoder, GaussianDecoder, Coder
 
 from torch.distributions.normal import Normal
 
 
 class AutoEncoder(nn.Module):
-    def __init__(self):
+    """ Base class for any autoencoder. """
+    def __init__(self, encoder: Coder, decoder: Coder):
         super(AutoEncoder, self).__init__()
+        self.encoder = encoder
+        self.decoder = decoder
 
     def encode(self, x: Tensor):
+        """
+        Encode input from data space into latent space.
+        """
         raise NotImplementedError
 
     def decode(self, z: Tensor):
-        raise NotImplementedError
-
-    def sample(self, n_samples: int):
+        """
+        Decode input from latent space back to data space.
+        """
         raise NotImplementedError
 
     def forward(self, x: Tensor):
+        """
+        Reconstruct input by first encoding and then decoding it.
+        """
         raise NotImplementedError
 
     def loss_function(self, x: Tensor):
@@ -29,17 +40,15 @@ class AutoEncoder(nn.Module):
 
 class GaussianAutoEncoder(AutoEncoder):
     def __init__(self, encoder: GaussianEncoder, decoder: GaussianDecoder):
-        super(GaussianAutoEncoder, self).__init__()
+        super(GaussianAutoEncoder, self).__init__(encoder, decoder)
 
-        assert encoder.latent_dim == decoder.latent_dim
+        assert encoder.latent_dims == decoder.latent_dims
 
         self.encoder = encoder
         self.decoder = decoder
-        self.latent_dims = encoder.latent_dim
-        self.prior = Normal(torch.zeros(self.latent_dims),
-                                        torch.ones(self.latent_dims))
+        self.latent_dims = encoder.latent_dims
+        self.prior = Normal(torch.zeros(self.latent_dims), torch.ones(self.latent_dims))
         self.eps = 1e-6
-        self.device = None
 
     def encode(self, x: Tensor):
         return self.encoder(x)
@@ -48,63 +57,59 @@ class GaussianAutoEncoder(AutoEncoder):
         return self.decoder(z)
 
     def sample(self, num_samples: int = 1, temperature: int = 1):
-        self.set_device()
+        """
+        Function to sample from prior distribution and decode it to return a sample (ideally) from the data distribution.
+        """
+        z = self.prior.sample((num_samples,)) * temperature
+        x, _ = self.decoder(z)
+        return x
 
-        z = self.prior.sample((num_samples, )) * temperature
-        return self.decode(z)[0]
-
-    def approximate_marginal(self, images: Tensor, n_samples: int = 128):
-        batch_size = images.shape[0]
-        mu_z, sigma_z = self.encoder(images)
-        samples = Normal(mu_z, sigma_z).sample([n_samples]).transpose(1, 0)
-        mu_x, sigma_x = self.decoder(samples.reshape(batch_size * n_samples, -1))
-        mu_x, sigma_x = mu_x.view(batch_size, n_samples, -1), sigma_x.view(batch_size, n_samples, -1)
-        p_x_z = Normal(mu_x, sigma_x).log_prob(images.view(batch_size, 1, -1)).sum([2]).view(batch_size, n_samples)
-        p_latent = Normal(0, 1).log_prob(samples).sum([-1])
-        q_latent = Normal(mu_z.unsqueeze(1), sigma_z.unsqueeze(1)).log_prob(samples).sum([-1])
-
-        return -(torch.mean(torch.logsumexp(p_x_z + p_latent - q_latent, [1]) - torch.log(torch.tensor(n_samples))))
-
-    def set_device(self):
-        # TODO: override to? see https://stackoverflow.com/questions/59179609/how-to-make-a-pytorch-distribution-on-gpu
-        if self.device is None:
-            self.device = next(self.encoder.parameters()).device
-            # Putting loc and scale to device gives nans for some reason
-            self.prior = distributions.normal.Normal(torch.zeros(self.latent_dims).to(self.device),
-                                                     torch.ones(self.latent_dims).to(self.device))
+    def to(self, *args, **kwargs):
+        """
+        Since the prior distribution is not sent to device when the model is sent to device, we override to().
+        """
+        super().to(*args, **kwargs)
+        self.prior = Normal(torch.zeros(self.latent_dims).to(*args, **kwargs),
+                            torch.ones(self.latent_dims).to(*args, **kwargs))
+        return self
 
 
 class ExtendedGaussianAutoEncoder(GaussianAutoEncoder):
-    def __init__(self, encoder: GaussianEncoder, decoder: GaussianDecoder, 
-                 posterior_bijector: Transform = IdentityTransform(), prior_bijector: Transform = IdentityTransform()):
+    def __init__(self, encoder: GaussianEncoder, decoder: GaussianDecoder,
+                 posterior_bijector: Transform = IdentityTransform(), prior_bijector: Transform = IdentityTransform(),
+                 preprocessing_layers: List = ()):
         super(ExtendedGaussianAutoEncoder, self).__init__(encoder, decoder)
         self.posterior_bijector = posterior_bijector
         self.prior_bijector = prior_bijector
+        self.preprocessing_layers = nn.ModuleList(preprocessing_layers)
 
-    def sample(self, num_samples: int = 1, temperature: float = 1):
-        self.set_device()
-        z0 = self.prior.sample((num_samples,)) * temperature
-        z, _ = self.prior_bijector.forward(z0)
-        return self.decoder(z)[0]
     def encode(self, x: Tensor):
-        z0 = self.encoder(x)[0]
-        z = self.posterior_bijector.forward(z0)[0]
+        for layer in self.preprocessing_layers:
+            x, _ = layer.inverse(x)
+        z0, _ = self.encoder(x)
+        z, _ = self.posterior_bijector.forward(z0)
         return z
 
-    def approximate_marginal(self, images: Tensor, n_samples: int = 128):
-        batch_size = images.shape[0]
-        mu_z, sigma_z = self.encoder(images)
-        z0_samples = Normal(mu_z, sigma_z).sample([n_samples]).transpose(1, 0)
-        z_samples, log_j_posterior = self.posterior_bijector.forward(z0_samples.reshape(batch_size * n_samples, -1))
-        mu_x, sigma_x = self.decoder(z_samples)
+    def decode(self, z: Tensor, from_base: bool = False):
+        """
+        :param z: sample from the latent space
+        :param from_base: boolean value to determine whether we need to put z through the prior bijector in the
+        forward direction. In other words, if from_base is True then we assume z is from the base distribution of the
+        prior flow, if from_base is False then we assume z is from the latent space and we only decode it.
+        :return:
+        """
+        if from_base:
+            z, _ = self.prior_bijector.forward(z)
+        x, _ = self.decoder(z)
+        for i in range(len(self.preprocessing_layers) - 1, -1, -1):
+            x, _ = self.preprocessing_layers[i](x)
+        return x
 
-        mu_x, sigma_x = mu_x.view(batch_size, n_samples, -1), sigma_x.view(batch_size, n_samples, -1)
-        p_x_z = Normal(mu_x, sigma_x).log_prob(images.view(batch_size, 1, -1)).sum([2]).view(batch_size, n_samples)
-        z_prior, log_j_z_prior = self.prior_bijector.inverse(z_samples)
-        #z_samples = z_samples.view(batch_size, n_samples, -1)
-        log_j_posterior = log_j_posterior.view(batch_size, n_samples)
-        p_latent = Normal(0, 1).log_prob(z_prior).sum([-1]) + log_j_z_prior
-        p_latent = p_latent.view(batch_size, n_samples)
-        q_latent = Normal(mu_z.unsqueeze(1), sigma_z.unsqueeze(1)).log_prob(z0_samples).sum([-1]) - log_j_posterior
+    def sample(self, num_samples: int = 1, temperature: float = 1):
+        z0 = self.prior.sample((num_samples,)) * temperature
+        z, _ = self.prior_bijector.forward(z0)
+        x, _ = self.decoder(z)
+        for i in range(len(self.preprocessing_layers) - 1, -1, -1):
+            x, _ = self.preprocessing_layers[i](x)
+        return x
 
-        return -(torch.mean(torch.logsumexp(p_x_z + p_latent - q_latent, [1]) - torch.log(torch.tensor(n_samples))))

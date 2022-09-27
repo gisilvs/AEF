@@ -7,6 +7,56 @@ from torch.hub import load_state_dict_from_url
 import torch.nn.functional as F
 import util, datasets
 
+def calculate_ife(model, dataset, device, noise_distribution, n_samples=2048, batch_size=128, incept=None, data_dir=None):
+    if data_dir is not None:
+        test_loader = datasets.get_test_dataloader(dataset, batch_size, data_dir=data_dir)
+    else:
+        test_loader = datasets.get_test_dataloader(dataset, batch_size)
+
+
+
+    if incept is None:
+        incept = InceptionV3().to(device)
+    incept.eval()
+    start_idx = 0
+    img_dims = None
+
+    activations_test = np.empty((n_samples, InceptionV3.DEFAULT_DIMS))
+    activations_reconstructions = np.empty((n_samples, InceptionV3.DEFAULT_DIMS))
+    with torch.no_grad():
+        for batch, _ in test_loader:
+            img_dims = batch.shape[1:]
+            test_batch_noisy = torch.clone(batch).detach().to(device)
+            test_batch_noisy += noise_distribution.sample()[:batch.shape[0]]
+            test_batch_noisy = torch.clamp(test_batch_noisy, 0., 1.)
+
+
+            batch = batch.to(device)
+            test_batch_noisy = test_batch_noisy.to(device)
+
+            # RCE with noise (comparing to original)
+            z = model.encode(test_batch_noisy)
+            if isinstance(z, tuple):
+                z = z[0]
+            test_batch_reconstructed = model.decode(z)
+
+
+
+            if batch.shape[1] == 1:
+                # HACK: Inception expects three channels so we tile
+                batch = batch.repeat((1, 3, 1, 1))
+                test_batch_reconstructed = test_batch_reconstructed.repeat((1, 3, 1, 1))
+            batch_activations = incept(batch)[0].squeeze(3).squeeze(2).cpu().numpy()
+            reconstructed_batch_activations = incept(test_batch_reconstructed)[0].squeeze(3).squeeze(2).cpu().numpy()
+
+            activations_test[start_idx:start_idx + batch_size, :] = batch_activations
+            activations_reconstructions[start_idx:start_idx + batch_size, :] = reconstructed_batch_activations
+            start_idx = start_idx + batch_size
+            if start_idx >= n_samples:
+                break
+
+    squared_errors = (activations_reconstructions - activations_test)**2
+    return np.mean(squared_errors)
 
 def calculate_fid(model, dataset, device, n_samples=2048, batch_size=128, temperature=1, incept=None, data_dir=None):
     if data_dir is not None:
