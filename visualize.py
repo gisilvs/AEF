@@ -129,7 +129,8 @@ def plot_samples(model: AutoEncoder, img_shape: List = [1, 28, 28], n_rows: int 
     return img
 
 def plot_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoader, device: torch.device,
-                         img_shape: List = [1, 28, 28], n_rows: int = 4, n_cols: int = 4, skip_batches=0, padding: int = 1):
+                         img_shape: List = [1, 28, 28], n_rows: int = 4, n_cols: int = 4, skip_batches=0,
+                         padding: int = 1):
     '''
     Function to plot a grid (size n_rows x n_rows) of reconstructions given a model. Each roww of original samples is
     followed by a row of reconstructions.
@@ -230,7 +231,7 @@ def plot_noisy_reconstructions(model: GaussianAutoEncoder, image_batch: Tensor, 
             cur_row += 3  # We filled three rows
 
     arr = np.clip(arr, 0., 1.)
-    grid = torchvision.utils.make_grid(arr, padding=1, pad_value=0., nrow=n_rows)
+    grid = torchvision.utils.make_grid(arr, padding=1, pad_value=0., nrow=n_cols)
     img = torchvision.transforms.ToPILImage()(grid)
     return img
 
