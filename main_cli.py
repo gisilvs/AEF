@@ -101,6 +101,7 @@ stop = False
 n_iterations_done = 0
 iteration_losses = np.zeros((n_iterations,))
 validation_losses = []
+validation_iterations = []
 n_iterations_without_improvements = 0
 
 model.train()
@@ -122,6 +123,8 @@ for it in range(n_iterations_done, n_iterations):
             # We validate first iteration, every n iterations, and at the last iteration
             if (n_iterations_done % validate_every_n_iterations) == 0 or (n_iterations_done == n_iterations - 1):
                 model.eval()
+
+                validation_iterations.append(n_iterations_done)
 
                 with torch.no_grad():
                     val_loss_averager = make_averager()
@@ -167,10 +170,11 @@ for it in range(n_iterations_done, n_iterations):
                 stop = True
                 break
 
-# Plot train and test loss
+# Plot train and validiation loss
 plt.figure()
 plt.plot(range(n_iterations), iteration_losses)
-plt.plot(range(0, n_iterations, validate_every_n_iterations), validation_losses)
+plt.plot(validation_iterations, validation_losses)
+plt.show()
 
 print('Evaluating...')
 
@@ -205,32 +209,27 @@ with torch.no_grad():
     try:
         if has_importance_sampling(model):
             print(f'Approximating log-likelihood of test set...')
-            if model_name == 'aef-linear':
-                sigma_importance = get_posterior_scale_aef_linear(dataset, latent_dims)
-                test_ll_averager = make_averager()
-                for test_batch, _ in test_dataloader:
-                    test_batch = dequantize(test_batch)
-                    test_batch = test_batch.to(device)
-                    for iw_iter in range(20):
+
+            sigma_importance = get_posterior_scale_aef_linear(dataset, latent_dims)
+
+            test_ll_averager = make_averager()
+            for test_batch, _ in test_dataloader:
+                test_batch = dequantize(test_batch)
+                test_batch = test_batch.to(device)
+                for iw_iter in range(20):
+                    if model_name == 'aef-linear':
                         log_likelihood = torch.mean(model.approximate_marginal(test_batch, std=sigma_importance,
                                                                                n_samples=128))
-                        test_ll_averager(log_likelihood.item())
-                test_ll = test_ll_averager(None)
-            else:
-                test_ll_averager = make_averager()
-                for test_batch, _ in test_dataloader:
-                    test_batch = dequantize(test_batch)
-                    test_batch = test_batch.to(device)
-                    for iw_iter in range(20):
+                    else:
                         log_likelihood = torch.mean(model.approximate_marginal(test_batch, n_samples=128))
-                        test_ll_averager(log_likelihood.item())
-                test_ll = test_ll_averager(None)
-            # We only add this value to the summary if we approximate the log likelihood (since we provide test_loss
-            # in both cases).
+                    test_ll_averager(log_likelihood.item())
+            test_ll = test_ll_averager(None)
+            bpp_test = bits_per_pixel(test_ll, n_pixels)
+            bpp_test_adjusted = bits_per_pixel(test_ll, n_pixels, adjust_value=256.)
         else:
             bpp_test = bits_per_pixel(test_loss, n_pixels)
             bpp_test_adjusted = bits_per_pixel(test_loss, n_pixels, adjust_value=256.)
-        print(f'BPP (test set): {bpp_test_adjusted}')
+        print(f'BPD (test set): {bpp_test_adjusted.item()}')
     except Exception as e:
         print(f'Failed to approximate likelihood due to error below.')
         print(e)
@@ -247,8 +246,5 @@ with torch.no_grad():
         print(e)
         traceback.print_exc()
 
-
-
-    print(test_loss, test_ll)
 
 
