@@ -17,7 +17,14 @@ To run experiments we provide a command line interface with the file `main_cli.p
 
     ./main_cli.py --model aef-center --dataset mnist --latent-dims 2 
 
+To reproduce the experiments on CelebA-HQ resized to 64x64 with a latent dimensionality of 128, run:
+
+    ./main_cli.py --model aef-linear --architecture big --posterior-flow maf --prior-flow maf --dataset celebahq64 --latent-dims 128 --iterations 1000000 --lr 1e-4 --batch-size 16 --early-stopping 100000 --data-dir [celebahq64-folder]
+    ./main_cli.py --model vae --architecture big --posterior-flow iaf --prior-flow maf --dataset celebahq64 --latent-dims 128 --iterations 1000000 --lr 1e-4 --batch-size 16 --early-stopping 100000 --data-dir [celebahq64-folder]
+
  For more details, please consult `main_cli.py`.
+
+
 
 ## Samples
 
