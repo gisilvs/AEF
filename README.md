@@ -24,8 +24,12 @@ To reproduce the experiments on CelebA-HQ resized to 64x64 with a latent dimensi
 
  For more details, please consult `main_cli.py`.
 
+## Data
+For the CelebA-HQ experiments we used the 'data128x128.zip' file from [here](https://drive.google.com/drive/folders/11Vz0fqHS2rXDb5pprgTjpD7S2BAJhi1P). It can be resized using
 
+    data/process_celebahq.py --data-dir "download_folder/data128x128" --output-folder "celebahq64" --dimension 64 
 
+for a size of 64x64.
 ## Samples
 
 <table width="100%">
