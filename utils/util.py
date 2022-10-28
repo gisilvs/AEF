@@ -218,7 +218,7 @@ def plot_image_grid(samples, cols, padding=1, pad_value=0.):
     '''
     Samples should be a torch aray with dimensions BxCxWxH
     '''
-    samples = np.clip(samples, 0., 1.)
+    samples = torch.clip(samples, 0., 1.)
     grid = torchvision.utils.make_grid(samples, padding=padding, pad_value=pad_value, nrow=cols, normalize=False)
     img = torchvision.transforms.ToPILImage()(grid)
     return img

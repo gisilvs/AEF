@@ -1,4 +1,3 @@
-import os
 from typing import List
 
 import torch.distributions
@@ -8,22 +7,9 @@ import numpy as np
 from torch import Tensor
 from torch.utils.data import DataLoader
 
-from analysis import get_field_from_config
-from datasets import get_test_dataloader
-import util
-import wandb
-from models import model_database
+from utils import util
 from models.autoencoder_base import AutoEncoder, GaussianAutoEncoder
 import matplotlib.pyplot as plt
-from PIL import Image
-from sklearn.manifold import TSNE
-
-from models.model_database import get_model
-from util import load_best_model
-
-from datetime import date
-
-import traceback
 
 
 def get_z_values(n_vals: int = 20, border: float = 0.10, latent_dims: int = 2):
@@ -169,6 +155,55 @@ def plot_reconstructions(model: GaussianAutoEncoder, test_loader: DataLoader, de
                 if isinstance(reconstruction, tuple):
                     reconstruction = reconstruction[0]
                 reconstruction = reconstruction.cpu().detach()
+            arr[n_images_filled:n_images_filled + n_cols] = reconstruction
+            n_images_filled += n_cols
+            cur_row += 2  # We filled two rows
+
+    arr = np.clip(arr, 0., 1.)
+    grid = torchvision.utils.make_grid(arr, padding=padding, pad_value=0., nrow=n_cols, normalize=False)
+    img = torchvision.transforms.ToPILImage()(grid)
+    return img
+
+def plot_hierarchical_reconstructions(model, test_loader: DataLoader, device: torch.device,
+                         img_shape: List = [1, 28, 28], n_rows: int = 4, n_cols: int = 4, skip_batches=0,
+                         padding: int = 1):
+    '''
+    Function to plot a grid (size n_rows x n_rows) of reconstructions given a model. Each roww of original samples is
+    followed by a row of reconstructions.
+    '''
+
+    n_images = n_rows * n_cols
+    arr = torch.zeros((n_images, *img_shape))
+
+    cur_row = 0
+    iter_test_loader = iter(test_loader)
+
+    n_images_filled = 0
+    batches_skipped = 0
+    while cur_row < n_rows:
+        while batches_skipped <= skip_batches:
+            image_batch, _ = next(iter_test_loader)
+            batches_skipped += 1
+        batch_idx = 0
+        n_imgs_in_batch_left = image_batch.shape[0]
+        while n_imgs_in_batch_left >= n_cols and cur_row < n_rows:
+            n_imgs_in_batch_left -= n_cols  # We use the first n_cols images of the batch
+            row_batch = image_batch[batch_idx:batch_idx + n_cols]
+            arr[n_images_filled:n_images_filled + n_cols] = row_batch
+            batch_idx += n_cols
+            n_images_filled += n_cols
+
+            row_batch = row_batch.to(device)
+            with torch.no_grad():
+                latents = []
+                stats = model.forward_get_latents(row_batch)
+                for statdict in stats:
+                    if 'z' in statdict:
+                        latents.append(statdict['z'])
+                    else:
+                        latents.append(None)
+                reconstruction = model.forward_samples_set_latents(row_batch.shape[0], latents).cpu().detach()
+                # NAE returns a single value, VAEs will return mu and sigma
             arr[n_images_filled:n_images_filled + n_cols] = reconstruction
             n_images_filled += n_cols
             cur_row += 2  # We filled two rows
