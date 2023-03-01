@@ -1,7 +1,7 @@
-# Closing the gap: Exact maximum likelihood training of generative autoencoders using invertible layers 
+# Deterministic training of generative autoencoders using invertible layers
 
 
-This repository contains the official implementation of our paper "[Closing the gap: Exact maximum likelihood training of generative autoencoders using invertible layers]".
+This repository contains the official implementation of our paper "[Deterministic training of generative autoencoders using invertible layers](https://arxiv.org/abs/2205.09546)".
 
 ![Image from abstract](figs/readme_samples_celeba64.png)
 
